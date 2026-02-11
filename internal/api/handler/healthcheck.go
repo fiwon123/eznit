@@ -1,4 +1,4 @@
-package handlers
+package handler
 
 import (
 	"net/http"
@@ -8,7 +8,7 @@ import (
 	"github.com/fiwon123/eznit/pkg/types"
 )
 
-func (handlers *handlersData) healthcheckHandler(w http.ResponseWriter, r *http.Request) {
+func (config *Config) healthcheckHandler(w http.ResponseWriter, r *http.Request) {
 	env := types.Envelope{
 		"status": "available",
 	}

@@ -1,4 +1,4 @@
-package services
+package service
 
 import (
 	"fmt"
@@ -7,9 +7,9 @@ import (
 	"github.com/fiwon123/eznit/internal/domain/model"
 )
 
-func (services *ServicesData) GetUsers() []dto.UserResponse {
+func (config *Config) GetUsers() []dto.UserResponse {
 
-	usersModel := services.db.GetUsers()
+	usersModel := config.db.GetUsers()
 
 	resp := []dto.UserResponse{}
 	for _, user := range usersModel {
@@ -22,9 +22,9 @@ func (services *ServicesData) GetUsers() []dto.UserResponse {
 	return resp
 }
 
-func (services *ServicesData) GetUser(id string) (dto.UserResponse, bool) {
+func (config *Config) GetUser(id string) (dto.UserResponse, bool) {
 
-	user := services.db.GetUser(id)
+	user := config.db.GetUser(id)
 	if user == nil {
 		return dto.UserResponse{}, false
 	}
@@ -37,9 +37,9 @@ func (services *ServicesData) GetUser(id string) (dto.UserResponse, bool) {
 	return resp, true
 }
 
-func (services *ServicesData) CreateUser(req dto.UserCreate) (dto.UserResponse, bool) {
+func (config *Config) CreateUser(req dto.UserCreate) (dto.UserResponse, bool) {
 
-	db := services.db
+	db := config.db
 
 	if db.UserExists(req.Email) {
 		fmt.Println("user already exists")
@@ -59,9 +59,9 @@ func (services *ServicesData) CreateUser(req dto.UserCreate) (dto.UserResponse, 
 	}, true
 }
 
-func (services *ServicesData) DeleteUser(req dto.UserDelete) (dto.UserResponse, bool) {
+func (config *Config) DeleteUser(req dto.UserDelete) (dto.UserResponse, bool) {
 
-	db := services.db
+	db := config.db
 
 	user := db.GetUser(req.Id)
 	if user == nil {
@@ -82,9 +82,9 @@ func (services *ServicesData) DeleteUser(req dto.UserDelete) (dto.UserResponse, 
 	}, true
 }
 
-func (services *ServicesData) UpdateUser(req dto.UserUpdate) (dto.UserResponse, bool) {
+func (config *Config) UpdateUser(req dto.UserUpdate) (dto.UserResponse, bool) {
 
-	db := services.db
+	db := config.db
 
 	user := db.GetUser(req.Id)
 	if user == nil {

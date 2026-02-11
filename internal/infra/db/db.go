@@ -10,17 +10,17 @@ import (
 	_ "github.com/lib/pq"
 )
 
-type DbData struct {
+type Config struct {
 	sqlDB *sql.DB
 }
 
-func NewDB() *DbData {
-	return &DbData{
+func New() *Config {
+	return &Config{
 		sqlDB: nil,
 	}
 }
 
-func (db *DbData) Open() {
+func (config *Config) Open() {
 	port := os.Getenv("DB_PORT")
 	user := os.Getenv("DB_USER")
 	pwd := os.Getenv("DB_PWD")
@@ -40,9 +40,9 @@ func (db *DbData) Open() {
 	}
 	fmt.Println("Connected to PostgreSQL successfully!")
 
-	db.sqlDB = sqlDB
+	config.sqlDB = sqlDB
 }
 
-func (db *DbData) Close() {
-	db.sqlDB.Close()
+func (config *Config) Close() {
+	config.sqlDB.Close()
 }

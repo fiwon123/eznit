@@ -18,11 +18,11 @@ func main() {
 	var port int
 	flag.IntVar(&port, "port", 4000, "API server port")
 
-	dbData := db.NewDB()
+	dbData := db.New()
 	dbData.Open()
 	defer dbData.Close()
 
-	app := app.NewApp(port, dbData)
+	app := app.New(port, dbData)
 
 	err := api.Serve(app)
 	if err != nil {

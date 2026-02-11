@@ -1,33 +1,32 @@
 package app
 
 import (
-	"github.com/fiwon123/eznit/internal/app/services"
-	"github.com/fiwon123/eznit/internal/cfg"
+	"github.com/fiwon123/eznit/internal/app/service"
 	"github.com/fiwon123/eznit/internal/infra/db"
 )
 
-type AppData struct {
-	cfg      *cfg.AppCfg
-	db       *db.DbData
-	services *services.ServicesData
+type Config struct {
+	port    int
+	db      *db.Config
+	service *service.Config
 }
 
-func NewApp(port int, db *db.DbData) *AppData {
-	return &AppData{
-		cfg:      cfg.NewAppCfg(port),
-		db:       db,
-		services: services.NewServices(db),
+func New(port int, db *db.Config) *Config {
+	return &Config{
+		port:    port,
+		db:      db,
+		service: service.New(db),
 	}
 }
 
-func (app *AppData) Cfg() *cfg.AppCfg {
-	return app.cfg
+func (app *Config) Port() int {
+	return app.port
 }
 
-func (app *AppData) DB() *db.DbData {
+func (app *Config) DB() *db.Config {
 	return app.db
 }
 
-func (app *AppData) Services() *services.ServicesData {
-	return app.services
+func (app *Config) Service() *service.Config {
+	return app.service
 }

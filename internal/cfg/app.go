@@ -5,9 +5,7 @@ type AppCfg struct {
 }
 
 func NewAppCfg(port int) *AppCfg {
-	return &AppCfg{
-		port: port,
-	}
+	return &AppCfg{}
 }
 
 func (cfg *AppCfg) Port() int {

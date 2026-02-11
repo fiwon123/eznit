@@ -1,4 +1,4 @@
-package handlers
+package handler
 
 import (
 	"encoding/json"
@@ -8,18 +8,18 @@ import (
 	"github.com/fiwon123/eznit/internal/app/dto"
 )
 
-func (handlers *handlersData) getUsersHandler(w http.ResponseWriter, r *http.Request) {
-	users := handlers.services.GetUsers()
+func (config *Config) getUsersHandler(w http.ResponseWriter, r *http.Request) {
+	users := config.service.GetUsers()
 
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "Application/json")
 	json.NewEncoder(w).Encode(users)
 }
 
-func (handlers *handlersData) getUserHandler(w http.ResponseWriter, r *http.Request) {
+func (config *Config) getUserHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	user, found := handlers.services.GetUser(id)
+	user, found := config.service.GetUser(id)
 	if found {
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(user)
@@ -32,7 +32,7 @@ func (handlers *handlersData) getUserHandler(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-func (handlers *handlersData) createUserHandler(w http.ResponseWriter, r *http.Request) {
+func (config *Config) createUserHandler(w http.ResponseWriter, r *http.Request) {
 	var user dto.UserCreate
 
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
@@ -40,7 +40,7 @@ func (handlers *handlersData) createUserHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	resp, ok := handlers.services.CreateUser(user)
+	resp, ok := config.service.CreateUser(user)
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(resp)
@@ -52,10 +52,10 @@ func (handlers *handlersData) createUserHandler(w http.ResponseWriter, r *http.R
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (handlers *handlersData) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
+func (config *Config) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	_, ok := handlers.services.DeleteUser(dto.UserDelete{
+	_, ok := config.service.DeleteUser(dto.UserDelete{
 		Id: id,
 	})
 	if !ok {
@@ -70,7 +70,7 @@ func (handlers *handlersData) deleteUserHandler(w http.ResponseWriter, r *http.R
 	json.NewEncoder(w).Encode(response)
 }
 
-func (handlers *handlersData) updateUserHandler(w http.ResponseWriter, r *http.Request) {
+func (config *Config) updateUserHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	var req dto.UserUpdate
@@ -80,7 +80,7 @@ func (handlers *handlersData) updateUserHandler(w http.ResponseWriter, r *http.R
 	}
 
 	req.Id = id
-	resp, ok := handlers.services.UpdateUser(req)
+	resp, ok := config.service.UpdateUser(req)
 	if !ok {
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
