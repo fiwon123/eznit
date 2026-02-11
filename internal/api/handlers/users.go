@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/fiwon123/eznit/internal/app/dto"
 )
@@ -47,23 +46,16 @@ func (handlers *handlersData) createUserHandler() http.HandlerFunc {
 			return
 		}
 
-		fmt.Println(user)
-
-		if user.ID == "" {
-			user.ID = strconv.Itoa(len(users) + 1)
-		}
-
-		_, exists := users[user.ID]
-		if exists {
-			http.Error(w, "User already exist", http.StatusConflict)
+		resp, ok := handlers.services.CreateUser(user)
+		if !ok {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(resp)
 			return
 		}
 
-		users[user.ID] = user
-
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(user)
+		json.NewEncoder(w).Encode(resp)
 	}
 }
 

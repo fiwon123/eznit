@@ -45,6 +45,20 @@ func (db *DbData) GetUser(id string) *model.User {
 	return &user
 }
 
+func (db *DbData) UserExists(email string) bool {
+	var count int
+
+	query := "SELECT COUNT(*) FROM users WHERE email=$1"
+	err := db.sqlDB.QueryRow(query, email).Scan(&count)
+
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+
+	return true
+}
+
 func (db *DbData) CreateUser(user model.User) bool {
 	exec := "INSERT INTO users (email,password) VALUES ($1, $2)"
 
