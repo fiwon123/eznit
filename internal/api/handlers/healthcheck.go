@@ -8,15 +8,13 @@ import (
 	"github.com/fiwon123/eznit/pkg/types"
 )
 
-func (handlers *handlersData) healthcheckHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		env := types.Envelope{
-			"status": "available",
-		}
+func (handlers *handlersData) healthcheckHandler(w http.ResponseWriter, r *http.Request) {
+	env := types.Envelope{
+		"status": "available",
+	}
 
-		err := helper.WriteJSON(w, http.StatusOK, env, nil)
-		if err != nil {
-			errors.ServerErrorResponse(w, r, err)
-		}
+	err := helper.WriteJSON(w, http.StatusOK, env, nil)
+	if err != nil {
+		errors.ServerErrorResponse(w, r, err)
 	}
 }

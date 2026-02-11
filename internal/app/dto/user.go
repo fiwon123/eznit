@@ -11,8 +11,7 @@ type UserUpdate struct {
 }
 
 type UserDelete struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Id string `json:"id"`
 }
 
 type UserResponse struct {

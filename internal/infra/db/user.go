@@ -70,3 +70,15 @@ func (db *DbData) CreateUser(user model.User) bool {
 
 	return true
 }
+
+func (db *DbData) DeleteUser(user model.User) bool {
+	exec := "DELETE FROM users WHERE id=$1"
+
+	_, err := db.sqlDB.Exec(exec, user.ID)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+
+	return true
+}

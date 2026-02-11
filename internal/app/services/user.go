@@ -35,18 +35,41 @@ func (services *ServicesData) GetUser(id string) (dto.UserResponse, bool) {
 	return resp, true
 }
 
-func (services *ServicesData) CreateUser(user dto.UserCreate) (dto.UserResponse, bool) {
+func (services *ServicesData) CreateUser(req dto.UserCreate) (dto.UserResponse, bool) {
 
 	db := services.db
 
-	if db.UserExists(user.Email) {
+	if db.UserExists(req.Email) {
 		return dto.UserResponse{}, false
 	}
 
 	if !db.CreateUser(model.User{
-		Email:    user.Email,
-		Password: user.Password,
+		Email:    req.Email,
+		Password: req.Password,
 	}) {
+		return dto.UserResponse{}, false
+	}
+
+	return dto.UserResponse{
+		Email:    req.Email,
+		Password: req.Password,
+	}, true
+}
+
+func (services *ServicesData) DeleteUser(req dto.UserDelete) (dto.UserResponse, bool) {
+
+	db := services.db
+
+	user := db.GetUser(req.Id)
+	if user == nil {
+		return dto.UserResponse{}, false
+	}
+
+	if !db.UserExists(user.Email) {
+		return dto.UserResponse{}, false
+	}
+
+	if !db.DeleteUser(*user) {
 		return dto.UserResponse{}, false
 	}
 
