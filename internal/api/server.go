@@ -1,20 +1,23 @@
-package server
+package api
 
 import (
 	"errors"
 	"fmt"
 	"net/http"
 
-	"github.com/fiwon123/eznit/internal/data/app"
+	"github.com/fiwon123/eznit/internal/api/handlers"
+	"github.com/fiwon123/eznit/internal/app"
 )
 
-func Serve(app *app.Data) error {
+func Serve(app *app.AppData) error {
+	h := handlers.NewHandlers(app)
+
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", app.Cfg().Port()),
-		Handler: allRoutes(app),
+		Handler: h.AllHandlers(),
 	}
 
-	fmt.Println("Starting Server...")
+	fmt.Println("Server Running...")
 	err := srv.ListenAndServe()
 	if !errors.Is(err, http.ErrServerClosed) {
 		return err

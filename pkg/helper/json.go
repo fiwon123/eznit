@@ -5,7 +5,7 @@ import (
 	"maps"
 	"net/http"
 
-	"github.com/fiwon123/eznit/internal/data/types"
+	"github.com/fiwon123/eznit/pkg/types"
 )
 
 func WriteJSON(w http.ResponseWriter, status int, data types.Envelope, headers http.Header) error {

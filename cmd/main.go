@@ -4,9 +4,9 @@ import (
 	"flag"
 	"log"
 
-	"github.com/fiwon123/eznit/internal/data/app"
-	"github.com/fiwon123/eznit/internal/db"
-	"github.com/fiwon123/eznit/internal/server"
+	"github.com/fiwon123/eznit/internal/api"
+	"github.com/fiwon123/eznit/internal/app"
+	"github.com/fiwon123/eznit/internal/infra/db"
 	"github.com/joho/godotenv"
 )
 
@@ -17,11 +17,12 @@ func main() {
 	var port int
 	flag.IntVar(&port, "port", 4000, "API server port")
 
-	app := app.New(port)
+	dbData := db.NewDB()
+	dbData.Open()
 
-	db.Open()
+	app := app.NewApp(port, dbData)
 
-	server.Serve(app)
+	api.Serve(app)
 }
 
 func loadEnv() {
