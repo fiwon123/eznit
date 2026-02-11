@@ -15,7 +15,10 @@ type UserDelete struct {
 	Id string `json:"id"`
 }
 
-type UserResponse struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+type UserMsgResponse struct {
+	Msg string `json:"message"`
+}
+
+type UserDataResponse struct {
+	Email string `json:"email"`
 }

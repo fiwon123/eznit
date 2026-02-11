@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/fiwon123/eznit/internal/app/dto"
@@ -19,17 +18,14 @@ func (config *Config) getUsersHandler(w http.ResponseWriter, r *http.Request) {
 func (config *Config) getUserHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	user, found := config.service.GetUser(id)
-	if found {
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(user)
-	} else {
-		w.WriteHeader(http.StatusInternalServerError)
-		response := map[string]string{
-			"message": fmt.Sprintf("User with id %s not found", id),
-		}
-		json.NewEncoder(w).Encode(response)
+	resp, found := config.service.GetUser(id)
+	if !found {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
 	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (config *Config) createUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -42,8 +38,7 @@ func (config *Config) createUserHandler(w http.ResponseWriter, r *http.Request) 
 
 	resp, ok := config.service.CreateUser(user)
 	if !ok {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(resp)
+		http.Error(w, resp.Msg, http.StatusInternalServerError)
 		return
 	}
 
@@ -55,19 +50,15 @@ func (config *Config) createUserHandler(w http.ResponseWriter, r *http.Request) 
 func (config *Config) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	_, ok := config.service.DeleteUser(dto.UserDelete{
+	resp, ok := config.service.DeleteUser(dto.UserDelete{
 		Id: id,
 	})
 	if !ok {
-		http.Error(w, "User not found", http.StatusNotFound)
+		http.Error(w, resp.Msg, http.StatusInternalServerError)
 		return
 	}
 
-	response := map[string]string{
-		"message": fmt.Sprintf("User %s is deleted successfully", id),
-	}
-
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (config *Config) updateUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +73,7 @@ func (config *Config) updateUserHandler(w http.ResponseWriter, r *http.Request) 
 	req.Id = id
 	resp, ok := config.service.UpdateUser(req)
 	if !ok {
-		http.Error(w, "User not found", http.StatusNotFound)
+		http.Error(w, resp.Msg, http.StatusInternalServerError)
 		return
 	}
 
