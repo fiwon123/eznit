@@ -19,6 +19,21 @@ func (services *ServicesData) GetUsers() []dto.UserResponse {
 	return resp
 }
 
+func (services *ServicesData) GetUser(id string) (dto.UserResponsem, bool) {
+
+	user := services.db.GetUser(id)
+	if user == nil {
+		return dto.UserResponse{}, false
+	}
+
+	resp := dto.UserResponse{
+		Email:    user.Email,
+		Password: user.Password,
+	}
+
+	return resp, true
+}
+
 func CreateUser() {
 
 }

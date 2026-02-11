@@ -31,6 +31,20 @@ func (db *DbData) GetUsers() []model.User {
 	return users
 }
 
+func (db *DbData) GetUser(id string) *model.User {
+
+	query := "SELECT id,email,password,created_at FROM users WHERE id=$1"
+	row := db.sqlDB.QueryRow(query, id)
+
+	var user model.User
+	if err := row.Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt); err != nil {
+		fmt.Println(err)
+		return nil
+	}
+
+	return &user
+}
+
 func (db *DbData) CreateUser(user model.User) bool {
 	exec := "INSERT INTO users (email,password) VALUES ($1, $2)"
 

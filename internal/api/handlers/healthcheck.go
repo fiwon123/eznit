@@ -16,7 +16,7 @@ func (handlers *handlersData) healthcheckHandler() http.HandlerFunc {
 
 		err := helper.WriteJSON(w, http.StatusOK, env, nil)
 		if err != nil {
-			errors.ServerErrorResponse(w, r, err, handlers.app)
+			errors.ServerErrorResponse(w, r, err)
 		}
 	}
 }

@@ -3,17 +3,17 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/fiwon123/eznit/internal/app"
+	"github.com/fiwon123/eznit/internal/app/services"
 	"github.com/julienschmidt/httprouter"
 )
 
 type handlersData struct {
-	app *app.AppData
+	services *services.ServicesData
 }
 
-func NewHandlers(app *app.AppData) *handlersData {
+func NewHandlers(services *services.ServicesData) *handlersData {
 	return &handlersData{
-		app: app,
+		services: services,
 	}
 }
 

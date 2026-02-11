@@ -12,7 +12,7 @@ import (
 func (handlers *handlersData) getUsersHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		users := handlers.app.Services().GetUsers()
+		users := handlers.services.GetUsers()
 
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "Application/json")
@@ -24,7 +24,7 @@ func (handlers *handlersData) getUserHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 
-		user, found := users[id]
+		user, found := handlers.services.GetUser(id)
 		if found {
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(user)
