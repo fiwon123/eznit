@@ -10,7 +10,7 @@ import (
 )
 
 func Serve(app *app.AppData) error {
-	h := handlers.NewHandlers(app)
+	h := handlers.NewHandlers(app.Services())
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", app.Cfg().Port()),

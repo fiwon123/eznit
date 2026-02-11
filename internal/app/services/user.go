@@ -19,7 +19,7 @@ func (services *ServicesData) GetUsers() []dto.UserResponse {
 	return resp
 }
 
-func (services *ServicesData) GetUser(id string) (dto.UserResponsem, bool) {
+func (services *ServicesData) GetUser(id string) (dto.UserResponse, bool) {
 
 	user := services.db.GetUser(id)
 	if user == nil {
