@@ -1,6 +1,8 @@
 package services
 
 import (
+	"fmt"
+
 	"github.com/fiwon123/eznit/internal/app/dto"
 	"github.com/fiwon123/eznit/internal/domain/model"
 )
@@ -40,6 +42,7 @@ func (services *ServicesData) CreateUser(req dto.UserCreate) (dto.UserResponse, 
 	db := services.db
 
 	if db.UserExists(req.Email) {
+		fmt.Println("user already exists")
 		return dto.UserResponse{}, false
 	}
 
@@ -88,9 +91,8 @@ func (services *ServicesData) UpdateUser(req dto.UserUpdate) (dto.UserResponse, 
 		return dto.UserResponse{}, false
 	}
 
-	if !db.UserExists(user.Email) {
-		return dto.UserResponse{}, false
-	}
+	user.Email = req.Email
+	user.Password = req.Password
 
 	if !db.UpdateUser(*user) {
 		return dto.UserResponse{}, false

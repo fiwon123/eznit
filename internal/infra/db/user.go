@@ -56,6 +56,10 @@ func (db *DbData) UserExists(email string) bool {
 		return false
 	}
 
+	if count == 0 {
+		return false
+	}
+
 	return true
 }
 
@@ -84,7 +88,7 @@ func (db *DbData) DeleteUser(user model.User) bool {
 }
 
 func (db *DbData) UpdateUser(user model.User) bool {
-	exec := "UPDATE users SET emai=$2, password=$3 WHERE id=$1"
+	exec := "UPDATE users SET email=$2, password=$3 WHERE id=$1"
 
 	_, err := db.sqlDB.Exec(exec, user.ID, user.Email, user.Password)
 	if err != nil {

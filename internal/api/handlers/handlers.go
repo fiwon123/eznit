@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/fiwon123/eznit/internal/app/services"
-	"github.com/julienschmidt/httprouter"
+	"github.com/go-chi/chi/v5"
 )
 
 type handlersData struct {
@@ -18,13 +18,13 @@ func NewHandlers(services *services.ServicesData) *handlersData {
 }
 
 func (handlers *handlersData) AllHandlers() http.Handler {
-	router := httprouter.New()
-	router.HandlerFunc(http.MethodGet, "/v1/healthcheck", handlers.healthcheckHandler)
-	router.HandlerFunc(http.MethodGet, "/v1/users", handlers.getUsersHandler)
-	router.HandlerFunc(http.MethodGet, "/v1/users/{id}", handlers.getUserHandler)
-	router.HandlerFunc(http.MethodPost, "/v1/users", handlers.createUserHandler)
-	router.HandlerFunc(http.MethodDelete, "/v1/users/{id}", handlers.deleteUserHandler)
-	router.HandlerFunc(http.MethodPut, "/v1/users/{id}", handlers.updateUserHandler)
+	r := chi.NewRouter()
+	r.Get("/v1/healthcheck", handlers.healthcheckHandler)
+	r.Get("/v1/users", handlers.getUsersHandler)
+	r.Get("/v1/users/{id}", handlers.getUserHandler)
+	r.Post("/v1/users", handlers.createUserHandler)
+	r.Delete("/v1/users/{id}", handlers.deleteUserHandler)
+	r.Put("/v1/users/{id}", handlers.updateUserHandler)
 
-	return router
+	return r
 }

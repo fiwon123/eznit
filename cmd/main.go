@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 
 	"github.com/fiwon123/eznit/internal/api"
@@ -19,10 +20,14 @@ func main() {
 
 	dbData := db.NewDB()
 	dbData.Open()
+	defer dbData.Close()
 
 	app := app.NewApp(port, dbData)
 
-	api.Serve(app)
+	err := api.Serve(app)
+	if err != nil {
+		fmt.Println(err)
+	}
 }
 
 func loadEnv() {
