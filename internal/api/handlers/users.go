@@ -73,16 +73,20 @@ func (handlers *handlersData) deleteUserHandler(w http.ResponseWriter, r *http.R
 func (handlers *handlersData) updateUserHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	var update dto.UserUpdate
-	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+	var req dto.UserUpdate
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	update.ID = id
-	users[id] = update
+	req.Id = id
+	resp, ok := handlers.services.UpdateUser(req)
+	if !ok {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(update)
+	json.NewEncoder(w).Encode(resp)
 
 }

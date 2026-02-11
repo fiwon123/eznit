@@ -78,3 +78,26 @@ func (services *ServicesData) DeleteUser(req dto.UserDelete) (dto.UserResponse, 
 		Password: user.Password,
 	}, true
 }
+
+func (services *ServicesData) UpdateUser(req dto.UserUpdate) (dto.UserResponse, bool) {
+
+	db := services.db
+
+	user := db.GetUser(req.Id)
+	if user == nil {
+		return dto.UserResponse{}, false
+	}
+
+	if !db.UserExists(user.Email) {
+		return dto.UserResponse{}, false
+	}
+
+	if !db.UpdateUser(*user) {
+		return dto.UserResponse{}, false
+	}
+
+	return dto.UserResponse{
+		Email:    user.Email,
+		Password: user.Password,
+	}, true
+}

@@ -82,3 +82,15 @@ func (db *DbData) DeleteUser(user model.User) bool {
 
 	return true
 }
+
+func (db *DbData) UpdateUser(user model.User) bool {
+	exec := "UPDATE users SET emai=$2, password=$3 WHERE id=$1"
+
+	_, err := db.sqlDB.Exec(exec, user.ID, user.Email, user.Password)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+
+	return true
+}
