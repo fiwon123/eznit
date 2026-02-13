@@ -14,7 +14,7 @@ func Serve(app *app.Config) error {
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", app.Port()),
-		Handler: h.AllHandlers(),
+		Handler: h.Routes(),
 	}
 
 	fmt.Println("Server Running...")

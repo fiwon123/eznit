@@ -17,7 +17,7 @@ func New(service *service.Config) *Config {
 	}
 }
 
-func (config *Config) AllHandlers() http.Handler {
+func (config *Config) Routes() http.Handler {
 	r := chi.NewRouter()
 	r.Get("/v1/healthcheck", config.healthcheckHandler)
 	r.Get("/v1/users", config.getUsersHandler)
@@ -25,6 +25,7 @@ func (config *Config) AllHandlers() http.Handler {
 	r.Post("/v1/users", config.createUserHandler)
 	r.Delete("/v1/users/{id}", config.deleteUserHandler)
 	r.Put("/v1/users/{id}", config.updateUserHandler)
+	r.Post("/v1/files", config.uploadHandler)
 
 	return r
 }
