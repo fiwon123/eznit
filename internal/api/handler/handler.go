@@ -25,6 +25,7 @@ func (config *Config) Routes() http.Handler {
 	r.Post("/v1/users", config.createUserHandler)
 	r.Delete("/v1/users/{id}", config.deleteUserHandler)
 	r.Put("/v1/users/{id}", config.updateUserHandler)
+	r.Get("/v1/files", config.getFilesHandler)
 	r.Post("/v1/files", config.uploadHandler)
 
 	return r

@@ -1,9 +1,22 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 )
+
+func (config *Config) getFilesHandler(w http.ResponseWriter, r *http.Request) {
+	resp, ok := config.service.GetFiles()
+	if !ok {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(resp)
+}
 
 func (config *Config) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Prevents attackers from sending infinite data to crash your server.

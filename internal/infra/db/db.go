@@ -5,18 +5,17 @@ import (
 	"log"
 	"os"
 
-	"database/sql"
-
+	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
 
 type Config struct {
-	sqlDB *sql.DB
+	conn *sqlx.DB
 }
 
 func New() *Config {
 	return &Config{
-		sqlDB: nil,
+		conn: nil,
 	}
 }
 
@@ -28,7 +27,7 @@ func (config *Config) Open() {
 
 	connStr := fmt.Sprintf("postgresql://%s:%s@localhost:%s/%s?sslmode=disable", user, pwd, port, name)
 
-	sqlDB, err := sql.Open("postgres", connStr)
+	sqlDB, err := sqlx.Open("postgres", connStr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -40,9 +39,9 @@ func (config *Config) Open() {
 	}
 	fmt.Println("Connected to PostgreSQL successfully!")
 
-	config.sqlDB = sqlDB
+	config.conn = sqlDB
 }
 
 func (config *Config) Close() {
-	config.sqlDB.Close()
+	config.conn.Close()
 }
