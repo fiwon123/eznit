@@ -47,7 +47,7 @@ func (h *Handler) getUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createUserHandler(w http.ResponseWriter, r *http.Request) {
-	var user UserCreate
+	var user CreateRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		http.Error(w, "Failed to decode request", http.StatusBadRequest)
@@ -68,7 +68,7 @@ func (h *Handler) createUserHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	resp, ok := h.service.DeleteUser(UserDelete{
+	resp, ok := h.service.DeleteUser(DeleteRequest{
 		Id: id,
 	})
 	if !ok {
@@ -82,7 +82,7 @@ func (h *Handler) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) updateUserHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	var req UserUpdate
+	var req UpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

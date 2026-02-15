@@ -1,24 +1,24 @@
 package users
 
-type UserCreate struct {
+type CreateRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
-type UserUpdate struct {
+type UpdateRequest struct {
 	Id       string `json:"id"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
-type UserDelete struct {
+type DeleteRequest struct {
 	Id string `json:"id"`
 }
 
-type UserMsgResponse struct {
+type MsgResponse struct {
 	Msg string `json:"message"`
 }
 
-type UserDataResponse struct {
+type DataResponse struct {
 	Email string `json:"email"`
 }

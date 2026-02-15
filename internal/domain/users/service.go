@@ -10,13 +10,13 @@ func NewService(db Repository) *Service {
 	}
 }
 
-func (s *Service) GetUsers() []UserDataResponse {
+func (s *Service) GetUsers() []DataResponse {
 
 	usersModel := s.db.GetUsers()
 
-	resp := []UserDataResponse{}
+	resp := []DataResponse{}
 	for _, user := range usersModel {
-		resp = append(resp, UserDataResponse{
+		resp = append(resp, DataResponse{
 			Email: user.Email,
 		})
 	}
@@ -24,26 +24,26 @@ func (s *Service) GetUsers() []UserDataResponse {
 	return resp
 }
 
-func (s *Service) GetUser(id string) (UserDataResponse, bool) {
+func (s *Service) GetUser(id string) (DataResponse, bool) {
 
 	user := s.db.GetUser(id)
 	if user == nil {
-		return UserDataResponse{}, false
+		return DataResponse{}, false
 	}
 
-	resp := UserDataResponse{
+	resp := DataResponse{
 		Email: user.Email,
 	}
 
 	return resp, true
 }
 
-func (s *Service) CreateUser(req UserCreate) (UserMsgResponse, bool) {
+func (s *Service) CreateUser(req CreateRequest) (MsgResponse, bool) {
 
 	db := s.db
 
 	if db.UserExists(req.Email) {
-		return UserMsgResponse{
+		return MsgResponse{
 			Msg: "user already exists",
 		}, false
 	}
@@ -52,45 +52,45 @@ func (s *Service) CreateUser(req UserCreate) (UserMsgResponse, bool) {
 		Email:    req.Email,
 		Password: req.Password,
 	}) {
-		return UserMsgResponse{
+		return MsgResponse{
 			Msg: "internal server error",
 		}, false
 	}
 
-	return UserMsgResponse{
+	return MsgResponse{
 		Msg: "user created!",
 	}, true
 }
 
-func (s *Service) DeleteUser(req UserDelete) (UserMsgResponse, bool) {
+func (s *Service) DeleteUser(req DeleteRequest) (MsgResponse, bool) {
 
 	db := s.db
 
 	user := db.GetUser(req.Id)
 	if user == nil {
-		return UserMsgResponse{
+		return MsgResponse{
 			Msg: "user not exists",
 		}, false
 	}
 
 	if !db.DeleteUser(*user) {
-		return UserMsgResponse{
+		return MsgResponse{
 			Msg: "internal server error",
 		}, false
 	}
 
-	return UserMsgResponse{
+	return MsgResponse{
 		Msg: "user deleted!",
 	}, true
 }
 
-func (s *Service) UpdateUser(req UserUpdate) (UserMsgResponse, bool) {
+func (s *Service) UpdateUser(req UpdateRequest) (MsgResponse, bool) {
 
 	db := s.db
 
 	user := db.GetUser(req.Id)
 	if user == nil {
-		return UserMsgResponse{
+		return MsgResponse{
 			Msg: "user not exists",
 		}, false
 	}
@@ -99,12 +99,12 @@ func (s *Service) UpdateUser(req UserUpdate) (UserMsgResponse, bool) {
 	user.Password = req.Password
 
 	if !db.UpdateUser(*user) {
-		return UserMsgResponse{
+		return MsgResponse{
 			Msg: "internal server error",
 		}, false
 	}
 
-	return UserMsgResponse{
+	return MsgResponse{
 		Msg: "user updated!",
 	}, true
 }
