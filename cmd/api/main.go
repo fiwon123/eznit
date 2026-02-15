@@ -67,15 +67,9 @@ func healthcheckHandler(w http.ResponseWriter, r *http.Request) {
 
 	err := helper.WriteJSON(w, http.StatusOK, env, nil)
 	if err != nil {
-		serverErrorResponse(w, r, err)
+		fmt.Println(err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
-}
-
-func serverErrorResponse(w http.ResponseWriter, r *http.Request, err error) {
-	// app.logError(r, err)
-	message := "the server encountered a problem and could not process your request"
-	fmt.Println(message)
-	// app.errorResponse(w, r, http.StatusInternalServerError, message)
 }
 
 func loadEnv() {
