@@ -47,7 +47,7 @@ func main() {
 	fileHandler.RegisterRoutes(r)
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", app.Port()),
+		Addr:    fmt.Sprintf(":%d", 4000),
 		Handler: r,
 	}
 
