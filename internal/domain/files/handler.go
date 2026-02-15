@@ -1,13 +1,30 @@
-package handler
+package files
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
 )
 
-func (config *Config) getFilesHandler(w http.ResponseWriter, r *http.Request) {
-	resp, ok := config.service.GetFiles()
+type Handler struct {
+	service *Service
+}
+
+func NewHandler(service *Service) *Handler {
+	return &Handler{
+		service: service,
+	}
+}
+
+func (h *Handler) RegisterRoutes(r *chi.Mux) {
+	r.Get("/v1/files", h.getFilesHandler)
+	r.Post("/v1/files", h.uploadHandler)
+}
+
+func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {
+	resp, ok := h.service.GetFiles()
 	if !ok {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
@@ -18,7 +35,7 @@ func (config *Config) getFilesHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (config *Config) uploadHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Prevents attackers from sending infinite data to crash your server.
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
 
@@ -35,7 +52,7 @@ func (config *Config) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	resp, ok := config.service.StorageFile(file, header)
+	resp, ok := h.service.StorageFile(file, header)
 	if !ok {
 		http.Error(w, resp.Msg, http.StatusInternalServerError)
 		return

@@ -1,4 +1,4 @@
-package service
+package files
 
 import (
 	"fmt"
@@ -8,20 +8,29 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/fiwon123/eznit/internal/app/dto"
-	"github.com/fiwon123/eznit/internal/domain/model"
 	"github.com/fiwon123/eznit/pkg/helper"
 )
 
-func (config *Config) GetFiles() ([]dto.FileDataResponse, bool) {
-	files, ok := config.db.GetFiles()
+type Service struct {
+	db Repository
+}
+
+func NewService(db Repository) *Service {
+	return &Service{
+		db: db,
+	}
+}
+
+func (s *Service) GetFiles() ([]DataResponse, bool) {
+	files, ok := s.db.GetFiles()
 	if !ok {
-		return []dto.FileDataResponse{}, false
+		return []DataResponse{}, false
 	}
 
-	var resp []dto.FileDataResponse
+	var resp []DataResponse
 	for _, file := range files {
-		resp = append(resp, dto.FileDataResponse{
+		resp = append(resp, DataResponse{
+			ID:   file.ID,
 			Name: file.Name,
 			Ext:  file.Ext,
 		})
@@ -30,11 +39,29 @@ func (config *Config) GetFiles() ([]dto.FileDataResponse, bool) {
 	return resp, true
 }
 
-func (config *Config) StorageFile(file multipart.File, header *multipart.FileHeader) (dto.FileMsgResponse, bool) {
+func (s *Service) GetFile() ([]DataResponse, bool) {
+	files, ok := s.db.GetFiles()
+	if !ok {
+		return []DataResponse{}, false
+	}
+
+	var resp []DataResponse
+	for _, file := range files {
+		resp = append(resp, DataResponse{
+			ID:   file.ID,
+			Name: file.Name,
+			Ext:  file.Ext,
+		})
+	}
+
+	return resp, true
+}
+
+func (s *Service) StorageFile(file multipart.File, header *multipart.FileHeader) (MsgResponse, bool) {
 
 	err := helper.CreatePathIfNotExists("./uploads")
 	if err != nil {
-		return dto.FileMsgResponse{
+		return MsgResponse{
 			Msg: "internal server error",
 		}, false
 	}
@@ -43,16 +70,16 @@ func (config *Config) StorageFile(file multipart.File, header *multipart.FileHea
 	ext := filepath.Ext(cleanName)
 	finalPath := filepath.Join("./uploads", fmt.Sprintf("%d_%s", time.Now().Unix(), cleanName))
 
-	storageFile := model.File{
+	storageFile := File{
 		UserID: 2,
 		Name:   cleanName,
 		Ext:    ext,
 		Path:   finalPath,
 	}
 
-	resp, ok := config.db.StorageFile(storageFile)
+	resp, ok := s.db.StorageFile(storageFile)
 	if !ok {
-		return dto.FileMsgResponse{
+		return MsgResponse{
 			Msg: "internal server error",
 		}, false
 	}
@@ -60,7 +87,7 @@ func (config *Config) StorageFile(file multipart.File, header *multipart.FileHea
 	dst, err := os.Create(finalPath)
 	if err != nil {
 		fmt.Println(err)
-		return dto.FileMsgResponse{
+		return MsgResponse{
 			Msg: "internal server erro",
 		}, false
 	}
@@ -69,12 +96,12 @@ func (config *Config) StorageFile(file multipart.File, header *multipart.FileHea
 	_, err = io.Copy(dst, file)
 	if err != nil {
 		fmt.Println(err)
-		return dto.FileMsgResponse{
+		return MsgResponse{
 			Msg: "internal server erro",
 		}, false
 	}
 
-	return dto.FileMsgResponse{
+	return MsgResponse{
 		Msg: resp.Msg,
 	}, true
 }

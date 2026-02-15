@@ -1,24 +1,42 @@
-package handler
+package users
 
 import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/fiwon123/eznit/internal/app/dto"
+	"github.com/go-chi/chi/v5"
 )
 
-func (config *Config) getUsersHandler(w http.ResponseWriter, r *http.Request) {
-	users := config.service.GetUsers()
+type Handler struct {
+	service *Service
+}
+
+func NewHandler(service *Service) *Handler {
+	return &Handler{
+		service: service,
+	}
+}
+
+func (h *Handler) RegisterRoutes(r *chi.Mux) {
+	r.Get("/v1/users", h.getUsersHandler)
+	r.Get("/v1/users/{id}", h.getUserHandler)
+	r.Post("/v1/users", h.createUserHandler)
+	r.Delete("/v1/users/{id}", h.deleteUserHandler)
+	r.Put("/v1/users/{id}", h.updateUserHandler)
+}
+
+func (h *Handler) getUsersHandler(w http.ResponseWriter, r *http.Request) {
+	users := h.service.GetUsers()
 
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "Application/json")
 	json.NewEncoder(w).Encode(users)
 }
 
-func (config *Config) getUserHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) getUserHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	resp, found := config.service.GetUser(id)
+	resp, found := h.service.GetUser(id)
 	if !found {
 		http.Error(w, "user not found", http.StatusNotFound)
 		return
@@ -28,15 +46,15 @@ func (config *Config) getUserHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (config *Config) createUserHandler(w http.ResponseWriter, r *http.Request) {
-	var user dto.UserCreate
+func (h *Handler) createUserHandler(w http.ResponseWriter, r *http.Request) {
+	var user UserCreate
 
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		http.Error(w, "Failed to decode request", http.StatusBadRequest)
 		return
 	}
 
-	resp, ok := config.service.CreateUser(user)
+	resp, ok := h.service.CreateUser(user)
 	if !ok {
 		http.Error(w, resp.Msg, http.StatusInternalServerError)
 		return
@@ -47,10 +65,10 @@ func (config *Config) createUserHandler(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (config *Config) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	resp, ok := config.service.DeleteUser(dto.UserDelete{
+	resp, ok := h.service.DeleteUser(UserDelete{
 		Id: id,
 	})
 	if !ok {
@@ -61,17 +79,17 @@ func (config *Config) deleteUserHandler(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (config *Config) updateUserHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) updateUserHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	var req dto.UserUpdate
+	var req UserUpdate
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	req.Id = id
-	resp, ok := config.service.UpdateUser(req)
+	resp, ok := h.service.UpdateUser(req)
 	if !ok {
 		http.Error(w, resp.Msg, http.StatusInternalServerError)
 		return

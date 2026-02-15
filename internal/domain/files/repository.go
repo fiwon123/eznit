@@ -1,6 +1,8 @@
-package model
+package files
 
-import "time"
+import (
+	"time"
+)
 
 type File struct {
 	ID        int       `db:"id"`
@@ -10,4 +12,9 @@ type File struct {
 	Path      string    `db:"path"`
 	CreatedAt time.Time `db:"created_at"`
 	UpdatedAt time.Time `db:"updated_at"`
+}
+
+type Repository interface {
+	GetFiles() ([]File, bool)
+	StorageFile(file File) (MsgResponse, bool)
 }
