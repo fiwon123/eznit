@@ -40,27 +40,35 @@ func (r *sqlRepository) GetFile(id string) (*File, bool) {
 	return file, true
 }
 
-func (r *sqlRepository) StorageFile(file File) (MsgResponse, bool) {
+func (r *sqlRepository) StorageFile(file File) bool {
 	_, err := r.db.NamedExec("INSERT INTO files (name, ext, path) VALUES (:name, :ext, :path)", file)
 	if err != nil {
 		fmt.Println(err)
-		return MsgResponse{Msg: "internal server error"}, false
+		return false
 	}
 
-	return MsgResponse{
-		Msg: "file storaged!",
-	}, true
+	return true
 }
 
-func (r *sqlRepository) DeleteFile(id string) (MsgResponse, bool) {
+func (r *sqlRepository) DeleteFile(id string) bool {
 	_, err := r.db.NamedExec("DELETE FROM users WHERE id=$1", id)
 	if err != nil {
 		fmt.Println(err)
-		return MsgResponse{Msg: "internal server error"}, false
+		return false
 	}
 
-	return MsgResponse{
-		Msg: "file deleted!",
-	}, true
+	return true
 
+}
+
+func (r *sqlRepository) UpdateFile(file File) bool {
+	exec := "UPDATE files SET name=:name, ext=:ext, path=:path, updated_at=NOW() WHERE id=:id"
+
+	_, err := r.db.NamedExec(exec, file)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+
+	return true
 }

@@ -1,8 +1,5 @@
 package files
 
-type StorageRequest struct {
-}
-
 type DataResponse struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`

@@ -20,8 +20,10 @@ func NewHandler(service *service) *Handler {
 
 func (h *Handler) RegisterRoutes(r *chi.Mux) {
 	r.Get("/v1/files", h.getFilesHandler)
+	r.Get("/v1/files/{id}", h.getFileHandler)
 	r.Post("/v1/files", h.uploadHandler)
 	r.Delete("/v1/files/{id}", h.deleteHandler)
+	r.Put("/v1/files/{id}", h.updateHandler)
 }
 
 func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +82,31 @@ func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	resp, ok := h.service.DeleteFile(id)
+	if !ok {
+		http.Error(w, resp.Msg, http.StatusInternalServerError)
+	}
+
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (h *Handler) updateHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
+
+	if err := r.ParseMultipartForm(8 << 20); err != nil {
+		http.Error(w, "File too big", http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Could not find file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	resp, ok := h.service.UpdateFile(id, file, header)
 	if !ok {
 		http.Error(w, resp.Msg, http.StatusInternalServerError)
 	}
