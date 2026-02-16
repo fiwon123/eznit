@@ -36,6 +36,20 @@ func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+func (h *Handler) getFileHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	resp, ok := h.service.GetFile(id)
+	if !ok {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(resp)
+}
+
 func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Prevents attackers from sending infinite data to crash your server.
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)

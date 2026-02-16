@@ -28,6 +28,18 @@ func (r *sqlRepository) GetFiles() ([]File, bool) {
 	return files, true
 }
 
+func (r *sqlRepository) GetFile(id string) (*File, bool) {
+	var file *File
+
+	err := r.db.Select(&file, "SELECT * FROM files WHERE id=$1", id)
+	if err != nil {
+		fmt.Println(err)
+		return nil, false
+	}
+
+	return file, true
+}
+
 func (r *sqlRepository) StorageFile(file File) (MsgResponse, bool) {
 	_, err := r.db.NamedExec("INSERT INTO files (name, ext, path) VALUES (:name, :ext, :path)", file)
 	if err != nil {
@@ -40,7 +52,7 @@ func (r *sqlRepository) StorageFile(file File) (MsgResponse, bool) {
 	}, true
 }
 
-func (r *sqlRepository) DeleteFile(id int) (MsgResponse, bool) {
+func (r *sqlRepository) DeleteFile(id string) (MsgResponse, bool) {
 	_, err := r.db.NamedExec("DELETE FROM users WHERE id=$1", id)
 	if err != nil {
 		fmt.Println(err)

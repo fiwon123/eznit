@@ -4,7 +4,7 @@ type StorageRequest struct {
 }
 
 type DataResponse struct {
-	ID   int    `json:"id"`
+	ID   string `json:"id"`
 	Name string `json:"name"`
 	Ext  string `json:"ext"`
 }

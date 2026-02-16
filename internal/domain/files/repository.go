@@ -5,8 +5,8 @@ import (
 )
 
 type File struct {
-	ID        int       `db:"id"`
-	UserID    int       `db:"id_user"`
+	ID        string    `db:"id"`
+	UserID    string    `db:"id_user"`
 	Name      string    `db:"name"`
 	Ext       string    `db:"ext"`
 	Path      string    `db:"path"`
@@ -16,6 +16,8 @@ type File struct {
 
 type Repository interface {
 	GetFiles() ([]File, bool)
+	GetFile(id string) (File, bool)
 	StorageFile(file File) (MsgResponse, bool)
-	DeleteFile(id int) (MsgResponse, bool)
+	DeleteFile(id string) (MsgResponse, bool)
+	UpdateFile(file File) (MsgResponse, bool)
 }

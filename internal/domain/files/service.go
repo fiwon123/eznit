@@ -6,7 +6,6 @@ import (
 	"mime/multipart"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/fiwon123/eznit/pkg/helper"
@@ -40,22 +39,17 @@ func (s *service) GetFiles() ([]DataResponse, bool) {
 	return resp, true
 }
 
-func (s *service) GetFile() ([]DataResponse, bool) {
-	files, ok := s.db.GetFiles()
+func (s *service) GetFile(id string) (DataResponse, bool) {
+	file, ok := s.db.GetFile(id)
 	if !ok {
-		return []DataResponse{}, false
+		return DataResponse{}, false
 	}
 
-	var resp []DataResponse
-	for _, file := range files {
-		resp = append(resp, DataResponse{
-			ID:   file.ID,
-			Name: file.Name,
-			Ext:  file.Ext,
-		})
-	}
-
-	return resp, true
+	return DataResponse{
+		ID:   file.ID,
+		Name: file.Name,
+		Ext:  file.Ext,
+	}, true
 }
 
 func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader) (MsgResponse, bool) {
@@ -72,7 +66,7 @@ func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader)
 	finalPath := filepath.Join("./uploads", fmt.Sprintf("%d_%s", time.Now().Unix(), cleanName))
 
 	storageFile := File{
-		UserID: 2,
+		UserID: "2",
 		Name:   cleanName,
 		Ext:    ext,
 		Path:   finalPath,
@@ -114,14 +108,7 @@ func (s *service) DeleteFile(id string) (MsgResponse, bool) {
 		}, false
 	}
 
-	parseId, err := strconv.Atoi(id)
-	if err != nil {
-		return MsgResponse{
-			"id is invalid",
-		}, false
-	}
-
-	resp, ok := s.db.DeleteFile(parseId)
+	resp, ok := s.db.DeleteFile(id)
 	if !ok {
 		return MsgResponse{
 			"can't delete file",
