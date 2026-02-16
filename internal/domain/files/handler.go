@@ -9,10 +9,10 @@ import (
 )
 
 type Handler struct {
-	service *Service
+	service *service
 }
 
-func NewHandler(service *Service) *Handler {
+func NewHandler(service *service) *Handler {
 	return &Handler{
 		service: service,
 	}
@@ -21,6 +21,7 @@ func NewHandler(service *Service) *Handler {
 func (h *Handler) RegisterRoutes(r *chi.Mux) {
 	r.Get("/v1/files", h.getFilesHandler)
 	r.Post("/v1/files", h.uploadHandler)
+	r.Delete("/v1/files/{id}", h.deleteHandler)
 }
 
 func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {
@@ -59,4 +60,15 @@ func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Fprintf(w, resp.Msg, header.Filename)
+}
+
+func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	resp, ok := h.service.DeleteFile(id)
+	if !ok {
+		http.Error(w, resp.Msg, http.StatusInternalServerError)
+	}
+
+	json.NewEncoder(w).Encode(resp)
 }

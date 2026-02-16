@@ -6,22 +6,23 @@ import (
 	"mime/multipart"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/fiwon123/eznit/pkg/helper"
 )
 
-type Service struct {
+type service struct {
 	db Repository
 }
 
-func NewService(db Repository) *Service {
-	return &Service{
+func NewService(db Repository) *service {
+	return &service{
 		db: db,
 	}
 }
 
-func (s *Service) GetFiles() ([]DataResponse, bool) {
+func (s *service) GetFiles() ([]DataResponse, bool) {
 	files, ok := s.db.GetFiles()
 	if !ok {
 		return []DataResponse{}, false
@@ -39,7 +40,7 @@ func (s *Service) GetFiles() ([]DataResponse, bool) {
 	return resp, true
 }
 
-func (s *Service) GetFile() ([]DataResponse, bool) {
+func (s *service) GetFile() ([]DataResponse, bool) {
 	files, ok := s.db.GetFiles()
 	if !ok {
 		return []DataResponse{}, false
@@ -57,7 +58,7 @@ func (s *Service) GetFile() ([]DataResponse, bool) {
 	return resp, true
 }
 
-func (s *Service) StorageFile(file multipart.File, header *multipart.FileHeader) (MsgResponse, bool) {
+func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader) (MsgResponse, bool) {
 
 	err := helper.CreatePathIfNotExists("./uploads")
 	if err != nil {
@@ -104,4 +105,28 @@ func (s *Service) StorageFile(file multipart.File, header *multipart.FileHeader)
 	return MsgResponse{
 		Msg: resp.Msg,
 	}, true
+}
+
+func (s *service) DeleteFile(id string) (MsgResponse, bool) {
+	if id == "" {
+		return MsgResponse{
+			Msg: "id is empty",
+		}, false
+	}
+
+	parseId, err := strconv.Atoi(id)
+	if err != nil {
+		return MsgResponse{
+			"id is invalid",
+		}, false
+	}
+
+	resp, ok := s.db.DeleteFile(parseId)
+	if !ok {
+		return MsgResponse{
+			"can't delete file",
+		}, false
+	}
+
+	return resp, true
 }

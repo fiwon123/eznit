@@ -39,3 +39,16 @@ func (r *sqlRepository) StorageFile(file File) (MsgResponse, bool) {
 		Msg: "file storaged!",
 	}, true
 }
+
+func (r *sqlRepository) DeleteFile(id int) (MsgResponse, bool) {
+	_, err := r.db.NamedExec("DELETE FROM users WHERE id=$1", id)
+	if err != nil {
+		fmt.Println(err)
+		return MsgResponse{Msg: "internal server error"}, false
+	}
+
+	return MsgResponse{
+		Msg: "file deleted!",
+	}, true
+
+}

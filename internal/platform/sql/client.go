@@ -7,8 +7,8 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func Open(driverName string, dsn string) (*sqlx.DB, error) {
-	db, err := sqlx.Open(driverName, dsn)
+func Open(driver string, dsn string) (*sqlx.DB, error) {
+	db, err := sqlx.Open(driver, dsn)
 	if err != nil {
 		return nil, err
 	}

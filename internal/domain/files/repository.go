@@ -17,4 +17,5 @@ type File struct {
 type Repository interface {
 	GetFiles() ([]File, bool)
 	StorageFile(file File) (MsgResponse, bool)
+	DeleteFile(id int) (MsgResponse, bool)
 }
