@@ -51,7 +51,7 @@ func (r *sqlRepository) StorageFile(file File) bool {
 }
 
 func (r *sqlRepository) DeleteFile(id string) bool {
-	_, err := r.db.NamedExec("DELETE FROM users WHERE id=$1", id)
+	_, err := r.db.Exec("DELETE FROM files WHERE id=$1", id)
 	if err != nil {
 		fmt.Println(err)
 		return false
