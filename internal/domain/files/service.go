@@ -121,6 +121,7 @@ func (s *service) DeleteFile(id string) (MsgResponse, bool) {
 }
 
 func (s *service) UpdateFile(id string, file multipart.File, header *multipart.FileHeader) (MsgResponse, bool) {
+
 	err := helper.CreatePathIfNotExists("./uploads")
 	if err != nil {
 		return MsgResponse{

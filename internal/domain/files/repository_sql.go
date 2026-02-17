@@ -29,15 +29,15 @@ func (r *sqlRepository) GetFiles() ([]File, bool) {
 }
 
 func (r *sqlRepository) GetFile(id string) (*File, bool) {
-	var file *File
+	var file File
 
-	err := r.db.Select(&file, "SELECT * FROM files WHERE id=$1", id)
+	err := r.db.Get(&file, "SELECT * FROM files WHERE id=$1", id)
 	if err != nil {
 		fmt.Println(err)
 		return nil, false
 	}
 
-	return file, true
+	return &file, true
 }
 
 func (r *sqlRepository) StorageFile(file File) bool {
