@@ -27,7 +27,7 @@ func (cmd *LoginCmd) Run() error {
 		return err
 	}
 
-	err = sendLoginRequest(users.LoginRequest{
+	tokenResp, err := sendLoginRequest(users.LoginRequest{
 		Email:    email,
 		Password: password,
 	})
@@ -36,13 +36,19 @@ func (cmd *LoginCmd) Run() error {
 	}
 
 	fmt.Println("Account Logged in!")
+
+	err = saveToken(tokenResp.Token)
+	if err != nil {
+		return fmt.Errorf("can't save token")
+	}
+
 	return nil
 }
 
-func sendLoginRequest(request users.LoginRequest) error {
+func sendLoginRequest(request users.LoginRequest) (users.LoginResponse, error) {
 	jsonData, err := json.Marshal(request)
 	if err != nil {
-		return err
+		return users.LoginResponse{}, err
 	}
 
 	client := &http.Client{
@@ -51,22 +57,31 @@ func sendLoginRequest(request users.LoginRequest) error {
 
 	resp, err := client.Post("http://localhost:4000/v1/login", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return users.LoginResponse{}, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned error: %s", resp.Status)
+		return users.LoginResponse{}, fmt.Errorf("server returned error: %s", resp.Status)
 	}
 
-	return nil
+	var tokenResp users.LoginResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return users.LoginResponse{}, fmt.Errorf("server returned error: %s", resp.Status)
+	}
+
+	return tokenResp, nil
 }
 
-func (cmd *LoginCmd) SaveToken(token string) error {
+func saveToken(token string) error {
 	home, _ := os.UserHomeDir()
 	configDir := filepath.Join(home, ".eznit")
+	configPath := filepath.Join(configDir, "config.json")
 
 	os.MkdirAll(configDir, 0700)
 
-	return os.WriteFile(filepath.Join(configDir, "token"), []byte(token), 0600)
+	config := map[string]string{"token": token}
+	data, _ := json.MarshalIndent(config, "", "  ")
+
+	return os.WriteFile(configPath, data, 0600)
 }
