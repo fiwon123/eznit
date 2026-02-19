@@ -14,7 +14,8 @@ func (h *Handler) verifyPermission(next http.Handler) http.Handler {
 		}
 
 		token := strings.TrimPrefix(authHeader, "Bearer ")
-		if token != "my-secret-token" {
+
+		if !h.session.IsValid(token) {
 			http.Error(w, "Unauthorized: Invalid token", http.StatusUnauthorized)
 			return
 		}

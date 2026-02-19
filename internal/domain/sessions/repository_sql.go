@@ -15,6 +15,16 @@ func NewRepository(db *sqlx.DB) *sqlRepository {
 		db: db,
 	}
 }
+func (r *sqlRepository) GetSession(token string) *Session {
+	var session Session
+
+	err := r.db.Select(&session, "SELECT * FROM session WHERE token=$1", token)
+	if err != nil {
+		return nil
+	}
+
+	return &session
+}
 
 func (r *sqlRepository) GetSessionByUserID(userID string) *Session {
 	var session Session

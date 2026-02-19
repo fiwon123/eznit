@@ -11,6 +11,7 @@ type Session struct {
 }
 
 type Repository interface {
+	GetSession(token string) *Session
 	GetSessionByUserID(userID string) *Session
 	CreateSession(s Session) bool
 	UpdateSession(s Session) bool

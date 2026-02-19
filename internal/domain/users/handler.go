@@ -4,16 +4,19 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/fiwon123/eznit/internal/domain/sessions"
 	"github.com/go-chi/chi/v5"
 )
 
 type Handler struct {
 	service *Service
+	session *sessions.Service
 }
 
-func NewHandler(service *Service) *Handler {
+func NewHandler(service *Service, session *sessions.Service) *Handler {
 	return &Handler{
 		service: service,
+		session: session,
 	}
 }
 

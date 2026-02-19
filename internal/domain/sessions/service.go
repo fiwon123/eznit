@@ -17,6 +17,19 @@ func NewService(db Repository) *Service {
 	}
 }
 
+func (s *Service) IsValid(token string) bool {
+	session := s.db.GetSession(token)
+	if session == nil {
+		return false
+	}
+
+	if !session.IsActive || session.ExpiresAt.Before(time.Now()) {
+		return false
+	}
+
+	return true
+}
+
 func (s *Service) GetToken(userID string) *DataResponse {
 	session := s.db.GetSessionByUserID(userID)
 	if session == nil {

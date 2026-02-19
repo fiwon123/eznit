@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/fiwon123/eznit/internal/domain/files"
+	"github.com/fiwon123/eznit/internal/domain/sessions"
 	"github.com/fiwon123/eznit/internal/domain/users"
 	"github.com/fiwon123/eznit/internal/platform/sql"
 	"github.com/fiwon123/eznit/pkg/helper"
@@ -37,9 +38,12 @@ func main() {
 
 	r.Get("/v1/healthcheck", healthcheckHandler)
 
+	sessionsRepo := sessions.NewRepository(db)
+	sessionsService := sessions.NewService(sessionsRepo)
+
 	userRepo := users.NewRepository(db)
 	userService := users.NewService(userRepo)
-	userHandler := users.NewHandler(userService)
+	userHandler := users.NewHandler(userService, sessionsService)
 	userHandler.RegisterRoutes(r)
 
 	fileRepo := files.NewRepository(db)
