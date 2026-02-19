@@ -42,7 +42,7 @@ func main() {
 	sessionsService := sessions.NewService(sessionsRepo)
 
 	userRepo := users.NewRepository(db)
-	userService := users.NewService(userRepo)
+	userService := users.NewService(userRepo, sessionsService)
 	userHandler := users.NewHandler(userService, sessionsService)
 	userHandler.RegisterRoutes(r)
 

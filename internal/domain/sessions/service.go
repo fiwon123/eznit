@@ -43,12 +43,12 @@ func (s *Service) GetToken(userID string) *DataResponse {
 	}
 }
 
-func (s *Service) CreateToken(userdID string) bool {
+func (s *Service) CreateToken(userdID string) (string, bool) {
 
 	token, err := helper.GenerateToken(32)
 	if err != nil {
 		fmt.Println("can't generate token")
-		return false
+		return "", false
 	}
 
 	ok := s.db.CreateSession(Session{
@@ -59,10 +59,10 @@ func (s *Service) CreateToken(userdID string) bool {
 
 	if !ok {
 		fmt.Println("error create session db")
-		return false
+		return "", false
 	}
 
-	return true
+	return token, true
 }
 
 func (s *Service) UseToken(token string) bool {

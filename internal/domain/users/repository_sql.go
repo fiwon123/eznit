@@ -43,8 +43,22 @@ func (r *sqlRepository) GetUsers() []User {
 
 func (r *sqlRepository) GetUser(id string) *User {
 
-	query := "SELECT id,email,password,created_at FROM users WHERE id=$1"
+	query := "SELECT id,email,password,created_at,updated_at FROM users WHERE id=$1"
 	row := r.db.QueryRow(query, id)
+
+	var user User
+	if err := row.Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt); err != nil {
+		fmt.Println(err)
+		return nil
+	}
+
+	return &user
+}
+
+func (r *sqlRepository) GetUserByEmail(email string) *User {
+
+	query := "SELECT id,email,password,created_at,updated_at FROM users WHERE email=$1"
+	row := r.db.QueryRow(query, email)
 
 	var user User
 	if err := row.Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt); err != nil {

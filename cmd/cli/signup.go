@@ -36,9 +36,10 @@ func (cmd *SignupCmd) Run() error {
 		return fmt.Errorf("passwords do not match")
 	}
 
-	err = sendRequest(users.CreateRequest{
-		Email:    email,
-		Password: password,
+	err = sendSignupRequest(users.SignupRequest{
+		Email:           email,
+		Password:        password,
+		ConfirmPassword: confirm,
 	})
 	if err != nil {
 		return fmt.Errorf("internal server error")
@@ -48,7 +49,7 @@ func (cmd *SignupCmd) Run() error {
 	return nil
 }
 
-func sendRequest(request users.CreateRequest) error {
+func sendSignupRequest(request users.SignupRequest) error {
 	jsonData, err := json.Marshal(request)
 	if err != nil {
 		return err
@@ -58,7 +59,7 @@ func sendRequest(request users.CreateRequest) error {
 		Timeout: 10 * time.Second,
 	}
 
-	resp, err := client.Post("http://localhost:4000/v1/users", "application/json", bytes.NewBuffer(jsonData))
+	resp, err := client.Post("http://localhost:4000/v1/signup", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}

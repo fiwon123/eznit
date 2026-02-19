@@ -1,12 +1,20 @@
 package users
 
+import (
+	"fmt"
+
+	"github.com/fiwon123/eznit/internal/domain/sessions"
+)
+
 type Service struct {
-	db Repository
+	db      Repository
+	session *sessions.Service
 }
 
-func NewService(db Repository) *Service {
+func NewService(db Repository, session *sessions.Service) *Service {
 	return &Service{
-		db: db,
+		db:      db,
+		session: session,
 	}
 }
 
@@ -36,6 +44,43 @@ func (s *Service) GetUser(id string) (DataResponse, bool) {
 	}
 
 	return resp, true
+}
+
+func (s *Service) SignupUser(req SignupRequest) (MsgResponse, bool) {
+
+	if req.Password != req.ConfirmPassword {
+		return MsgResponse{
+			Msg: "passwords not match",
+		}, false
+	}
+
+	return s.CreateUser(CreateRequest{
+		Email:    req.Email,
+		Password: req.Password,
+	})
+}
+
+func (s *Service) LoginUser(req LoginRequest) (LoginResponse, bool) {
+	db := s.db
+
+	user := db.GetUserByEmail(req.Email)
+	if user == nil {
+		return LoginResponse{}, false
+	}
+
+	if user.Password != req.Password {
+		return LoginResponse{}, false
+	}
+
+	fmt.Println("user logged in")
+	token, ok := s.session.CreateToken(user.ID)
+	if !ok {
+		return LoginResponse{}, false
+	}
+
+	return LoginResponse{
+		Token: token,
+	}, true
 }
 
 func (s *Service) CreateUser(req CreateRequest) (MsgResponse, bool) {

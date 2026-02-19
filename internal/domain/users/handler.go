@@ -36,15 +36,41 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 }
 
 func (h *Handler) loginHandler(w http.ResponseWriter, r *http.Request) {
-	users := h.service.GetUsers()
+	var request LoginRequest
 
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "Application/json")
-	json.NewEncoder(w).Encode(users)
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Failed to decode request", http.StatusBadRequest)
+		return
+	}
+
+	resp, ok := h.service.LoginUser(request)
+	if !ok {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (h *Handler) signupHandler(w http.ResponseWriter, r *http.Request) {
-	h.createUserHandler(w, r)
+	var request SignupRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Failed to decode request", http.StatusBadRequest)
+		return
+	}
+
+	resp, ok := h.service.SignupUser(request)
+	if !ok {
+		http.Error(w, resp.Msg, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (h *Handler) getUsersHandler(w http.ResponseWriter, r *http.Request) {
@@ -69,14 +95,14 @@ func (h *Handler) getUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createUserHandler(w http.ResponseWriter, r *http.Request) {
-	var user CreateRequest
+	var request CreateRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, "Failed to decode request", http.StatusBadRequest)
 		return
 	}
 
-	resp, ok := h.service.CreateUser(user)
+	resp, ok := h.service.CreateUser(request)
 	if !ok {
 		http.Error(w, resp.Msg, http.StatusInternalServerError)
 		return

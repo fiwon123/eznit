@@ -12,6 +12,7 @@ type User struct {
 type Repository interface {
 	GetUsers() []User
 	GetUser(id string) *User
+	GetUserByEmail(email string) *User
 	UserExists(email string) bool
 	CreateUser(user User) bool
 	DeleteUser(user User) bool
