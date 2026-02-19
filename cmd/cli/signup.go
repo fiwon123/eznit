@@ -1,10 +1,15 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
+	"time"
 
+	"github.com/fiwon123/eznit/internal/domain/users"
 	"golang.org/x/term"
 )
 
@@ -31,7 +36,38 @@ func (cmd *SignupCmd) Run() error {
 		return fmt.Errorf("passwords do not match")
 	}
 
+	err = sendRequest(users.CreateRequest{
+		Email:    email,
+		Password: password,
+	})
+	if err != nil {
+		return fmt.Errorf("internal server error")
+	}
+
 	fmt.Println("Account created successfully!")
+	return nil
+}
+
+func sendRequest(request users.CreateRequest) error {
+	jsonData, err := json.Marshal(request)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := client.Post("http://localhost:4000/v1/users", "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("server returned error: %s", resp.Status)
+	}
+
 	return nil
 }
 

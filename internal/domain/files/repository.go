@@ -6,7 +6,7 @@ import (
 
 type File struct {
 	ID        string    `db:"id"`
-	UserID    string    `db:"id_user"`
+	UserID    string    `db:"user_id"`
 	Name      string    `db:"name"`
 	Ext       string    `db:"ext"`
 	Path      string    `db:"path"`

@@ -20,9 +20,28 @@ func NewHandler(service *Service) *Handler {
 func (h *Handler) RegisterRoutes(r *chi.Mux) {
 	r.Get("/v1/users", h.getUsersHandler)
 	r.Get("/v1/users/{id}", h.getUserHandler)
-	r.Post("/v1/users", h.createUserHandler)
+	r.Group(func(r chi.Router) {
+		r.Use(h.verifyPermission)
+
+		r.Post("/v1/users", h.createUserHandler)
+	})
+
 	r.Delete("/v1/users/{id}", h.deleteUserHandler)
 	r.Put("/v1/users/{id}", h.updateUserHandler)
+	r.Post("/v1/login", h.loginHandler)
+	r.Post("/v1/signup", h.signupHandler)
+}
+
+func (h *Handler) loginHandler(w http.ResponseWriter, r *http.Request) {
+	users := h.service.GetUsers()
+
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "Application/json")
+	json.NewEncoder(w).Encode(users)
+}
+
+func (h *Handler) signupHandler(w http.ResponseWriter, r *http.Request) {
+	h.createUserHandler(w, r)
 }
 
 func (h *Handler) getUsersHandler(w http.ResponseWriter, r *http.Request) {

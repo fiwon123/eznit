@@ -18,7 +18,8 @@ import (
 
 func main() {
 
-	loadEnv()
+	// local
+	_ = godotenv.Load()
 
 	port := os.Getenv("DB_PORT")
 	user := os.Getenv("DB_USER")
@@ -70,12 +71,4 @@ func healthcheckHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
-}
-
-func loadEnv() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-
 }
