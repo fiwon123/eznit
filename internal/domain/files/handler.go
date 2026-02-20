@@ -83,7 +83,9 @@ func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	resp, ok := h.service.StorageFile(file, header)
+	userID := r.Context().Value("user_id").(string)
+
+	resp, ok := h.service.StorageFile(file, header, userID)
 	if !ok {
 		http.Error(w, resp.Msg, http.StatusInternalServerError)
 		return
