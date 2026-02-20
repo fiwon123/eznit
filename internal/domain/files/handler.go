@@ -5,25 +5,39 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/fiwon123/eznit/internal/platform/middleware"
 	"github.com/go-chi/chi/v5"
 )
 
 type Handler struct {
 	service *service
+	guard   *middleware.Guard
 }
 
-func NewHandler(service *service) *Handler {
+func NewHandler(service *service, guard *middleware.Guard) *Handler {
 	return &Handler{
 		service: service,
+		guard:   guard,
 	}
 }
 
 func (h *Handler) RegisterRoutes(r *chi.Mux) {
-	r.Get("/v1/files", h.getFilesHandler)
-	r.Get("/v1/files/{id}", h.getFileHandler)
-	r.Post("/v1/files", h.uploadHandler)
-	r.Delete("/v1/files/{id}", h.deleteHandler)
-	r.Put("/v1/files/{id}", h.updateHandler)
+	r.Group(func(r chi.Router) {
+		r.Use(h.guard.AuthUser)
+
+		r.Post("/v1/upload", h.uploadHandler)
+		r.Post("/v1/download", h.downloadHandler)
+		r.Get("/v1/files", h.getFilesHandler)
+		r.Get("/v1/files/{id}", h.getFileHandler)
+		r.Delete("/v1/files/{id}", h.deleteHandler)
+		r.Put("/v1/files/{id}", h.updateHandler)
+	})
+
+	r.Group(func(r chi.Router) {
+		r.Use(h.guard.AuthAdmin)
+
+		r.Post("/v1/files", h.uploadHandler)
+	})
 }
 
 func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {
@@ -76,6 +90,10 @@ func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Fprintf(w, resp.Msg, header.Filename)
+}
+
+func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
+
 }
 
 func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {

@@ -5,32 +5,40 @@ import (
 	"net/http"
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
+	"github.com/fiwon123/eznit/internal/platform/middleware"
 	"github.com/go-chi/chi/v5"
 )
 
 type Handler struct {
 	service *Service
 	session *sessions.Service
+	guard   *middleware.Guard
 }
 
-func NewHandler(service *Service, session *sessions.Service) *Handler {
+func NewHandler(service *Service, session *sessions.Service, guard *middleware.Guard) *Handler {
 	return &Handler{
 		service: service,
 		session: session,
+		guard:   guard,
 	}
 }
 
 func (h *Handler) RegisterRoutes(r *chi.Mux) {
-	r.Get("/v1/users", h.getUsersHandler)
-	r.Get("/v1/users/{id}", h.getUserHandler)
 	r.Group(func(r chi.Router) {
-		r.Use(h.verifyPermission)
+		r.Use(h.guard.AuthAdmin)
 
 		r.Post("/v1/users", h.createUserHandler)
+		r.Delete("/v1/users/{id}", h.deleteUserHandler)
+		r.Put("/v1/users/{id}", h.updateUserHandler)
 	})
 
-	r.Delete("/v1/users/{id}", h.deleteUserHandler)
-	r.Put("/v1/users/{id}", h.updateUserHandler)
+	r.Group(func(r chi.Router) {
+		r.Use(h.guard.AuthUser)
+
+		r.Get("/v1/users", h.getUsersHandler)
+		r.Get("/v1/users/{id}", h.getUserHandler)
+	})
+
 	r.Post("/v1/login", h.loginHandler)
 	r.Post("/v1/signup", h.signupHandler)
 }
