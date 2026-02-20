@@ -11,6 +11,7 @@ require github.com/go-chi/chi/v5 v5.2.5
 require (
 	github.com/alecthomas/kong v1.14.0 // indirect
 	github.com/jmoiron/sqlx v1.4.0 // indirect
+	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/term v0.40.0 // indirect
 )

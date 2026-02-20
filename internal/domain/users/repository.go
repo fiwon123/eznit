@@ -3,10 +3,10 @@ package users
 import "time"
 
 type User struct {
-	ID        string
-	Email     string
-	Password  string
-	CreatedAt time.Time
+	ID        string    `db:"id"`
+	Email     string    `db:"email"`
+	Password  []byte    `db:"password"`
+	CreatedAt time.Time `db:"created_at"`
 }
 
 type Repository interface {

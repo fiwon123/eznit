@@ -54,6 +54,12 @@ func (s *Service) SignupUser(req SignupRequest) (MsgResponse, bool) {
 		}, false
 	}
 
+	if req.Password == "" {
+		return MsgResponse{
+			Msg: "passwords is empty",
+		}, false
+	}
+
 	return s.CreateUser(CreateRequest{
 		Email:    req.Email,
 		Password: req.Password,
@@ -68,7 +74,7 @@ func (s *Service) LoginUser(req LoginRequest) (LoginResponse, bool) {
 		return LoginResponse{}, false
 	}
 
-	if user.Password != req.Password {
+	if !checkPasswordHash(req.Password, user.Password) {
 		return LoginResponse{}, false
 	}
 
@@ -93,9 +99,22 @@ func (s *Service) CreateUser(req CreateRequest) (MsgResponse, bool) {
 		}, false
 	}
 
+	if req.Password == "" {
+		return MsgResponse{
+			Msg: "password is empty",
+		}, false
+	}
+
+	hash, err := hashPassword(req.Password)
+	if err != nil {
+		return MsgResponse{
+			Msg: "internal server error",
+		}, false
+	}
+
 	if !db.CreateUser(User{
 		Email:    req.Email,
-		Password: req.Password,
+		Password: hash,
 	}) {
 		return MsgResponse{
 			Msg: "internal server error",
@@ -140,8 +159,21 @@ func (s *Service) UpdateUser(req UpdateRequest) (MsgResponse, bool) {
 		}, false
 	}
 
+	if req.Password == "" {
+		return MsgResponse{
+			Msg: "password is empty",
+		}, false
+	}
+
+	hash, err := hashPassword(req.Password)
+	if err != nil {
+		return MsgResponse{
+			Msg: "internal server error",
+		}, false
+	}
+
 	user.Email = req.Email
-	user.Password = req.Password
+	user.Password = hash
 
 	if !db.UpdateUser(*user) {
 		return MsgResponse{
