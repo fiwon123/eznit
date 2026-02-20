@@ -10,6 +10,7 @@ import (
 	"github.com/fiwon123/eznit/internal/domain/files"
 	"github.com/fiwon123/eznit/internal/domain/sessions"
 	"github.com/fiwon123/eznit/internal/domain/users"
+	"github.com/fiwon123/eznit/internal/platform/middleware"
 	"github.com/fiwon123/eznit/internal/platform/sql"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/types"
@@ -41,14 +42,16 @@ func main() {
 	sessionsRepo := sessions.NewRepository(db)
 	sessionsService := sessions.NewService(sessionsRepo)
 
+	guard := middleware.NewGuard(sessionsService)
+
 	userRepo := users.NewRepository(db)
 	userService := users.NewService(userRepo, sessionsService)
-	userHandler := users.NewHandler(userService, sessionsService)
+	userHandler := users.NewHandler(userService, sessionsService, guard)
 	userHandler.RegisterRoutes(r)
 
 	fileRepo := files.NewRepository(db)
 	fileService := files.NewService(fileRepo)
-	fileHandler := files.NewHandler(fileService)
+	fileHandler := files.NewHandler(fileService, guard)
 	fileHandler.RegisterRoutes(r)
 
 	srv := &http.Server{

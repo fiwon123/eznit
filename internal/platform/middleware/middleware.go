@@ -11,7 +11,7 @@ type Guard struct {
 	session *sessions.Service
 }
 
-func NewMiddleware(session *sessions.Service) *Guard {
+func NewGuard(session *sessions.Service) *Guard {
 	return &Guard{
 		session: session,
 	}
