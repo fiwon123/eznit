@@ -79,3 +79,12 @@ func (s *Service) UseToken(token string) bool {
 
 	return true
 }
+
+func (s *Service) GetUserIDByToken(token string) (string, error) {
+	userID, err := s.db.GetUserIDByToken(token)
+	if err != nil {
+		return "", err
+	}
+
+	return userID, nil
+}

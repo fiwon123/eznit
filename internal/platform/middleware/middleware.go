@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -32,7 +33,14 @@ func (g *Guard) AuthUser(next http.Handler) http.Handler {
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		userID, err := g.session.GetUserIDByToken(token)
+		if err != nil {
+			http.Error(w, "Unauthorized", 401)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), "user_id", userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

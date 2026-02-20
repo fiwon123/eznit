@@ -58,3 +58,19 @@ func (r *sqlRepository) UpdateSession(s Session) bool {
 
 	return true
 }
+
+func (r *sqlRepository) GetUserIDByToken(s string) (string, error) {
+	exec := `SELECT id FROM users u
+			INNER JOIN sessions s ON u.id = s.user_id
+			WHERE s.token = $1`
+
+	var userID string
+
+	row := r.db.QueryRow(exec, s)
+	if err := row.Scan(&userID); err != nil {
+		fmt.Println(err)
+		return "", err
+	}
+
+	return userID, nil
+}

@@ -15,4 +15,5 @@ type Repository interface {
 	GetSessionByUserID(userID string) *Session
 	CreateSession(s Session) bool
 	UpdateSession(s Session) bool
+	GetUserIDByToken(s string) (string, error)
 }
