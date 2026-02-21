@@ -40,8 +40,23 @@ func (r *sqlRepository) GetFile(id string) (*File, bool) {
 	return &file, true
 }
 
+func (r *sqlRepository) GetFileForUser(id string, userID string) (*File, bool) {
+	var file File
+
+	query := `SELECT * FROM files
+		      WHERE id=$1 AND user_id=$2`
+
+	err := r.db.Get(&file, query, id, userID)
+	if err != nil {
+		fmt.Println(err)
+		return nil, false
+	}
+
+	return &file, true
+}
+
 func (r *sqlRepository) StorageFile(file File) bool {
-	_, err := r.db.NamedExec("INSERT INTO files (name, ext, path) VALUES (:name, :ext, :path)", file)
+	_, err := r.db.NamedExec("INSERT INTO files (name, ext, path, content_type) VALUES (:name, :ext, :path, :content_type)", file)
 	if err != nil {
 		fmt.Println(err)
 		return false

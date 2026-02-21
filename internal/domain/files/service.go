@@ -52,7 +52,16 @@ func (s *service) GetFile(id string) (DataResponse, bool) {
 	}, true
 }
 
-func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader, userID string) (MsgResponse, bool) {
+func (s *service) GetFileForUser(id string, userID string) (*File, bool) {
+	file, ok := s.db.GetFileForUser(id, userID)
+	if !ok {
+		return nil, false
+	}
+
+	return file, true
+}
+
+func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader, contentType string, userID string) (MsgResponse, bool) {
 
 	err := helper.CreatePathIfNotExists("./uploads")
 	if err != nil {
@@ -66,10 +75,11 @@ func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader,
 	finalPath := filepath.Join("./uploads", fmt.Sprintf("%d_%s", time.Now().Unix(), cleanName))
 
 	storageFile := File{
-		UserID: userID,
-		Name:   cleanName,
-		Ext:    ext,
-		Path:   finalPath,
+		UserID:      userID,
+		Name:        cleanName,
+		Ext:         ext,
+		Path:        finalPath,
+		ContentType: contentType,
 	}
 
 	ok := s.db.StorageFile(storageFile)

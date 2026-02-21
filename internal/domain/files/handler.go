@@ -3,7 +3,9 @@ package files
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 
 	"github.com/fiwon123/eznit/internal/platform/middleware"
 	"github.com/go-chi/chi/v5"
@@ -25,18 +27,21 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 	r.Group(func(r chi.Router) {
 		r.Use(h.guard.AuthUser)
 
-		r.Post("/v1/upload", h.uploadHandler)
-		r.Post("/v1/download", h.downloadHandler)
-		r.Get("/v1/files", h.getFilesHandler)
-		r.Get("/v1/files/{id}", h.getFileHandler)
-		r.Delete("/v1/files/{id}", h.deleteHandler)
-		r.Put("/v1/files/{id}", h.updateHandler)
+		r.Route("/v1/files", func(r chi.Router) {
+			r.Post("/", h.uploadHandler)
+			r.Get("/", h.getFilesHandler)
+
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", h.getFileHandler)
+				r.Put("/", h.updateHandler)
+				r.Get("/content", h.downloadHandler)
+				r.Delete("/", h.deleteHandler)
+			})
+		})
 	})
 
 	r.Group(func(r chi.Router) {
 		r.Use(h.guard.AuthAdmin)
-
-		r.Post("/v1/files", h.uploadHandler)
 	})
 }
 
@@ -85,7 +90,8 @@ func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	userID := r.Context().Value("user_id").(string)
 
-	resp, ok := h.service.StorageFile(file, header, userID)
+	contentType := header.Header.Get("Content-Type")
+	resp, ok := h.service.StorageFile(file, header, contentType, userID)
 	if !ok {
 		http.Error(w, resp.Msg, http.StatusInternalServerError)
 		return
@@ -95,7 +101,26 @@ func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
+	fileID := chi.URLParam(r, "id")
+	userID := r.Context().Value("user_id").(string)
 
+	fileData, ok := h.service.GetFileForUser(fileID, userID)
+	if !ok {
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+
+	file, err := os.Open(fileData.Path)
+	if err != nil {
+		http.Error(w, "File not found", 404)
+		return
+	}
+	defer file.Close()
+
+	w.Header().Set("Content-Disposition", "attachment; filename="+fileData.Name+fileData.Ext)
+	w.Header().Set("Content-Type", fileData.ContentType)
+
+	io.Copy(w, file)
 }
 
 func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {

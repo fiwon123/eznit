@@ -25,7 +25,7 @@ func (cmd *UploadCmd) Run() error {
 		return fmt.Errorf("not logged in")
 	}
 
-	err = uploadFile("http://localhost:4000/v1/upload", path, token)
+	err = uploadFile("http://localhost:4000/v1/files", path, token)
 	if err != nil {
 		return fmt.Errorf("internal server error")
 	}
@@ -52,7 +52,6 @@ func uploadFile(url string, filePath string, token string) error {
 	if err != nil {
 		return err
 	}
-
 	writer.Close()
 
 	req, err := http.NewRequest("POST", url, body)
