@@ -18,11 +18,14 @@ func NewService(db Repository) *Service {
 }
 
 func (s *Service) IsValid(token string) bool {
+	fmt.Println(token)
 	session := s.db.GetSession(token)
 	if session == nil {
+		fmt.Println("bb")
 		return false
 	}
 
+	fmt.Println(session)
 	if !session.IsActive || session.ExpiresAt.Before(time.Now()) {
 		return false
 	}

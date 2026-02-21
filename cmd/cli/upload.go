@@ -17,7 +17,7 @@ type UploadCmd struct {
 func (cmd *UploadCmd) Run() error {
 	var path string
 
-	fmt.Println("file path: ")
+	fmt.Print("file path: ")
 	fmt.Scan(&path)
 
 	token, err := getToken()

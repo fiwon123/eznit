@@ -61,7 +61,7 @@ func (r *sqlRepository) GetUserByEmail(email string) *User {
 	row := r.db.QueryRow(query, email)
 
 	var user User
-	if err := row.Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt); err != nil {
+	if err := row.Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt, &user.UpdatedAt); err != nil {
 		fmt.Println(err)
 		return nil
 	}

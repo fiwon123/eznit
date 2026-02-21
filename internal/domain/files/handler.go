@@ -117,7 +117,7 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	w.Header().Set("Content-Disposition", "attachment; filename="+fileData.Name+fileData.Ext)
+	w.Header().Set("Content-Disposition", "attachment; filename="+fileData.Name)
 	w.Header().Set("Content-Type", fileData.ContentType)
 
 	io.Copy(w, file)

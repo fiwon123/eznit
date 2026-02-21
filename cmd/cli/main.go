@@ -10,8 +10,10 @@ import (
 )
 
 type CLI struct {
-	Login  LoginCmd  `cmd:"" aliases:"l" help:"save user credential"`
-	Signup SignupCmd `cmd:"" aliases:"s" help:"create new user"`
+	Login    LoginCmd    `cmd:"" aliases:"l" help:"save user credential"`
+	Signup   SignupCmd   `cmd:"" aliases:"s" help:"create new user"`
+	Download DownloadCmd `cmd:"" aliases:"d" help:"download a file"`
+	Upload   UploadCmd   `cmd:"" aliases:"u" help:"upload a file"`
 }
 
 func main() {

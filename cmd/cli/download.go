@@ -22,7 +22,7 @@ func (cmd *DownloadCmd) Run() error {
 
 	var dest string
 	fmt.Print("\ndestination folder path: ")
-	fmt.Scan(dest)
+	fmt.Scan(&dest)
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:4000/v1/files/%s/content", id), nil)
 	if err != nil {

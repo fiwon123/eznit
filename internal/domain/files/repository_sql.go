@@ -56,7 +56,7 @@ func (r *sqlRepository) GetFileForUser(id string, userID string) (*File, bool) {
 }
 
 func (r *sqlRepository) StorageFile(file File) bool {
-	_, err := r.db.NamedExec("INSERT INTO files (name, ext, path, content_type) VALUES (:name, :ext, :path, :content_type)", file)
+	_, err := r.db.NamedExec("INSERT INTO files (user_id, name, ext, path, content_type) VALUES (:user_id, :name, :ext, :path, :content_type)", file)
 	if err != nil {
 		fmt.Println(err)
 		return false

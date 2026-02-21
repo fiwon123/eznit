@@ -18,8 +18,9 @@ func NewRepository(db *sqlx.DB) *sqlRepository {
 func (r *sqlRepository) GetSession(token string) *Session {
 	var session Session
 
-	err := r.db.Select(&session, "SELECT * FROM session WHERE token=$1", token)
+	err := r.db.Get(&session, "SELECT * FROM sessions WHERE token=$1", token)
 	if err != nil {
+		fmt.Println(err)
 		return nil
 	}
 
@@ -29,7 +30,7 @@ func (r *sqlRepository) GetSession(token string) *Session {
 func (r *sqlRepository) GetSessionByUserID(userID string) *Session {
 	var session Session
 
-	err := r.db.Select(&session, "SELECT * FROM session WHERE user_id=$1", userID)
+	err := r.db.Select(&session, "SELECT * FROM sessions WHERE user_id=$1", userID)
 	if err != nil {
 		return nil
 	}
@@ -38,7 +39,7 @@ func (r *sqlRepository) GetSessionByUserID(userID string) *Session {
 }
 
 func (r *sqlRepository) CreateSession(s Session) bool {
-	_, err := r.db.NamedExec("INSERT INTO sessions(token, user_id, expires_at) VALUES (:token, :user_id, :created_at)", s)
+	_, err := r.db.NamedExec("INSERT INTO sessions(token, user_id, expires_at) VALUES (:token, :user_id, :expires_at)", s)
 	if err != nil {
 		fmt.Println(err)
 		return false

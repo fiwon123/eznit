@@ -7,6 +7,7 @@ type User struct {
 	Email     string    `db:"email"`
 	Password  []byte    `db:"password"`
 	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
 }
 
 type Repository interface {
