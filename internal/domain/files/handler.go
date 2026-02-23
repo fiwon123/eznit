@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -53,7 +54,7 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 
 func (h *Handler) getFilesForUserHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value("user_id").(string)
-	fmt.Println("user id: ", userID)
+	h.logger.Debug("user id: ", slog.String("id", userID))
 
 	resp, ok := h.service.GetFilesForUser(userID)
 	if !ok {
@@ -67,7 +68,7 @@ func (h *Handler) getFilesForUserHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("getFilesHandler")
+	h.logger.Debug("getFilesHandler")
 
 	resp, ok := h.service.GetFiles()
 	if !ok {
@@ -82,6 +83,7 @@ func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) getFileHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	h.logger.Debug("getFileHandler ", slog.String("id", id))
 
 	resp, ok := h.service.GetFile(id)
 	if !ok {
@@ -95,6 +97,7 @@ func (h *Handler) getFileHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
+	h.logger.Debug("uploadHandler")
 	// Prevents attackers from sending infinite data to crash your server.
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
 
@@ -126,6 +129,7 @@ func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 	fileID := chi.URLParam(r, "id")
 	userID := r.Context().Value("user_id").(string)
+	h.logger.Debug("downloadHandler ", slog.String("id", fileID), slog.String("userID", userID))
 
 	fileData, ok := h.service.GetFileForUser(fileID, userID)
 	if !ok {
@@ -150,6 +154,7 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	h.logger.Debug("deleteHandler ", slog.String("id", id))
 
 	userID := r.Context().Value("user_id").(string)
 
@@ -164,6 +169,7 @@ func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) updateHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	h.logger.Debug("updateHandler ", slog.String("id", id))
 
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
 

@@ -3,6 +3,7 @@ package files
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"os"
 	"path/filepath"
@@ -28,10 +29,11 @@ func NewService(db Repository, uploadFolder string, logger *logger.Config) *serv
 }
 
 func (s *service) GetFiles() (ListResponse, bool) {
-	fmt.Println("GetFiles")
+	s.logger.Debug("GetFiles")
 
 	files, ok := s.db.GetFiles()
 	if !ok {
+		s.logger.Error("Files not found!")
 		return ListResponse{}, false
 	}
 
@@ -52,8 +54,11 @@ func (s *service) GetFiles() (ListResponse, bool) {
 }
 
 func (s *service) GetFilesForUser(userID string) (ListResponse, bool) {
+	s.logger.Debug("GetFilesForUser", slog.String("userID", userID))
+
 	files, ok := s.db.GetFilesForUser(userID)
 	if !ok {
+		s.logger.Error("Files not found!")
 		return ListResponse{}, false
 	}
 
@@ -74,8 +79,11 @@ func (s *service) GetFilesForUser(userID string) (ListResponse, bool) {
 }
 
 func (s *service) GetFile(id string) (SingleReponse, bool) {
+	s.logger.Debug("GetFile", slog.String("id", id))
+
 	file, ok := s.db.GetFile(id)
 	if !ok {
+		s.logger.Error("File not found!")
 		return SingleReponse{}, false
 	}
 
@@ -89,8 +97,11 @@ func (s *service) GetFile(id string) (SingleReponse, bool) {
 }
 
 func (s *service) GetFileForUser(id string, userID string) (*File, bool) {
+	s.logger.Debug("GetFileForUser", slog.String("id", id), slog.String("userID", userID))
+
 	file, ok := s.db.GetFileForUser(id, userID)
 	if !ok {
+		s.logger.Error("File not found!")
 		return nil, false
 	}
 
@@ -98,9 +109,11 @@ func (s *service) GetFileForUser(id string, userID string) (*File, bool) {
 }
 
 func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader, contentType string, userID string) (MsgResponse, bool) {
+	s.logger.Debug("StorageFile", slog.String("userID", userID))
 
 	err := helper.CreatePathIfNotExists(s.uploadFolder)
 	if err != nil {
+		s.logger.Error("storage file failed!")
 		return MsgResponse{
 			Msg: "internal server error",
 		}, false
@@ -123,6 +136,7 @@ func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader,
 
 	ok := s.db.StorageFile(storageFile)
 	if !ok {
+		s.logger.Error("storage file failed!")
 		return MsgResponse{
 			Msg: "internal server error",
 		}, false
@@ -130,20 +144,22 @@ func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader,
 
 	dst, err := os.Create(finalPath)
 	if err != nil {
-		fmt.Println(err)
+		s.logger.Error("create file path failed: ", slog.Any("error", err))
 		return MsgResponse{
-			Msg: "internal server erro",
+			Msg: "internal server error",
 		}, false
 	}
 	defer dst.Close()
 
 	_, err = io.Copy(dst, file)
 	if err != nil {
-		fmt.Println(err)
+		s.logger.Error("copy file error: ", slog.Any("error", err))
 		return MsgResponse{
-			Msg: "internal server erro",
+			Msg: "internal server error",
 		}, false
 	}
+
+	s.logger.Debug("File storaged!")
 
 	return MsgResponse{
 		Msg: "file storaged!",
@@ -151,7 +167,10 @@ func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader,
 }
 
 func (s *service) DeleteFile(id string) (MsgResponse, bool) {
+	s.logger.Debug("DeleteFile ", slog.String("id", id))
+
 	if id == "" {
+		s.logger.Error("id is empty")
 		return MsgResponse{
 			Msg: "id is empty",
 		}, false
@@ -159,6 +178,7 @@ func (s *service) DeleteFile(id string) (MsgResponse, bool) {
 
 	file, ok := s.db.GetFile(id)
 	if !ok {
+		s.logger.Error("file not found")
 		return MsgResponse{
 			"file not found",
 		}, false
@@ -166,6 +186,7 @@ func (s *service) DeleteFile(id string) (MsgResponse, bool) {
 
 	err := os.RemoveAll(file.Path)
 	if err != nil {
+		s.logger.Error("filepath not exists: ", slog.Any("error", err))
 		return MsgResponse{
 			"filepath not exists",
 		}, false
@@ -173,10 +194,13 @@ func (s *service) DeleteFile(id string) (MsgResponse, bool) {
 
 	ok = s.db.DeleteFile(id)
 	if !ok {
+		s.logger.Error("can't delete file")
 		return MsgResponse{
 			"can't delete file",
 		}, false
 	}
+
+	s.logger.Debug("File Deleted!")
 
 	return MsgResponse{
 		Msg: "file deleted!",
@@ -184,7 +208,10 @@ func (s *service) DeleteFile(id string) (MsgResponse, bool) {
 }
 
 func (s *service) DeleteFileForUser(id string, userID string) (MsgResponse, bool) {
+	s.logger.Debug("DeleteFileForUser ", slog.String("id", id), slog.String("userID", userID))
+
 	if id == "" {
+		s.logger.Error("id is empty")
 		return MsgResponse{
 			Msg: "id is empty",
 		}, false
@@ -192,6 +219,7 @@ func (s *service) DeleteFileForUser(id string, userID string) (MsgResponse, bool
 
 	file, ok := s.db.GetFileForUser(id, userID)
 	if !ok {
+		s.logger.Error("file not found")
 		return MsgResponse{
 			"file not found",
 		}, false
@@ -199,6 +227,7 @@ func (s *service) DeleteFileForUser(id string, userID string) (MsgResponse, bool
 
 	err := os.RemoveAll(file.Path)
 	if err != nil {
+		s.logger.Error("filepath not exists: ", slog.Any("error", err))
 		return MsgResponse{
 			"filepath not exists",
 		}, false
@@ -206,10 +235,13 @@ func (s *service) DeleteFileForUser(id string, userID string) (MsgResponse, bool
 
 	ok = s.db.DeleteFileForUser(id, userID)
 	if !ok {
+		s.logger.Error("can't delete file")
 		return MsgResponse{
 			"can't delete file",
 		}, false
 	}
+
+	s.logger.Debug("File Deleted!")
 
 	return MsgResponse{
 		Msg: "file deleted!",
@@ -218,8 +250,11 @@ func (s *service) DeleteFileForUser(id string, userID string) (MsgResponse, bool
 
 func (s *service) UpdateFile(id string, file multipart.File, header *multipart.FileHeader) (MsgResponse, bool) {
 
+	s.logger.Debug("UpdateFile", slog.String("id", id))
+
 	err := helper.CreatePathIfNotExists(s.uploadFolder)
 	if err != nil {
+		s.logger.Error("create path failed: ", slog.Any("error", err))
 		return MsgResponse{
 			Msg: "internal server error",
 		}, false
@@ -227,8 +262,9 @@ func (s *service) UpdateFile(id string, file multipart.File, header *multipart.F
 
 	fileInfo, ok := s.db.GetFile(id)
 	if !ok {
+		s.logger.Error("file not found")
 		return MsgResponse{
-			Msg: "id is invalid",
+			Msg: "invalid id",
 		}, false
 	}
 
@@ -246,6 +282,7 @@ func (s *service) UpdateFile(id string, file multipart.File, header *multipart.F
 
 	ok = s.db.UpdateFile(updateFile)
 	if !ok {
+		s.logger.Error(" update file failed")
 		return MsgResponse{
 			Msg: "internal server error",
 		}, false
@@ -253,7 +290,7 @@ func (s *service) UpdateFile(id string, file multipart.File, header *multipart.F
 
 	dst, err := os.Create(finalPath)
 	if err != nil {
-		fmt.Println(err)
+		s.logger.Error("create file failed: ", slog.Any("error", err))
 		return MsgResponse{
 			Msg: "internal server error",
 		}, false
@@ -262,11 +299,13 @@ func (s *service) UpdateFile(id string, file multipart.File, header *multipart.F
 
 	_, err = io.Copy(dst, file)
 	if err != nil {
-		fmt.Println(err)
+		s.logger.Error("copy file failed: ", slog.Any("error", err))
 		return MsgResponse{
 			Msg: "internal server error",
 		}, false
 	}
+
+	s.logger.Debug("file updated!")
 
 	return MsgResponse{
 		Msg: "file updated!",

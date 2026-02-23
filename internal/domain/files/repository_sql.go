@@ -1,7 +1,7 @@
 package files
 
 import (
-	"fmt"
+	"log/slog"
 
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/jmoiron/sqlx"
@@ -20,42 +20,58 @@ func NewRepository(db *sqlx.DB, logger *logger.Config) *sqlRepository {
 }
 
 func (r *sqlRepository) GetFiles() ([]File, bool) {
+	r.logger.Debug("getting files")
+
 	var files []File
 
 	err := r.db.Select(&files, "SELECT * FROM files")
 	if err != nil {
-		fmt.Println(err)
+		r.logger.Error("error: ", slog.Any("error", err))
 		return []File{}, false
 	}
+
+	r.logger.Debug("files has been found")
 
 	return files, true
 }
 
 func (r *sqlRepository) GetFilesForUser(userID string) ([]File, bool) {
+	r.logger.Debug("getting files for user: ", slog.String("userID", userID))
+
 	var files []File
 
 	err := r.db.Select(&files, "SELECT * FROM files WHERE user_id=$1", userID)
 	if err != nil {
-		fmt.Println(err)
+		r.logger.Error("error: ", slog.Any("error", err))
 		return []File{}, false
 	}
+
+	r.logger.Debug("files has been found")
 
 	return files, true
 }
 
 func (r *sqlRepository) GetFile(id string) (*File, bool) {
+
+	r.logger.Debug("getting file: ", slog.String("id", id))
+
 	var file File
 
 	err := r.db.Get(&file, "SELECT * FROM files WHERE id=$1", id)
 	if err != nil {
-		fmt.Println(err)
+		r.logger.Error("error: ", slog.Any("error", err))
 		return nil, false
 	}
+
+	r.logger.Debug("file has been found")
 
 	return &file, true
 }
 
 func (r *sqlRepository) GetFileForUser(id string, userID string) (*File, bool) {
+
+	r.logger.Debug("getting file for user: ", slog.String("id", id), slog.String("userID", userID))
+
 	var file File
 
 	query := `SELECT * FROM files
@@ -63,53 +79,73 @@ func (r *sqlRepository) GetFileForUser(id string, userID string) (*File, bool) {
 
 	err := r.db.Get(&file, query, id, userID)
 	if err != nil {
-		fmt.Println(err)
+		r.logger.Error("error: ", slog.Any("error", err))
 		return nil, false
 	}
+
+	r.logger.Debug("file has been found")
 
 	return &file, true
 }
 
 func (r *sqlRepository) StorageFile(file File) bool {
+
+	r.logger.Debug("storaging file: ", slog.Any("file", file))
+
 	_, err := r.db.NamedExec("INSERT INTO files (user_id, name, ext, path, content_type) VALUES (:user_id, :name, :ext, :path, :content_type)", file)
 	if err != nil {
-		fmt.Println(err)
+		r.logger.Error("error: ", slog.Any("error", err))
 		return false
 	}
+
+	r.logger.Debug("file storaged!")
 
 	return true
 }
 
 func (r *sqlRepository) DeleteFile(id string) bool {
+
+	r.logger.Debug("deleting file: ", slog.String("id", id))
+
 	_, err := r.db.Exec("DELETE FROM files WHERE id=$1", id)
 	if err != nil {
-		fmt.Println(err)
+		r.logger.Error("error: ", slog.Any("error", err))
 		return false
 	}
+
+	r.logger.Debug("file deleted!")
 
 	return true
 
 }
 
 func (r *sqlRepository) DeleteFileForUser(id string, userID string) bool {
+	r.logger.Debug("deleting file: ", slog.String("id", id), slog.String("userID", userID))
+
 	_, err := r.db.Exec("DELETE FROM files WHERE id=$1 AND user_id=$2", id, userID)
 	if err != nil {
-		fmt.Println(err)
+		r.logger.Error("error: ", slog.Any("error", err))
 		return false
 	}
+
+	r.logger.Debug("file deleted!")
 
 	return true
 
 }
 
 func (r *sqlRepository) UpdateFile(file File) bool {
-	exec := "UPDATE files SET name=:name, ext=:ext, path=:path, updated_at=NOW() WHERE id=:id"
 
+	r.logger.Debug("updating file: ", slog.Any("file", file))
+
+	exec := "UPDATE files SET name=:name, ext=:ext, path=:path, updated_at=NOW() WHERE id=:id"
 	_, err := r.db.NamedExec(exec, file)
 	if err != nil {
-		fmt.Println(err)
+		r.logger.Error("error: ", slog.Any("error", err))
 		return false
 	}
+
+	r.logger.Debug("file updated!")
 
 	return true
 }
