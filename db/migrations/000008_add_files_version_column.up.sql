@@ -1,0 +1,2 @@
+ALTER TABLE files
+ADD COLUMN version TEXT;
