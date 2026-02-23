@@ -31,7 +31,7 @@ func (r *sqlRepository) GetFiles() ([]File, bool) {
 func (r *sqlRepository) GetFilesForUser(userID string) ([]File, bool) {
 	var files []File
 
-	err := r.db.Select(&files, "SELECT * FROM files WHERE user_id=&1", userID)
+	err := r.db.Select(&files, "SELECT * FROM files WHERE user_id=$1", userID)
 	if err != nil {
 		fmt.Println(err)
 		return []File{}, false

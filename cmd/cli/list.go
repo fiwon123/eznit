@@ -10,6 +10,7 @@ import (
 )
 
 type ListCmd struct {
+	All  bool     `help:"list all available files"`
 	Args []string `arg:"" optional:"" help:"args for list"`
 }
 
@@ -19,14 +20,23 @@ func (cmd *ListCmd) Run(g *Globals) error {
 		return fmt.Errorf("not logged in")
 	}
 
-	sendListRequest(g.BaseURL, token)
+	if cmd.All {
+		sendListRequest(g.BaseURL, false, token)
+	} else {
+		sendListRequest(g.BaseURL, true, token)
+	}
 
 	return nil
 }
 
-func sendListRequest(baseURL string, token string) error {
+func sendListRequest(baseURL string, onlyMe bool, token string) error {
 
-	req, err := http.NewRequest("GET", baseURL+"/v1/files/me", nil)
+	url := baseURL + "/v1/files"
+	if onlyMe {
+		url = baseURL + "/v1/files/me"
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
 	}
@@ -37,6 +47,7 @@ func sendListRequest(baseURL string, token string) error {
 
 	req.Header.Set("Authorization", "Bearer "+token)
 
+	fmt.Println("request: ", url)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)

@@ -24,12 +24,13 @@ func NewHandler(service *service, guard *middleware.Guard) *Handler {
 }
 
 func (h *Handler) RegisterRoutes(r *chi.Mux) {
-	r.Get("/v1/files/", h.getFilesHandler)
 
-	r.Group(func(r chi.Router) {
-		r.Use(h.guard.AuthUser)
+	r.Route("/v1/files", func(r chi.Router) {
+		r.Get("/", h.getFilesHandler)
 
-		r.Route("/v1/files", func(r chi.Router) {
+		r.Group(func(r chi.Router) {
+			r.Use(h.guard.AuthUser)
+
 			r.Post("/", h.uploadHandler)
 			r.Get("/me", h.getFilesForUserHandler)
 
@@ -48,7 +49,10 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 }
 
 func (h *Handler) getFilesForUserHandler(w http.ResponseWriter, r *http.Request) {
-	resp, ok := h.service.GetFiles()
+	userID := r.Context().Value("user_id").(string)
+	fmt.Println("user id: ", userID)
+
+	resp, ok := h.service.GetFilesForUser(userID)
 	if !ok {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
@@ -60,6 +64,8 @@ func (h *Handler) getFilesForUserHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("getFilesHandler")
+
 	resp, ok := h.service.GetFiles()
 	if !ok {
 		http.Error(w, "internal server error", http.StatusInternalServerError)

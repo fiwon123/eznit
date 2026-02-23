@@ -22,6 +22,8 @@ func NewService(db Repository) *service {
 }
 
 func (s *service) GetFiles() (ListResponse, bool) {
+	fmt.Println("GetFiles")
+
 	files, ok := s.db.GetFiles()
 	if !ok {
 		return ListResponse{}, false
@@ -44,7 +46,7 @@ func (s *service) GetFiles() (ListResponse, bool) {
 }
 
 func (s *service) GetFilesForUser(userID string) (ListResponse, bool) {
-	files, ok := s.db.GetFiles()
+	files, ok := s.db.GetFilesForUser(userID)
 	if !ok {
 		return ListResponse{}, false
 	}
@@ -52,9 +54,10 @@ func (s *service) GetFilesForUser(userID string) (ListResponse, bool) {
 	var resp []FileData
 	for _, file := range files {
 		resp = append(resp, FileData{
-			ID:   file.ID,
-			Name: file.Name,
-			Ext:  file.Ext,
+			ID:      file.ID,
+			Name:    file.Name,
+			Ext:     file.Ext,
+			Version: file.Version,
 		})
 	}
 
