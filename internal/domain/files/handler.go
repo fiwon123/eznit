@@ -110,6 +110,7 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fmt.Println("open: ", fileData.Path)
 	file, err := os.Open(fileData.Path)
 	if err != nil {
 		http.Error(w, "File not found", 404)

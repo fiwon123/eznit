@@ -10,6 +10,7 @@ type File struct {
 	Name        string    `db:"name"`
 	Ext         string    `db:"ext"`
 	Path        string    `db:"path"`
+	Version     int       `db:"version"`
 	ContentType string    `db:"content_type"`
 	CreatedAt   time.Time `db:"created_at"`
 	UpdatedAt   time.Time `db:"updated_at"`
