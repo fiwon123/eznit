@@ -3,16 +3,19 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
 	"github.com/alecthomas/kong"
+	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/joho/godotenv"
 )
 
 type Globals struct {
 	BaseURL   string `help:"The base URL for the API" default:"http://localhost:4000"`
-	Downloads string `help:"The base URL for the API" default:"./downloads"`
+	Downloads string `help:"default downloads folder" default:"./downloads"`
+	Logger    *logger.Config
 }
 
 type CLI struct {
@@ -32,6 +35,13 @@ func main() {
 	cli := CLI{}
 	ctx := kong.Parse(&cli,
 		kong.Bind(&cli.Globals))
+
+	cli.Logger = logger.New(false)
+	cli.Logger.Info(
+		"Logger initialized!",
+		slog.Int("process_id", os.Getpid()),
+	)
+	defer cli.Logger.Sync()
 
 	val, ok := os.LookupEnv("API_URL")
 	if ok {
