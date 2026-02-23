@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -24,9 +24,12 @@ func NewGuard(session *sessions.Service, logger *logger.Config) *Guard {
 
 func (g *Guard) AuthUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		g.logger.Debug("Authorizing...")
+
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			fmt.Println("Unauthorized: No token provided")
+			g.logger.Error("Unauthorized: No token provided")
 			http.Error(w, "Unauthorized: No token provided", http.StatusUnauthorized)
 			return
 		}
@@ -34,18 +37,19 @@ func (g *Guard) AuthUser(next http.Handler) http.Handler {
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 
 		if !g.session.IsValid(token) {
-			fmt.Println("Unauthorized: Invalid token")
+			g.logger.Error("Unauthorized: Invalid token")
 			http.Error(w, "Unauthorized: Invalid token", http.StatusUnauthorized)
 			return
 		}
 
 		userID, err := g.session.GetUserIDByToken(token)
 		if err != nil {
-			fmt.Println("Unauthorized")
+			g.logger.Error("Unauthorized")
 			http.Error(w, "Unauthorized", 401)
 			return
 		}
 
+		g.logger.Debug("Authorized User: ", slog.String("userID", userID))
 		ctx := context.WithValue(r.Context(), "user_id", userID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
