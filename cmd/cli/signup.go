@@ -17,7 +17,7 @@ type SignupCmd struct {
 	Args []string `arg:"" optional:"" help:"args for signup"`
 }
 
-func (cmd *SignupCmd) Run() error {
+func (cmd *SignupCmd) Run(g *Globals) error {
 	var email string
 
 	fmt.Print("Enter Email: ")
@@ -36,7 +36,7 @@ func (cmd *SignupCmd) Run() error {
 		return fmt.Errorf("passwords do not match")
 	}
 
-	err = sendSignupRequest(users.SignupRequest{
+	err = sendSignupRequest(g.BaseURL, users.SignupRequest{
 		Email:           email,
 		Password:        password,
 		ConfirmPassword: confirm,
@@ -49,7 +49,7 @@ func (cmd *SignupCmd) Run() error {
 	return nil
 }
 
-func sendSignupRequest(request users.SignupRequest) error {
+func sendSignupRequest(baseURL string, request users.SignupRequest) error {
 	jsonData, err := json.Marshal(request)
 	if err != nil {
 		return err
@@ -59,7 +59,7 @@ func sendSignupRequest(request users.SignupRequest) error {
 		Timeout: 10 * time.Second,
 	}
 
-	resp, err := client.Post("http://localhost:4000/v1/signup", "application/json", bytes.NewBuffer(jsonData))
+	resp, err := client.Post(baseURL+"/v1/signup", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}

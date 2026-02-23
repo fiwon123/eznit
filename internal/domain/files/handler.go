@@ -24,12 +24,14 @@ func NewHandler(service *service, guard *middleware.Guard) *Handler {
 }
 
 func (h *Handler) RegisterRoutes(r *chi.Mux) {
+	r.Get("/v1/files/", h.getFilesHandler)
+
 	r.Group(func(r chi.Router) {
 		r.Use(h.guard.AuthUser)
 
 		r.Route("/v1/files", func(r chi.Router) {
 			r.Post("/", h.uploadHandler)
-			r.Get("/", h.getFilesHandler)
+			r.Get("/me", h.getFilesForUserHandler)
 
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", h.getFileHandler)
@@ -43,6 +45,18 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 	r.Group(func(r chi.Router) {
 		r.Use(h.guard.AuthAdmin)
 	})
+}
+
+func (h *Handler) getFilesForUserHandler(w http.ResponseWriter, r *http.Request) {
+	resp, ok := h.service.GetFiles()
+	if !ok {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {

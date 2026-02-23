@@ -16,7 +16,7 @@ type LoginCmd struct {
 	Args []string `arg:"" optional:"" help:"args for login"`
 }
 
-func (cmd *LoginCmd) Run() error {
+func (cmd *LoginCmd) Run(g *Globals) error {
 	var email string
 
 	fmt.Print("Enter Email: ")
@@ -27,7 +27,7 @@ func (cmd *LoginCmd) Run() error {
 		return err
 	}
 
-	tokenResp, err := sendLoginRequest(users.LoginRequest{
+	tokenResp, err := sendLoginRequest(g.BaseURL, users.LoginRequest{
 		Email:    email,
 		Password: password,
 	})
@@ -45,7 +45,7 @@ func (cmd *LoginCmd) Run() error {
 	return nil
 }
 
-func sendLoginRequest(request users.LoginRequest) (users.LoginResponse, error) {
+func sendLoginRequest(baseURL string, request users.LoginRequest) (users.LoginResponse, error) {
 	jsonData, err := json.Marshal(request)
 	if err != nil {
 		return users.LoginResponse{}, err
@@ -55,7 +55,7 @@ func sendLoginRequest(request users.LoginRequest) (users.LoginResponse, error) {
 		Timeout: 10 * time.Second,
 	}
 
-	resp, err := client.Post("http://localhost:4000/v1/login", "application/json", bytes.NewBuffer(jsonData))
+	resp, err := client.Post(baseURL+"/v1/login", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return users.LoginResponse{}, fmt.Errorf("request failed: %w", err)
 	}

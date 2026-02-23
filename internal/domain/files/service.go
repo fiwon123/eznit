@@ -21,34 +21,61 @@ func NewService(db Repository) *service {
 	}
 }
 
-func (s *service) GetFiles() ([]DataResponse, bool) {
+func (s *service) GetFiles() (ListResponse, bool) {
 	files, ok := s.db.GetFiles()
 	if !ok {
-		return []DataResponse{}, false
+		return ListResponse{}, false
 	}
 
-	var resp []DataResponse
+	var resp []FileData
 	for _, file := range files {
-		resp = append(resp, DataResponse{
+		resp = append(resp, FileData{
+			ID:      file.ID,
+			Name:    file.Name,
+			Ext:     file.Ext,
+			Version: file.Version,
+		})
+	}
+
+	return ListResponse{
+		Data:  resp,
+		Total: len(resp),
+	}, true
+}
+
+func (s *service) GetFilesForUser(userID string) (ListResponse, bool) {
+	files, ok := s.db.GetFiles()
+	if !ok {
+		return ListResponse{}, false
+	}
+
+	var resp []FileData
+	for _, file := range files {
+		resp = append(resp, FileData{
 			ID:   file.ID,
 			Name: file.Name,
 			Ext:  file.Ext,
 		})
 	}
 
-	return resp, true
+	return ListResponse{
+		Data:  resp,
+		Total: len(resp),
+	}, true
 }
 
-func (s *service) GetFile(id string) (DataResponse, bool) {
+func (s *service) GetFile(id string) (SingleReponse, bool) {
 	file, ok := s.db.GetFile(id)
 	if !ok {
-		return DataResponse{}, false
+		return SingleReponse{}, false
 	}
 
-	return DataResponse{
-		ID:   file.ID,
-		Name: file.Name,
-		Ext:  file.Ext,
+	return SingleReponse{
+		Data: FileData{
+			ID:   file.ID,
+			Name: file.Name,
+			Ext:  file.Ext,
+		},
 	}, true
 }
 

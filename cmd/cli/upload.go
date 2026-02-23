@@ -14,7 +14,7 @@ type UploadCmd struct {
 	Args []string `arg:"" optional:"" help:"args for upload"`
 }
 
-func (cmd *UploadCmd) Run() error {
+func (cmd *UploadCmd) Run(g *Globals) error {
 	var path string
 
 	fmt.Print("file path: ")
@@ -25,7 +25,7 @@ func (cmd *UploadCmd) Run() error {
 		return fmt.Errorf("not logged in")
 	}
 
-	err = uploadFile("http://localhost:4000/v1/files", path, token)
+	err = uploadFile(g.BaseURL+"/v1/files", path, token)
 	if err != nil {
 		return fmt.Errorf("internal server error")
 	}

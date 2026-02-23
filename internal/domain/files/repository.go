@@ -18,6 +18,7 @@ type File struct {
 
 type Repository interface {
 	GetFiles() ([]File, bool)
+	GetFilesForUser(userID string) ([]File, bool)
 	GetFile(id string) (*File, bool)
 	GetFileForUser(id string, userID string) (*File, bool)
 	StorageFile(file File) bool
