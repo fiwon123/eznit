@@ -5,15 +5,18 @@ import (
 	"time"
 
 	"github.com/fiwon123/eznit/pkg/helper"
+	"github.com/fiwon123/eznit/pkg/logger"
 )
 
 type Service struct {
-	db Repository
+	db     Repository
+	logger *logger.Config
 }
 
-func NewService(db Repository) *Service {
+func NewService(db Repository, logger *logger.Config) *Service {
 	return &Service{
-		db: db,
+		db:     db,
+		logger: logger,
 	}
 }
 

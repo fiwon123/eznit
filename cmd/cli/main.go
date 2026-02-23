@@ -12,8 +12,14 @@ import (
 	"github.com/joho/godotenv"
 )
 
+type API struct {
+	BaseURL string `help:"The complete url with port" default:"http://localhost:4000"`
+	Host    string `help:"The host URL" default:"http://localhost"`
+	Port    string `help:"The API port" default:"4000"`
+}
+
 type Globals struct {
-	BaseURL   string `help:"The base URL for the API" default:"http://localhost:4000"`
+	API       API
 	Downloads string `help:"default downloads folder" default:"./downloads"`
 	Logger    *logger.Config
 }
@@ -43,10 +49,17 @@ func main() {
 	)
 	defer cli.Logger.Sync()
 
-	val, ok := os.LookupEnv("API_URL")
+	val, ok := os.LookupEnv("API_HOST")
 	if ok {
-		cli.BaseURL = val
+		cli.API.BaseURL = val
 	}
+
+	val, ok = os.LookupEnv("API_PORT")
+	if ok {
+		cli.API.Port = val
+	}
+
+	cli.API.BaseURL = fmt.Sprintf("%s:%s", cli.API.Host, cli.API.Port)
 
 	val, ok = os.LookupEnv("CLI_DOWNLOADS")
 	if ok {

@@ -4,17 +4,20 @@ import (
 	"fmt"
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
+	"github.com/fiwon123/eznit/pkg/logger"
 )
 
 type Service struct {
 	db      Repository
 	session *sessions.Service
+	logger  *logger.Config
 }
 
-func NewService(db Repository, session *sessions.Service) *Service {
+func NewService(db Repository, session *sessions.Service, logger *logger.Config) *Service {
 	return &Service{
 		db:      db,
 		session: session,
+		logger:  logger,
 	}
 }
 

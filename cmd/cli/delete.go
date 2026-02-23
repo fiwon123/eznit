@@ -29,14 +29,15 @@ func (cmd *DeleteCmd) Run(g *Globals) error {
 		return fmt.Errorf("not logged in")
 	}
 
-	err = sendRequestDelete(g.BaseURL, id, token)
+	err = sendRequestDelete(g.API.BaseURL, id, token)
 
 	return err
 }
 
 func sendRequestDelete(baseURL string, id string, token string) error {
 
-	req, err := http.NewRequest("DELETE", fmt.Sprintf(baseURL+"/v1/files/%s", id), nil)
+	url := baseURL + "/v1/files/" + id
+	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
 		return err
 	}

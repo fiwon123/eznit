@@ -10,17 +10,20 @@ import (
 	"time"
 
 	"github.com/fiwon123/eznit/pkg/helper"
+	"github.com/fiwon123/eznit/pkg/logger"
 )
 
 type service struct {
 	uploadFolder string
 	db           Repository
+	logger       *logger.Config
 }
 
-func NewService(db Repository, uploadFolder string) *service {
+func NewService(db Repository, uploadFolder string, logger *logger.Config) *service {
 	return &service{
 		uploadFolder: uploadFolder,
 		db:           db,
+		logger:       logger,
 	}
 }
 

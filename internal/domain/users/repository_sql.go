@@ -3,16 +3,19 @@ package users
 import (
 	"fmt"
 
+	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/jmoiron/sqlx"
 )
 
 type sqlRepository struct {
-	db *sqlx.DB
+	db     *sqlx.DB
+	logger *logger.Config
 }
 
-func NewRepository(db *sqlx.DB) *sqlRepository {
+func NewRepository(db *sqlx.DB, logger *logger.Config) *sqlRepository {
 	return &sqlRepository{
-		db: db,
+		db:     db,
+		logger: logger,
 	}
 }
 

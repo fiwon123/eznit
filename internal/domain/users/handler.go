@@ -6,6 +6,7 @@ import (
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
 	"github.com/fiwon123/eznit/internal/platform/middleware"
+	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -13,13 +14,15 @@ type Handler struct {
 	service *Service
 	session *sessions.Service
 	guard   *middleware.Guard
+	logger  *logger.Config
 }
 
-func NewHandler(service *Service, session *sessions.Service, guard *middleware.Guard) *Handler {
+func NewHandler(service *Service, session *sessions.Service, guard *middleware.Guard, logger *logger.Config) *Handler {
 	return &Handler{
 		service: service,
 		session: session,
 		guard:   guard,
+		logger:  logger,
 	}
 }
 

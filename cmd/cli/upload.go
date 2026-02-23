@@ -30,9 +30,9 @@ func (cmd *UploadCmd) Run(g *Globals) error {
 	}
 
 	if cmd.Update != "" {
-		err = updateFile(fmt.Sprintf(g.BaseURL+"/v1/files/%s", cmd.Update), path, token)
+		err = updateFile(g.API.BaseURL, path, cmd.Update, token)
 	} else {
-		err = uploadFile(g.BaseURL+"/v1/files", path, token)
+		err = uploadFile(g.API.BaseURL, path, token)
 	}
 
 	if err != nil {
@@ -42,7 +42,7 @@ func (cmd *UploadCmd) Run(g *Globals) error {
 	return nil
 }
 
-func updateFile(url string, filePath string, token string) error {
+func updateFile(baseURL string, filePath string, id string, token string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return err
@@ -63,6 +63,7 @@ func updateFile(url string, filePath string, token string) error {
 	}
 	writer.Close()
 
+	url := baseURL + "/v1/files/" + id
 	req, err := http.NewRequest("PUT", url, body)
 	if err != nil {
 		return err
@@ -83,7 +84,7 @@ func updateFile(url string, filePath string, token string) error {
 	return nil
 }
 
-func uploadFile(url string, filePath string, token string) error {
+func uploadFile(baseURL string, filePath string, token string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return err
@@ -104,6 +105,7 @@ func uploadFile(url string, filePath string, token string) error {
 	}
 	writer.Close()
 
+	url := baseURL + "/v1/files"
 	req, err := http.NewRequest("POST", url, body)
 	if err != nil {
 		return err

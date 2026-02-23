@@ -8,18 +8,21 @@ import (
 	"os"
 
 	"github.com/fiwon123/eznit/internal/platform/middleware"
+	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/go-chi/chi/v5"
 )
 
 type Handler struct {
 	service *service
 	guard   *middleware.Guard
+	logger  *logger.Config
 }
 
-func NewHandler(service *service, guard *middleware.Guard) *Handler {
+func NewHandler(service *service, guard *middleware.Guard, logger *logger.Config) *Handler {
 	return &Handler{
 		service: service,
 		guard:   guard,
+		logger:  logger,
 	}
 }
 

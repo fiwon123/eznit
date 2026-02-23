@@ -27,7 +27,7 @@ func (cmd *LoginCmd) Run(g *Globals) error {
 		return err
 	}
 
-	tokenResp, err := sendLoginRequest(g.BaseURL, users.LoginRequest{
+	tokenResp, err := sendLoginRequest(g.API.BaseURL, users.LoginRequest{
 		Email:    email,
 		Password: password,
 	})

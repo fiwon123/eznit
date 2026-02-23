@@ -13,6 +13,7 @@ import (
 	"github.com/fiwon123/eznit/internal/platform/middleware"
 	"github.com/fiwon123/eznit/internal/platform/sql"
 	"github.com/fiwon123/eznit/pkg/helper"
+	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/fiwon123/eznit/pkg/types"
 	"github.com/go-chi/chi/v5"
 	"github.com/joho/godotenv"
@@ -39,20 +40,22 @@ func main() {
 
 	r.Get("/v1/healthcheck", healthcheckHandler)
 
-	sessionsRepo := sessions.NewRepository(db)
-	sessionsService := sessions.NewService(sessionsRepo)
+	logger := logger.New(true)
+
+	sessionsRepo := sessions.NewRepository(db, logger)
+	sessionsService := sessions.NewService(sessionsRepo, logger)
 
 	guard := middleware.NewGuard(sessionsService)
 
-	userRepo := users.NewRepository(db)
-	userService := users.NewService(userRepo, sessionsService)
-	userHandler := users.NewHandler(userService, sessionsService, guard)
+	userRepo := users.NewRepository(db, logger)
+	userService := users.NewService(userRepo, sessionsService, logger)
+	userHandler := users.NewHandler(userService, sessionsService, guard, logger)
 	userHandler.RegisterRoutes(r)
 
 	uploadFolder := os.Getenv("API_UPLOADS")
-	fileRepo := files.NewRepository(db)
-	fileService := files.NewService(fileRepo, uploadFolder)
-	fileHandler := files.NewHandler(fileService, guard)
+	fileRepo := files.NewRepository(db, logger)
+	fileService := files.NewService(fileRepo, uploadFolder, logger)
+	fileHandler := files.NewHandler(fileService, guard, logger)
 	fileHandler.RegisterRoutes(r)
 
 	srv := &http.Server{
