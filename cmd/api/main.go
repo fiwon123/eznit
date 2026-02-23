@@ -49,8 +49,9 @@ func main() {
 	userHandler := users.NewHandler(userService, sessionsService, guard)
 	userHandler.RegisterRoutes(r)
 
+	uploadFolder := os.Getenv("API_UPLOADS")
 	fileRepo := files.NewRepository(db)
-	fileService := files.NewService(fileRepo)
+	fileService := files.NewService(fileRepo, uploadFolder)
 	fileHandler := files.NewHandler(fileService, guard)
 	fileHandler.RegisterRoutes(r)
 

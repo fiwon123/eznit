@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -8,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
 type UploadCmd struct {
@@ -15,10 +18,10 @@ type UploadCmd struct {
 }
 
 func (cmd *UploadCmd) Run(g *Globals) error {
-	var path string
-
+	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("file path: ")
-	fmt.Scan(&path)
+	path, _ := reader.ReadString('\n')
+	path = strings.TrimSpace(path)
 
 	token, err := getToken()
 	if err != nil {
@@ -27,7 +30,7 @@ func (cmd *UploadCmd) Run(g *Globals) error {
 
 	err = uploadFile(g.BaseURL+"/v1/files", path, token)
 	if err != nil {
-		return fmt.Errorf("internal server error")
+		return fmt.Errorf("%s", err.Error())
 	}
 
 	return nil
@@ -62,7 +65,9 @@ func uploadFile(url string, filePath string, token string) error {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

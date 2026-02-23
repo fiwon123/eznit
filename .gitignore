@@ -31,5 +31,5 @@ go.work.sum
 # .idea/
 # .vscode/
 
-# forder for file storage
-uploads
+# project test folders
+~ignore/*

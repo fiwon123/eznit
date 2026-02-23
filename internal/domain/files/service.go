@@ -6,18 +6,21 @@ import (
 	"mime/multipart"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fiwon123/eznit/pkg/helper"
 )
 
 type service struct {
-	db Repository
+	uploadFolder string
+	db           Repository
 }
 
-func NewService(db Repository) *service {
+func NewService(db Repository, uploadFolder string) *service {
 	return &service{
-		db: db,
+		uploadFolder: uploadFolder,
+		db:           db,
 	}
 }
 
@@ -93,16 +96,19 @@ func (s *service) GetFileForUser(id string, userID string) (*File, bool) {
 
 func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader, contentType string, userID string) (MsgResponse, bool) {
 
-	err := helper.CreatePathIfNotExists("./uploads")
+	err := helper.CreatePathIfNotExists(s.uploadFolder)
 	if err != nil {
 		return MsgResponse{
 			Msg: "internal server error",
 		}, false
 	}
 
-	cleanName := filepath.Base(header.Filename)
-	ext := filepath.Ext(cleanName)
-	finalPath := filepath.Join("./uploads", fmt.Sprintf("%d_%s", time.Now().Unix(), cleanName))
+	fullname := filepath.Base(header.Filename)
+	ext := filepath.Ext(fullname)
+
+	cleanName := strings.ReplaceAll(fullname, ext, "")
+	ext = strings.ReplaceAll(ext, ".", "")
+	finalPath := filepath.Join(s.uploadFolder, fmt.Sprintf("%d_%s", time.Now().Unix(), cleanName))
 
 	storageFile := File{
 		UserID:      userID,
@@ -162,7 +168,7 @@ func (s *service) DeleteFile(id string) (MsgResponse, bool) {
 
 func (s *service) UpdateFile(id string, file multipart.File, header *multipart.FileHeader) (MsgResponse, bool) {
 
-	err := helper.CreatePathIfNotExists("./uploads")
+	err := helper.CreatePathIfNotExists(s.uploadFolder)
 	if err != nil {
 		return MsgResponse{
 			Msg: "internal server error",
@@ -178,7 +184,7 @@ func (s *service) UpdateFile(id string, file multipart.File, header *multipart.F
 
 	cleanName := filepath.Base(header.Filename)
 	ext := filepath.Ext(cleanName)
-	finalPath := filepath.Join("./uploads", fmt.Sprintf("%d_%s", time.Now().Unix(), cleanName))
+	finalPath := filepath.Join(s.uploadFolder, fmt.Sprintf("%d_%s", time.Now().Unix(), cleanName))
 
 	updateFile := File{
 		ID:     id,

@@ -11,7 +11,8 @@ import (
 )
 
 type Globals struct {
-	BaseURL string `help:"The base URL for the API" default:"http://localhost:4000"`
+	BaseURL   string `help:"The base URL for the API" default:"http://localhost:4000"`
+	Downloads string `help:"The base URL for the API" default:"./downloads"`
 }
 
 type CLI struct {
@@ -22,6 +23,7 @@ type CLI struct {
 	Download DownloadCmd `cmd:"" aliases:"d" help:"download a file"`
 	Upload   UploadCmd   `cmd:"" aliases:"u" help:"upload a file"`
 	List     ListCmd     `cmd:"" help:"list files"`
+	Delete   DeleteCmd   `cmd:"" help:"delete file"`
 }
 
 func main() {
@@ -30,7 +32,16 @@ func main() {
 	cli := CLI{}
 	ctx := kong.Parse(&cli,
 		kong.Bind(&cli.Globals))
-	cli.BaseURL = os.Getenv("API_URL")
+
+	val, ok := os.LookupEnv("API_URL")
+	if ok {
+		cli.BaseURL = val
+	}
+
+	val, ok = os.LookupEnv("CLI_DOWNLOADS")
+	if ok {
+		cli.Downloads = val
+	}
 
 	err := ctx.Run()
 	ctx.FatalIfErrorf(err)
