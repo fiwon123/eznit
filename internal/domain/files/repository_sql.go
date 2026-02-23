@@ -88,6 +88,17 @@ func (r *sqlRepository) DeleteFile(id string) bool {
 
 }
 
+func (r *sqlRepository) DeleteFileForUser(id string, userID string) bool {
+	_, err := r.db.Exec("DELETE FROM files WHERE id=$1 AND user_id=$2", id, userID)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+
+	return true
+
+}
+
 func (r *sqlRepository) UpdateFile(file File) bool {
 	exec := "UPDATE files SET name=:name, ext=:ext, path=:path, updated_at=NOW() WHERE id=:id"
 

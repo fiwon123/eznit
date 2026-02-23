@@ -154,7 +154,54 @@ func (s *service) DeleteFile(id string) (MsgResponse, bool) {
 		}, false
 	}
 
-	ok := s.db.DeleteFile(id)
+	file, ok := s.db.GetFile(id)
+	if !ok {
+		return MsgResponse{
+			"file not found",
+		}, false
+	}
+
+	err := os.RemoveAll(file.Path)
+	if err != nil {
+		return MsgResponse{
+			"filepath not exists",
+		}, false
+	}
+
+	ok = s.db.DeleteFile(id)
+	if !ok {
+		return MsgResponse{
+			"can't delete file",
+		}, false
+	}
+
+	return MsgResponse{
+		Msg: "file deleted!",
+	}, true
+}
+
+func (s *service) DeleteFileForUser(id string, userID string) (MsgResponse, bool) {
+	if id == "" {
+		return MsgResponse{
+			Msg: "id is empty",
+		}, false
+	}
+
+	file, ok := s.db.GetFileForUser(id, userID)
+	if !ok {
+		return MsgResponse{
+			"file not found",
+		}, false
+	}
+
+	err := os.RemoveAll(file.Path)
+	if err != nil {
+		return MsgResponse{
+			"filepath not exists",
+		}, false
+	}
+
+	ok = s.db.DeleteFileForUser(id, userID)
 	if !ok {
 		return MsgResponse{
 			"can't delete file",

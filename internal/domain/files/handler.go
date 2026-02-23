@@ -148,9 +148,12 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	resp, ok := h.service.DeleteFile(id)
+	userID := r.Context().Value("user_id").(string)
+
+	resp, ok := h.service.DeleteFileForUser(id, userID)
 	if !ok {
 		http.Error(w, resp.Msg, http.StatusInternalServerError)
+		return
 	}
 
 	json.NewEncoder(w).Encode(resp)

@@ -43,7 +43,7 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 		return fmt.Errorf("can't create destination folder path")
 	}
 
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:4000/v1/files/%s/content", id), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf(g.BaseURL+"/v1/files/%s/content", id), nil)
 	if err != nil {
 		return err
 	}
