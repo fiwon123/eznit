@@ -21,6 +21,8 @@ import (
 
 func main() {
 
+	logger := logger.New(true)
+
 	// local
 	_ = godotenv.Load()
 
@@ -32,20 +34,21 @@ func main() {
 	dsn := fmt.Sprintf("postgresql://%s:%s@localhost:%s/%s?sslmode=disable", user, pwd, port, name)
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
+		logger.Error("Unable to connect to PostgreSQL!")
 		log.Fatal(err)
 	}
 	defer db.Close()
+
+	logger.Info("Connected to PostgreSQL!")
 
 	r := chi.NewRouter()
 
 	r.Get("/v1/healthcheck", healthcheckHandler)
 
-	logger := logger.New(true)
-
 	sessionsRepo := sessions.NewRepository(db, logger)
 	sessionsService := sessions.NewService(sessionsRepo, logger)
 
-	guard := middleware.NewGuard(sessionsService)
+	guard := middleware.NewGuard(sessionsService, logger)
 
 	userRepo := users.NewRepository(db, logger)
 	userService := users.NewService(userRepo, sessionsService, logger)
@@ -57,19 +60,20 @@ func main() {
 	fileService := files.NewService(fileRepo, uploadFolder, logger)
 	fileHandler := files.NewHandler(fileService, guard, logger)
 	fileHandler.RegisterRoutes(r)
+	logger.Info("Initialized routes!")
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", 4000),
 		Handler: r,
 	}
 
-	fmt.Println("Server Running...")
+	logger.Info("Server Running...")
 	err = srv.ListenAndServe()
 	if !errors.Is(err, http.ErrServerClosed) {
 		fmt.Println(err)
 	}
 
-	fmt.Println("Server Stopped")
+	logger.Info("Server Stopped")
 }
 
 func healthcheckHandler(w http.ResponseWriter, r *http.Request) {

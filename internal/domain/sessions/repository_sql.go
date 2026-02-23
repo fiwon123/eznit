@@ -1,7 +1,7 @@
 package sessions
 
 import (
-	"fmt"
+	"log/slog"
 
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/jmoiron/sqlx"
@@ -23,7 +23,7 @@ func (r *sqlRepository) GetSession(token string) *Session {
 
 	err := r.db.Get(&session, "SELECT * FROM sessions WHERE token=$1", token)
 	if err != nil {
-		fmt.Println(err)
+		r.logger.Error("error: ", slog.Any("err", err))
 		return nil
 	}
 
@@ -35,6 +35,7 @@ func (r *sqlRepository) GetSessionByUserID(userID string) *Session {
 
 	err := r.db.Select(&session, "SELECT * FROM sessions WHERE user_id=$1", userID)
 	if err != nil {
+		r.logger.Error("error: ", slog.Any("err", err))
 		return nil
 	}
 
@@ -44,7 +45,7 @@ func (r *sqlRepository) GetSessionByUserID(userID string) *Session {
 func (r *sqlRepository) CreateSession(s Session) bool {
 	_, err := r.db.NamedExec("INSERT INTO sessions(token, user_id, expires_at) VALUES (:token, :user_id, :expires_at)", s)
 	if err != nil {
-		fmt.Println(err)
+		r.logger.Error("error: ", slog.Any("err", err))
 		return false
 	}
 
@@ -56,7 +57,7 @@ func (r *sqlRepository) UpdateSession(s Session) bool {
 
 	_, err := r.db.NamedExec(exec, s)
 	if err != nil {
-		fmt.Println(err)
+		r.logger.Error("error: ", slog.Any("err", err))
 		return false
 	}
 
@@ -72,7 +73,7 @@ func (r *sqlRepository) GetUserIDByToken(s string) (string, error) {
 
 	row := r.db.QueryRow(exec, s)
 	if err := row.Scan(&userID); err != nil {
-		fmt.Println(err)
+		r.logger.Error("error: ", slog.Any("err", err))
 		return "", err
 	}
 

@@ -7,15 +7,18 @@ import (
 	"strings"
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
+	"github.com/fiwon123/eznit/pkg/logger"
 )
 
 type Guard struct {
 	session *sessions.Service
+	logger  *logger.Config
 }
 
-func NewGuard(session *sessions.Service) *Guard {
+func NewGuard(session *sessions.Service, logger *logger.Config) *Guard {
 	return &Guard{
 		session: session,
+		logger:  logger,
 	}
 }
 

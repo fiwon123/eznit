@@ -1,8 +1,6 @@
 package sql
 
 import (
-	"fmt"
-
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
@@ -15,10 +13,8 @@ func Open(driver string, dsn string) (*sqlx.DB, error) {
 
 	err = db.Ping()
 	if err != nil {
-		fmt.Println("Unable to connect to PostgreSQL!")
 		return nil, err
 	}
-	fmt.Println("Connected to PostgreSQL successfully!")
 
 	return db, nil
 }
