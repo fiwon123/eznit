@@ -30,9 +30,9 @@ func (cmd *UploadCmd) Run(g *Globals) error {
 	}
 
 	if cmd.Update != "" {
-		err = updateFile(g.API.BaseURL, path, cmd.Update, token)
+		err = updateFile(g.api.baseURL, path, cmd.Update, token)
 	} else {
-		err = uploadFile(g.API.BaseURL, path, token)
+		err = uploadFile(g.api.baseURL, path, token)
 	}
 
 	if err != nil {

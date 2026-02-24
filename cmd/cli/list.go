@@ -21,9 +21,9 @@ func (cmd *ListCmd) Run(g *Globals) error {
 	}
 
 	if cmd.All {
-		sendListRequest(g.API.BaseURL, false, token)
+		sendListRequest(g.api.baseURL, false, token)
 	} else {
-		sendListRequest(g.API.BaseURL, true, token)
+		sendListRequest(g.api.baseURL, true, token)
 	}
 
 	return nil

@@ -36,7 +36,7 @@ func (cmd *SignupCmd) Run(g *Globals) error {
 		return fmt.Errorf("passwords do not match")
 	}
 
-	err = sendSignupRequest(g.API.BaseURL, users.SignupRequest{
+	err = sendSignupRequest(g.api.baseURL, users.SignupRequest{
 		Email:           email,
 		Password:        password,
 		ConfirmPassword: confirm,

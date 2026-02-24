@@ -29,7 +29,7 @@ func (cmd *DeleteCmd) Run(g *Globals) error {
 		return fmt.Errorf("not logged in")
 	}
 
-	err = sendRequestDelete(g.API.BaseURL, id, token)
+	err = sendRequestDelete(g.api.baseURL, id, token)
 
 	return err
 }

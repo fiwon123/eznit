@@ -2,6 +2,7 @@ package logger
 
 import (
 	"log/slog"
+	"os"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/exp/zapslog"
@@ -22,6 +23,8 @@ func New(isJson bool) *Config {
 	defer zapLogger.Sync()
 
 	logger := slog.New(zapslog.NewHandler(zapLogger.Core()))
+
+	logger.Info("logger initialized!", slog.Int("process_id", os.Getpid()))
 
 	return &Config{
 		Logger:    logger,

@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -13,20 +12,34 @@ import (
 )
 
 type API struct {
-	BaseURL string `help:"The complete url with port" default:"http://localhost:4000"`
-	Host    string `help:"The host URL" default:"http://localhost"`
-	Port    string `help:"The API port" default:"4000"`
+	baseURL string
+	host    string
+	port    string
+}
+
+func newAPI(host string, port string) *API {
+	return &API{
+		baseURL: host + ":" + port,
+		host:    host,
+		port:    port,
+	}
 }
 
 type Globals struct {
-	API       API
-	Downloads string `help:"default downloads folder" default:"./downloads"`
-	Logger    *logger.Config
+	api       *API
+	downloads string
+	logger    *logger.Config
+}
+
+func newGlobals(api *API, downloads string, logger *logger.Config) *Globals {
+	return &Globals{
+		api:       api,
+		downloads: downloads,
+		logger:    logger,
+	}
 }
 
 type CLI struct {
-	Globals
-
 	Login    LoginCmd    `cmd:"" aliases:"l" help:"save user credential"`
 	Signup   SignupCmd   `cmd:"" aliases:"s" help:"create new user"`
 	Download DownloadCmd `cmd:"" aliases:"d" help:"download a file"`
@@ -35,38 +48,36 @@ type CLI struct {
 	Delete   DeleteCmd   `cmd:"" help:"delete file"`
 }
 
+var globals Globals
+
 func main() {
 	_ = godotenv.Load()
 
+	l := logger.New(false)
+	defer l.Sync()
+
 	cli := CLI{}
-	ctx := kong.Parse(&cli,
-		kong.Bind(&cli.Globals))
+	ctx := kong.Parse(&cli)
 
-	cli.Logger = logger.New(false)
-	cli.Logger.Info(
-		"Logger initialized!",
-		slog.Int("process_id", os.Getpid()),
-	)
-	defer cli.Logger.Sync()
-
-	val, ok := os.LookupEnv("API_HOST")
-	if ok {
-		cli.API.BaseURL = val
+	host, _ := os.LookupEnv("API_HOST")
+	if host == "" {
+		host = "http://localhost"
 	}
 
-	val, ok = os.LookupEnv("API_PORT")
-	if ok {
-		cli.API.Port = val
+	port, _ := os.LookupEnv("API_PORT")
+	if port == "" {
+		port = "4000"
 	}
 
-	cli.API.BaseURL = fmt.Sprintf("%s:%s", cli.API.Host, cli.API.Port)
-
-	val, ok = os.LookupEnv("CLI_DOWNLOADS")
-	if ok {
-		cli.Downloads = val
+	downloads, _ := os.LookupEnv("CLI_DOWNLOADS")
+	if downloads == "" {
+		downloads = "./downloads/"
 	}
 
-	err := ctx.Run()
+	api := newAPI(host, port)
+	globals = *newGlobals(api, downloads, l)
+
+	err := ctx.Run(&globals)
 	ctx.FatalIfErrorf(err)
 }
 
