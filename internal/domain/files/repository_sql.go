@@ -92,9 +92,25 @@ func (r *sqlRepository) StorageFile(file File) bool {
 
 	r.logger.Debug("storaging file: ", slog.Any("file", file))
 
-	_, err := r.db.NamedExec("INSERT INTO files (user_id, name, ext, path, content_type) VALUES (:user_id, :name, :ext, :path, :content_type)", file)
+	query := `INSERT INTO files (user_id, name, ext, path, content_type)
+          VALUES (:user_id, :name, :ext, :path, :content_type)
+          RETURNING id`
+
+	var fileID string
+	rows, err := r.db.NamedQuery(query, file)
 	if err != nil {
-		r.logger.Error("error: ", slog.Any("error", err))
+		r.logger.Error("insert file failed: ", slog.Any("error", err))
+		return false
+	}
+
+	if rows.Next() {
+		rows.Scan(&fileID)
+	}
+
+	file.ID = fileID
+	_, err = r.db.NamedExec("INSERT INTO files_history (file_id, path, version) VALUES (:id, :path, :version)", file)
+	if err != nil {
+		r.logger.Error("insert file_history failed: ", slog.Any("error", err))
 		return false
 	}
 
@@ -138,10 +154,16 @@ func (r *sqlRepository) UpdateFile(file File) bool {
 
 	r.logger.Debug("updating file: ", slog.Any("file", file))
 
-	exec := "UPDATE files SET name=:name, ext=:ext, path=:path, updated_at=NOW() WHERE id=:id"
+	exec := "UPDATE files SET name=:name, ext=:ext, path=:path, version=:version, updated_at=NOW() WHERE id=:id"
 	_, err := r.db.NamedExec(exec, file)
 	if err != nil {
-		r.logger.Error("error: ", slog.Any("error", err))
+		r.logger.Error("error update files: ", slog.Any("error", err))
+		return false
+	}
+
+	_, err = r.db.NamedExec("UPDATE files_history SET path=:path, version=:version WHERE file_id=:id", file)
+	if err != nil {
+		r.logger.Error("error update files_history: ", slog.Any("error", err))
 		return false
 	}
 

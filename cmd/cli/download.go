@@ -35,7 +35,7 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 
 	if dest == "" {
 		dest = g.downloads
-		fmt.Println("destination folder is empty, default download folder path: ", dest)
+		fmt.Println("destination folder is empty, default download folder path will be used: ", dest)
 	}
 
 	err := helper.CreatePathIfNotExists(dest)

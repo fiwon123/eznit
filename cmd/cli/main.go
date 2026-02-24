@@ -88,7 +88,7 @@ func getToken() (string, error) {
 	tokenPath := filepath.Join(home, ".eznit", "config.json")
 	tokenRaw, err := os.ReadFile(tokenPath)
 	if err != nil {
-		return "", fmt.Errorf("not logged in: %v", err)
+		return "", err
 	}
 
 	var tokenMap map[string]string

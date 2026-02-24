@@ -136,7 +136,6 @@ func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader,
 
 	ok := s.db.StorageFile(storageFile)
 	if !ok {
-		s.logger.Error("storage file failed!")
 		return MsgResponse{
 			Msg: "internal server error",
 		}, false
@@ -273,16 +272,16 @@ func (s *service) UpdateFile(id string, file multipart.File, header *multipart.F
 	finalPath := filepath.Join(s.uploadFolder, fmt.Sprintf("%d_%s", time.Now().Unix(), cleanName))
 
 	updateFile := File{
-		ID:     id,
-		UserID: fileInfo.UserID,
-		Name:   cleanName,
-		Ext:    ext,
-		Path:   finalPath,
+		ID:      id,
+		UserID:  fileInfo.UserID,
+		Name:    cleanName,
+		Ext:     ext,
+		Version: fileInfo.Version + 1,
+		Path:    finalPath,
 	}
 
 	ok = s.db.UpdateFile(updateFile)
 	if !ok {
-		s.logger.Error(" update file failed")
 		return MsgResponse{
 			Msg: "internal server error",
 		}, false
