@@ -46,6 +46,8 @@ type CLI struct {
 	Upload   UploadCmd   `cmd:"" aliases:"u" help:"upload a file"`
 	List     ListCmd     `cmd:"" help:"list files"`
 	Delete   DeleteCmd   `cmd:"" help:"delete file"`
+
+	Debug bool `help:"enable debug level"`
 }
 
 var globals Globals
@@ -53,11 +55,11 @@ var globals Globals
 func main() {
 	_ = godotenv.Load()
 
-	l := logger.New(false)
-	defer l.Sync()
-
 	cli := CLI{}
 	ctx := kong.Parse(&cli)
+
+	l := logger.New(false, cli.Debug)
+	defer l.Sync()
 
 	host, _ := os.LookupEnv("API_HOST")
 	if host == "" {

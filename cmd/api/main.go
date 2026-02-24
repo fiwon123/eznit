@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -21,7 +22,12 @@ import (
 
 func main() {
 
-	logger := logger.New(true)
+	var debugFlag bool
+	flag.BoolVar(&debugFlag, "debug", false, "show debug logs")
+	flag.Parse()
+
+	logger := logger.New(true, debugFlag)
+	defer logger.Sync()
 
 	// local
 	_ = godotenv.Load()
