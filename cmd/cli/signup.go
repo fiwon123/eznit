@@ -14,7 +14,6 @@ import (
 )
 
 type SignupCmd struct {
-	Args []string `arg:"" optional:"" help:"args for signup"`
 }
 
 func (cmd *SignupCmd) Run(g *Globals) error {

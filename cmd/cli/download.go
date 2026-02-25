@@ -15,7 +15,6 @@ import (
 )
 
 type DownloadCmd struct {
-	Args []string `arg:"" optional:"" help:"args for download"`
 }
 
 func (cmd *DownloadCmd) Run(g *Globals) error {

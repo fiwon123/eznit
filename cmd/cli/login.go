@@ -13,7 +13,6 @@ import (
 )
 
 type LoginCmd struct {
-	Args []string `arg:"" optional:"" help:"args for login"`
 }
 
 func (cmd *LoginCmd) Run(g *Globals) error {

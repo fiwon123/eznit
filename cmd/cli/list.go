@@ -10,8 +10,7 @@ import (
 )
 
 type ListCmd struct {
-	All  bool     `help:"list all available files"`
-	Args []string `arg:"" optional:"" help:"args for list"`
+	All bool `help:"list all available files"`
 }
 
 func (cmd *ListCmd) Run(g *Globals) error {

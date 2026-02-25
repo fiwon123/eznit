@@ -14,8 +14,7 @@ import (
 )
 
 type UploadCmd struct {
-	Update string   `help:"update a file using id"`
-	Args   []string `arg:"" optional:"" help:"args for upload"`
+	Update string `help:"update a file using id"`
 }
 
 func (cmd *UploadCmd) Run(g *Globals) error {
