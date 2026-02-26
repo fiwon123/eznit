@@ -32,12 +32,13 @@ func main() {
 	// local
 	_ = godotenv.Load()
 
+	host := os.Getenv("DB_HOST")
 	port := os.Getenv("DB_PORT")
 	user := os.Getenv("DB_USER")
 	pwd := os.Getenv("DB_PWD")
 	name := os.Getenv("DB_NAME")
 
-	dsn := fmt.Sprintf("postgresql://%s:%s@localhost:%s/%s?sslmode=disable", user, pwd, port, name)
+	dsn := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=disable", user, pwd, host, port, name)
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		logger.Error("Unable to connect to PostgreSQL!")
