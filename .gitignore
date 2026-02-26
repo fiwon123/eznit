@@ -31,7 +31,11 @@ go.work.sum
 # .idea/
 # .vscode/
 
+# project
+build/*
+.zed/*
+
 # project test folders
 ~ignore/*
-./downloads/*
-./uploads/*
+downloads/*
+uploads/*
