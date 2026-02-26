@@ -97,15 +97,23 @@ migrate_create:
 	@echo "Running migrate create $(VAL)"
 	migrate create -ext sql -dir $(FOLDER) -seq $(VAL)
 
-migrate_up: VAL := 1
 migrate_up:
-	@echo "Running migrate up $(VAL)"
-	migrate -path $(FOLDER) -database $(CONN) up $(VAL)
+	@if [ -z "$(VAL)" ]; then \
+	    echo "Running just migrate up"; \
+	    migrate -path "$(FOLDER)" -database "$(CONN)" up; \
+	else \
+	    echo "Running migrate up $(VAL)"; \
+	    migrate -path "$(FOLDER)" -database "$(CONN)" up "$(VAL)"; \
+	fi
 
-migrate_down: VAL := 1
+migrate_down_all:
+	@echo "Running just migrate down"
+	migrate -path "$(FOLDER)" -database "$(CONN)" down
+
+migrate_down: VAL=1
 migrate_down:
 	@echo "Running migrate down $(VAL)"
-	migrate -path $(FOLDER) -database $(CONN) down $(VAL)
+	migrate -path "$(FOLDER)" -database "$(CONN)" down "$(VAL)"
 
 migrate_force:
 	@if [ -z "$(VAL)" ]; then\
