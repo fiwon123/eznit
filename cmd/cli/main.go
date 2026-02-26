@@ -40,8 +40,8 @@ func newGlobals(api *API, downloads string, logger *logger.Config) *Globals {
 }
 
 type CLI struct {
-	Version bool `short:"v" help:"check version"`
-	Debug   bool `help:"enable debug level"`
+	Debug   bool             `help:"enable debug level"`
+	Version kong.VersionFlag `short:"v" help:"show version."`
 
 	Login    LoginCmd    `cmd:"" aliases:"l" help:"save user credential"`
 	Signup   SignupCmd   `cmd:"" aliases:"s" help:"create new user"`
@@ -55,20 +55,15 @@ var globals Globals
 var Version = "dev"
 
 func main() {
+
 	_ = godotenv.Load()
 
 	if len(os.Args) < 2 {
 		os.Args = append(os.Args, "--help")
 	}
 
-	lastArg := os.Args[len(os.Args)-1]
-	if os.Args[len(os.Args)-1] == "--version" || lastArg == "-v" {
-		fmt.Println(Version)
-		return
-	}
-
 	cli := CLI{}
-	ctx := kong.Parse(&cli)
+	ctx := kong.Parse(&cli, kong.Vars{"version": Version})
 
 	l := logger.New(false, cli.Debug)
 	defer l.Sync()
