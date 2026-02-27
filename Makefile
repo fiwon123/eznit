@@ -50,23 +50,23 @@ LINUX_SCRIPT :=  $(SCRIPTS_DIR)/$(SCRIPT_NAME).sh
 .PHONY: build_all build_windows build_linux
 .PHONY: zip_linux zip_windows
 
+build_all: zip_windows zip_linux
+	@echo "Release ready: $(VERSION)"
+
 # Create build folder if missing
 $(BUILD_DIR):
 		mkdir -p $(BUILD_DIR)
 
-build_all: zip_windows zip_linux
-	@echo "Release ready: $(VERSION)"
-
 build_linux: $(BUILD_DIR)
-	GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(LINUX_SERVER_BIN) $(API_FOLDER)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(LINUX_SERVER_BIN) $(API_FOLDER)
 
-	GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(LINUX_BIN) $(CLI_FOLDER)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(LINUX_BIN) $(CLI_FOLDER)
 	cp $(LINUX_BIN) $(SHORT_LINUX_BIN)
 
 build_windows: $(BUILD_DIR)
-	GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(WINDOWS_SERVER_BIN) $(API_FOLDER)
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(WINDOWS_SERVER_BIN) $(API_FOLDER)
 
-	GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(WINDOWS_BIN) $(CLI_FOLDER)
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(WINDOWS_BIN) $(CLI_FOLDER)
 	cp $(WINDOWS_BIN) $(SHORT_WINDOWS_BIN)
 
 zip_windows: build_windows

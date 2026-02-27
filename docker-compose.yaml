@@ -38,5 +38,18 @@ services:
       db:
         condition: service_healthy
 
+  api:
+    image: alpine:3.23
+    env_file:
+      - path: .env
+        required: true
+    command: ./api/server
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./build/linux/api/server:/api/server:ro
+    depends_on:
+      - migrate
+
 volumes:
   postgres-data:
