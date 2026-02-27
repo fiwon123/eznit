@@ -25,17 +25,23 @@ go.work
 go.work.sum
 
 # env file
-.env
+*.env*
 
 # Editor/IDE
 # .idea/
 # .vscode/
 
 # project
+build/
 build/*
 .zed/*
+secrets/
+secrets/*
 
 # project test folders
+~ignore/
 ~ignore/*
+downloads/
 downloads/*
+uploads/
 uploads/*

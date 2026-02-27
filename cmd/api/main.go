@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/fiwon123/eznit/internal/domain/files"
 	"github.com/fiwon123/eznit/internal/domain/sessions"
@@ -30,12 +31,12 @@ func main() {
 	defer logger.Sync()
 
 	// local
-	_ = godotenv.Load()
+	_ = godotenv.Load(".env", ".env.local")
 
 	host := os.Getenv("DB_HOST")
 	port := os.Getenv("DB_PORT")
 	user := os.Getenv("DB_USER")
-	pwd := os.Getenv("DB_PWD")
+	pwd := getDBPassword()
 	name := os.Getenv("DB_NAME")
 
 	dsn := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=disable", user, pwd, host, port, name)
@@ -81,6 +82,15 @@ func main() {
 	}
 
 	logger.Info("Server Stopped")
+}
+
+func getDBPassword() string {
+	if p := os.Getenv("DB_PASSWORD_FILE"); p != "" {
+		if b, err := os.ReadFile(p); err == nil {
+			return strings.TrimSpace(string(b))
+		}
+	}
+	return os.Getenv("DB_PWD")
 }
 
 func healthcheckHandler(w http.ResponseWriter, r *http.Request) {

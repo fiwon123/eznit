@@ -2,20 +2,18 @@ name: eznit
 
 services:
   db:
-    image: postgres:18
+    image: postgres:18.3-bookworm
     restart: always
-    env_file:
-      - path: .env
-        required: true
     environment:
       POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PWD}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
       POSTGRES_DB: ${DB_NAME}
+    secrets:
+      - db_password
     ports:
       - "${DB_PORT}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/
-      - ./db/migrations/sql:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -23,17 +21,16 @@ services:
       retries: 10
 
   migrate:
-    image: migrate/migrate:latest
-    command:
-      [
-        "-path",
-        "/migrations",
-        "-database",
-        "postgres://${DB_USER}:${DB_PWD}@db:${DB_PORT}/${DB_NAME}?sslmode=disable",
-        "up",
-      ]
+    image: migrate/migrate:4
+    env_file:
+      - path: ./.env
+    secrets:
+      - db_password
     volumes:
       - ./db/migrations:/migrations:ro
+      - ./scripts/run_migrate.sh:/scripts/run_migrate.sh:ro
+    entrypoint: ["/scripts/run_migrate.sh"]
+    command: []
     depends_on:
       db:
         condition: service_healthy
@@ -41,8 +38,12 @@ services:
   api:
     image: alpine:3.23
     env_file:
-      - path: .env
+      - path: ./.env
         required: true
+    environment:
+      DB_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
     command: ./api/server
     ports:
       - "${API_PORT}:4000"
@@ -50,6 +51,10 @@ services:
       - ./build/api/server:/api/server:ro
     depends_on:
       - migrate
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
 
 volumes:
   postgres-data:

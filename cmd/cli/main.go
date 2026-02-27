@@ -56,7 +56,7 @@ var Version = "dev"
 
 func main() {
 
-	_ = godotenv.Load()
+	_ = godotenv.Load(".env", ".env.local")
 
 	if len(os.Args) < 2 {
 		os.Args = append(os.Args, "--help")
@@ -68,12 +68,12 @@ func main() {
 	l := logger.New(false, cli.Debug)
 	defer l.Sync()
 
-	host, _ := os.LookupEnv("API_HOST")
+	host, _ := os.LookupEnv("CLI_API_HOST")
 	if host == "" {
 		host = "http://localhost"
 	}
 
-	port, _ := os.LookupEnv("API_PORT")
+	port, _ := os.LookupEnv("CLI_API_PORT")
 	if port == "" {
 		port = "4000"
 	}

@@ -47,7 +47,7 @@ LINUX_SERVER_TAR := $(BUILD_API)/$(SERVER_NAME)_$(VERSION)_linux.tar.gz
 .PHONY: build build_cli build_api
 .PHONY: zip
 
-build: zip
+build: clean zip
 	@echo "Release ready: $(VERSION)"
 
 # Create build folder if missing
