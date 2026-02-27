@@ -47,7 +47,7 @@ services:
     ports:
       - "${API_PORT}:4000"
     volumes:
-      - ./build/linux/api/server:/api/server:ro
+      - ./build/api/server:/api/server:ro
     depends_on:
       - migrate
 
