@@ -45,7 +45,7 @@ services:
         required: true
     command: ./api/server
     ports:
-      - "4000:4000"
+      - "${API_PORT}:4000"
     volumes:
       - ./build/linux/api/server:/api/server:ro
     depends_on:
