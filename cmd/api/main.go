@@ -30,8 +30,8 @@ func main() {
 	logger := logger.New(true, debugFlag)
 	defer logger.Sync()
 
-	// local
-	_ = godotenv.Load(".env", ".env.local")
+	// .env.local overwrite .env for development
+	_ = godotenv.Load(".env.local", ".env")
 
 	host := os.Getenv("DB_HOST")
 	port := os.Getenv("DB_PORT")
@@ -40,6 +40,7 @@ func main() {
 	name := os.Getenv("DB_NAME")
 
 	dsn := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=disable", user, pwd, host, port, name)
+	fmt.Println(dsn)
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		logger.Error("Unable to connect to PostgreSQL!")
@@ -64,6 +65,7 @@ func main() {
 	userHandler.RegisterRoutes(r)
 
 	uploadFolder := os.Getenv("API_UPLOADS")
+	fmt.Println(uploadFolder)
 	fileRepo := files.NewRepository(db, logger)
 	fileService := files.NewService(fileRepo, uploadFolder, logger)
 	fileHandler := files.NewHandler(fileService, guard, logger)

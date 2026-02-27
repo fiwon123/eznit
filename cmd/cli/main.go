@@ -56,7 +56,8 @@ var Version = "dev"
 
 func main() {
 
-	_ = godotenv.Load(".env", ".env.local")
+	// .env.local overwrite .env for development
+	_ = godotenv.Load(".env.local", ".env")
 
 	if len(os.Args) < 2 {
 		os.Args = append(os.Args, "--help")
