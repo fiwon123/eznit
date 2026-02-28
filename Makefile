@@ -13,10 +13,10 @@ API_FOLDER := ./cmd/api
 CLI_FOLDER := ./cmd/cli
 
 DOCKER_COMPOSE := ./docker-compose.yaml
-PROD_ENV := ./.env
 MIGRATIONS := ./db/migrations
 SCRIPT_MIGRATION := ./scripts/run_migrate.sh
-SECRETS := ./secrets
+SECRETS_EXAMPLE := ./secrets/db_password.txt.example
+ENV_EXAMPLE := ./.env.example
 
 # Detect last tag and increment patch
 VERSION := $(shell git describe --tags --always)
@@ -84,7 +84,7 @@ zip: build_cli build_api
 
 	tar -czvf $(LINUX_SERVER_TAR) \
 	          -C ./ $(LINUX_SERVER_BIN) \
-	          -C ./ ./README.md ./LICENSE $(MIGRATIONS) $(DOCKER_COMPOSE) $(PROD_ENV) $(SECRETS) $(SCRIPT_MIGRATION) \
+	          -C ./ ./README.md ./LICENSE $(MIGRATIONS) $(DOCKER_COMPOSE) $(SECRETS) $(SCRIPT_MIGRATION) $(SECRETS_EXAMPLE) $(ENV_EXAMPLE) \
 
 clean:
 	rm -rf $(BUILD_DIR)

@@ -25,7 +25,8 @@ go.work
 go.work.sum
 
 # env file
-*.env*
+.env
+.env.local
 
 # Editor/IDE
 # .idea/
@@ -35,8 +36,7 @@ go.work.sum
 build/
 build/*
 .zed/*
-secrets/
-secrets/*
+secrets/db_password.txt
 
 # project test folders
 ~ignore/
