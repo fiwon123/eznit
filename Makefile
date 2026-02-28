@@ -1,5 +1,4 @@
 include .env
-
 export
 
 SERVER_NAME := server
@@ -11,7 +10,7 @@ SCRIPT_NAME := add_to_path
 INJECT_VERSION:= main.Version
 
 API_FOLDER := ./cmd/api
-CLI_FOLDER := ./cmd/cli/
+CLI_FOLDER := ./cmd/cli
 
 DOCKER_COMPOSE := ./docker-compose.yaml
 PROD_ENV := ./.env
@@ -28,7 +27,7 @@ WINDOWS_SCRIPT :=  $(SCRIPTS_DIR)/$(SCRIPT_NAME).ps1
 LINUX_SCRIPT :=  $(SCRIPTS_DIR)/$(SCRIPT_NAME).sh
 
 # Builds
-BUILD_DIR := build
+BUILD_DIR := ./build
 BUILD_CLI:=$(BUILD_DIR)/cli
 BUILD_API:=$(BUILD_DIR)/api
 
@@ -49,17 +48,17 @@ LINUX_SERVER_TAR := $(BUILD_API)/$(APP_NAME)_$(SERVER_NAME)_$(VERSION)_linux.tar
 
 ## Builds
 .PHONY: clean
-.PHONY: build build_cli build_api
+.PHONY: build build_cli build_api verify
 .PHONY: zip
 
 build: clean zip
 	@echo "Release ready: $(VERSION)"
 
 # Create build folder if missing
-$(BUILD_DIR):
-		mkdir -p $(BUILD_DIR)
+verify:
+	mkdir -p $(BUILD_DIR)
 
-build_cli: $(BUILD_DIR)
+build_cli: verify
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(WINDOWS_BIN) $(CLI_FOLDER)
 	cp $(WINDOWS_BIN) $(SHORT_WINDOWS_BIN)
 
@@ -70,7 +69,7 @@ build_cli: $(BUILD_DIR)
 	chmod a+x $(LINUX_BIN)
 	chmod a+x $(SHORT_LINUX_BIN)
 
-build_api: $(BUILD_DIR)
+build_api: verify
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(LINUX_SERVER_BIN) $(API_FOLDER)
 
 	chmod -R a+r $(BUILD_API)
@@ -85,7 +84,7 @@ zip: build_cli build_api
 
 	tar -czvf $(LINUX_SERVER_TAR) \
 	          -C ./ $(LINUX_SERVER_BIN) \
-	          -C ./ ./README.md ./LICENSE $(MIGRATIONS) $(DOCKER_COMPOSE) $(PROD_ENV) $(SECRETS) $(SCRIPT_MIGRATION)
+	          -C ./ ./README.md ./LICENSE $(MIGRATIONS) $(DOCKER_COMPOSE) $(PROD_ENV) $(SECRETS) $(SCRIPT_MIGRATION) \
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -95,6 +94,7 @@ CONN := "postgresql://$(DB_USER):$(DB_PWD)@localhost:$(DB_PORT)/$(DB_NAME)?sslmo
 FOLDER := ./db/migrations
 
 .PHONY: migrate_up migrate_down migrate_create migrate_force
+
 migrate_create:
 	@if [ -z "$(VAL)" ]; then\
 	    echo "VAL is required. Usage: make create VAL=NEW_NAME"; exit 1;\
@@ -126,3 +126,32 @@ migrate_force:
 	fi
 	@echo "Running migrate force $(VAL)"
 	migrate -path $(FOLDER) -database "$(CONN)" force $(VAL)
+
+## Docker
+unexport
+
+.PHONY: docker_up docker_down docker_up_all docker_down_v
+
+docker_up:
+	docker compose up db migrate
+
+docker_up_all:
+	docker compose up
+
+docker_down:
+	docker compose down
+
+docker_down_v:
+	docker compose down -v
+
+## Development
+.PHONY: run_api run_cli
+
+CMD_API := ./cmd/api
+CMD_CLI := ./cmd/cli
+
+run_api:
+	go run $(API_FOLDER)
+
+run_cli:
+	go run $(CLI_FOLDER)
