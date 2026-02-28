@@ -147,11 +147,12 @@ docker_down_v:
 ## Development
 .PHONY: run_api run_cli
 
-CMD_API := ./cmd/api
-CMD_CLI := ./cmd/cli
-
 run_api:
-	go run $(API_FOLDER)
+	go run $(API_FOLDER) $(filter-out $@,$(MAKECMDGOALS))
 
 run_cli:
-	go run $(CLI_FOLDER)
+	go run $(CLI_FOLDER) $(filter-out $@,$(MAKECMDGOALS))
+
+# args
+%:
+	@:
