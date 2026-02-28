@@ -3,6 +3,7 @@ include .env
 export
 
 SERVER_NAME := server
+CLI_NAME := cli
 
 APP_NAME := eznit
 APP_NAME_SHORT := ez
@@ -12,12 +13,18 @@ INJECT_VERSION:= main.Version
 API_FOLDER := ./cmd/api
 CLI_FOLDER := ./cmd/cli/
 
+DOCKER_COMPOSE := ./docker-compose.yaml
+PROD_ENV := ./.env
+MIGRATIONS := ./db/migrations
+SCRIPT_MIGRATION := ./scripts/run_migrate.sh
+SECRETS := ./secrets
+
 # Detect last tag and increment patch
 VERSION := $(shell git describe --tags --always)
 
 # Scripts
 SCRIPTS_DIR := scripts
-WINDOWS_SCRIPT :=  $(SCRIPTS_DIR)/$(SCRIPT_NAME).bat
+WINDOWS_SCRIPT :=  $(SCRIPTS_DIR)/$(SCRIPT_NAME).ps1
 LINUX_SCRIPT :=  $(SCRIPTS_DIR)/$(SCRIPT_NAME).sh
 
 # Builds
@@ -27,20 +34,18 @@ BUILD_API:=$(BUILD_DIR)/api
 
 # CLI
 WINDOWS_CLI:=$(BUILD_CLI)/windows
-
 WINDOWS_BIN := $(WINDOWS_CLI)/$(APP_NAME).exe
 SHORT_WINDOWS_BIN := $(WINDOWS_CLI)/$(APP_NAME_SHORT).exe
-WINDOWS_ZIP := $(WINDOWS_CLI)/$(APP_NAME)_$(VERSION)_windows.zip
+WINDOWS_ZIP := $(WINDOWS_CLI)/$(APP_NAME)_$(CLI_NAME)_$(VERSION)_windows.zip
 
 LINUX_CLI:=$(BUILD_CLI)/linux
-
 LINUX_BIN := $(LINUX_CLI)/$(APP_NAME)
 SHORT_LINUX_BIN := $(LINUX_CLI)/$(APP_NAME_SHORT)
-LINUX_TAR := $(LINUX_CLI)/$(APP_NAME)_$(VERSION)_linux.tar.gz
+LINUX_TAR := $(LINUX_CLI)/$(APP_NAME)_$(CLI_NAME)_$(VERSION)_linux.tar.gz
 
 # API
 LINUX_SERVER_BIN := $(BUILD_API)/$(SERVER_NAME)
-LINUX_SERVER_TAR := $(BUILD_API)/$(SERVER_NAME)_$(VERSION)_linux.tar.gz
+LINUX_SERVER_TAR := $(BUILD_API)/$(APP_NAME)_$(SERVER_NAME)_$(VERSION)_linux.tar.gz
 
 ## Builds
 .PHONY: clean
@@ -61,8 +66,15 @@ build_cli: $(BUILD_DIR)
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(LINUX_BIN) $(CLI_FOLDER)
 	cp $(LINUX_BIN) $(SHORT_LINUX_BIN)
 
+	chmod -R a+r $(BUILD_CLI)
+	chmod a+x $(LINUX_BIN)
+	chmod a+x $(SHORT_LINUX_BIN)
+
 build_api: $(BUILD_DIR)
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(LINUX_SERVER_BIN) $(API_FOLDER)
+
+	chmod -R a+r $(BUILD_API)
+	chmod a+x $(LINUX_SERVER_BIN)
 
 zip: build_cli build_api
 	zip -j $(WINDOWS_ZIP) $(WINDOWS_BIN) $(SHORT_WINDOWS_BIN) $(WINDOWS_SCRIPT) README.md LICENSE
@@ -72,8 +84,8 @@ zip: build_cli build_api
 	          -C ../../../$(SCRIPTS_DIR) $(notdir $(LINUX_SCRIPT)) ../README.md ../LICENSE
 
 	tar -czvf $(LINUX_SERVER_TAR) \
-	          -C $(BUILD_API) $(notdir $(LINUX_SERVER_BIN)) \
-	          -C ../../ ./README.md ./LICENSE
+	          -C ./ $(LINUX_SERVER_BIN) \
+	          -C ./ ./README.md ./LICENSE $(MIGRATIONS) $(DOCKER_COMPOSE) $(PROD_ENV) $(SECRETS) $(SCRIPT_MIGRATION)
 
 clean:
 	rm -rf $(BUILD_DIR)
