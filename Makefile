@@ -46,6 +46,8 @@ LINUX_TAR := $(LINUX_CLI)/$(APP_NAME)_$(CLI_NAME)_$(VERSION)_linux.tar.gz
 LINUX_SERVER_BIN := $(BUILD_API)/$(SERVER_NAME)
 LINUX_SERVER_TAR := $(BUILD_API)/$(APP_NAME)_$(SERVER_NAME)_$(VERSION)_linux.tar.gz
 
+WINDOWS_SERVER_ZIP := $(BUILD_API)/$(APP_NAME)_$(SERVER_NAME)_$(VERSION)_windows.zip
+
 ## Builds
 .PHONY: clean
 .PHONY: build build_cli build_api verify
@@ -77,6 +79,7 @@ build_api: verify
 
 zip: build_cli build_api
 	zip -j $(WINDOWS_ZIP) $(WINDOWS_BIN) $(SHORT_WINDOWS_BIN) $(WINDOWS_SCRIPT) README.md LICENSE
+	zip -r $(WINDOWS_SERVER_ZIP) $(LINUX_SERVER_BIN) $(MIGRATIONS) $(DOCKER_COMPOSE) $(SCRIPT_MIGRATION) $(SECRETS_EXAMPLE) $(ENV_EXAMPLE) README.md LICENSE
 
 	tar -czvf $(LINUX_TAR) \
 	          -C $(LINUX_CLI) $(notdir $(LINUX_BIN)) $(notdir $(SHORT_LINUX_BIN)) \
@@ -84,7 +87,7 @@ zip: build_cli build_api
 
 	tar -czvf $(LINUX_SERVER_TAR) \
 	          -C ./ $(LINUX_SERVER_BIN) \
-	          -C ./ ./README.md ./LICENSE $(MIGRATIONS) $(DOCKER_COMPOSE) $(SECRETS) $(SCRIPT_MIGRATION) $(SECRETS_EXAMPLE) $(ENV_EXAMPLE) \
+	          -C ./ ./README.md ./LICENSE $(MIGRATIONS) $(DOCKER_COMPOSE) $(SCRIPT_MIGRATION) $(SECRETS_EXAMPLE) $(ENV_EXAMPLE) \
 
 clean:
 	rm -rf $(BUILD_DIR)
