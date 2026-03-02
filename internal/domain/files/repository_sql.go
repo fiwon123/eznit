@@ -26,7 +26,7 @@ func (r *sqlRepository) GetFiles() ([]File, bool) {
 
 	err := r.db.Select(&files, "SELECT * FROM files")
 	if err != nil {
-		r.logger.Error("error: ", slog.Any("error", err))
+		r.logger.Error("get files query", slog.Any("error", err))
 		return []File{}, false
 	}
 
@@ -42,7 +42,7 @@ func (r *sqlRepository) GetFilesForUser(userID string) ([]File, bool) {
 
 	err := r.db.Select(&files, "SELECT * FROM files WHERE user_id=$1", userID)
 	if err != nil {
-		r.logger.Error("error: ", slog.Any("error", err))
+		r.logger.Error("get files for user", slog.Any("error", err))
 		return []File{}, false
 	}
 
@@ -59,7 +59,7 @@ func (r *sqlRepository) GetFile(id string) (*File, bool) {
 
 	err := r.db.Get(&file, "SELECT * FROM files WHERE id=$1", id)
 	if err != nil {
-		r.logger.Error("error: ", slog.Any("error", err))
+		r.logger.Error("get file", slog.Any("error", err))
 		return nil, false
 	}
 
@@ -79,7 +79,7 @@ func (r *sqlRepository) GetFileForUser(id string, userID string) (*File, bool) {
 
 	err := r.db.Get(&file, query, id, userID)
 	if err != nil {
-		r.logger.Error("error: ", slog.Any("error", err))
+		r.logger.Error("get file for user", slog.Any("error", err))
 		return nil, false
 	}
 
@@ -99,7 +99,7 @@ func (r *sqlRepository) StorageFile(file File) bool {
 	var fileID string
 	rows, err := r.db.NamedQuery(query, file)
 	if err != nil {
-		r.logger.Error("insert file failed: ", slog.Any("error", err))
+		r.logger.Error("storage file table files", slog.Any("error", err))
 		return false
 	}
 
@@ -110,7 +110,7 @@ func (r *sqlRepository) StorageFile(file File) bool {
 	file.ID = fileID
 	_, err = r.db.NamedExec("INSERT INTO files_history (file_id, path, version) VALUES (:id, :path, :version)", file)
 	if err != nil {
-		r.logger.Error("insert file_history failed: ", slog.Any("error", err))
+		r.logger.Error("storage file table files_history ", slog.Any("error", err))
 		return false
 	}
 
@@ -125,7 +125,7 @@ func (r *sqlRepository) DeleteFile(id string) bool {
 
 	_, err := r.db.Exec("DELETE FROM files WHERE id=$1", id)
 	if err != nil {
-		r.logger.Error("error: ", slog.Any("error", err))
+		r.logger.Error("delete file", slog.Any("error", err))
 		return false
 	}
 
@@ -140,7 +140,7 @@ func (r *sqlRepository) DeleteFileForUser(id string, userID string) bool {
 
 	_, err := r.db.Exec("DELETE FROM files WHERE id=$1 AND user_id=$2", id, userID)
 	if err != nil {
-		r.logger.Error("error: ", slog.Any("error", err))
+		r.logger.Error("delete file for user", slog.Any("error", err))
 		return false
 	}
 
@@ -157,13 +157,13 @@ func (r *sqlRepository) UpdateFile(file File) bool {
 	exec := "UPDATE files SET name=:name, ext=:ext, path=:path, version=:version, updated_at=NOW() WHERE id=:id"
 	_, err := r.db.NamedExec(exec, file)
 	if err != nil {
-		r.logger.Error("error update files: ", slog.Any("error", err))
+		r.logger.Error("update file table files", slog.Any("error", err))
 		return false
 	}
 
 	_, err = r.db.NamedExec("UPDATE files_history SET path=:path, version=:version WHERE file_id=:id", file)
 	if err != nil {
-		r.logger.Error("error update files_history: ", slog.Any("error", err))
+		r.logger.Error("update file table files_history", slog.Any("error", err))
 		return false
 	}
 

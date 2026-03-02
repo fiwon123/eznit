@@ -7,15 +7,7 @@ type FileData struct {
 	Version int    `json:"version"`
 }
 
-type SingleReponse struct {
-	Data FileData `json:"data"`
-}
-
 type ListResponse struct {
 	Data  []FileData `json:"data"`
 	Total int        `json:"total"`
-}
-
-type MsgResponse struct {
-	Msg string `json:"message"`
 }

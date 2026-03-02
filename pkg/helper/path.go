@@ -2,14 +2,12 @@ package helper
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 )
 
 func CreatePathIfNotExists(path string) error {
 	if err := os.MkdirAll(path, 0755); err != nil {
-		fmt.Println(err)
 		return err
 	}
 

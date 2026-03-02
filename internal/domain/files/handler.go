@@ -1,7 +1,6 @@
 package files
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,6 +8,7 @@ import (
 	"os"
 
 	"github.com/fiwon123/eznit/internal/platform/middleware"
+	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/go-chi/chi/v5"
 )
@@ -56,44 +56,38 @@ func (h *Handler) getFilesForUserHandler(w http.ResponseWriter, r *http.Request)
 	userID := r.Context().Value("user_id").(string)
 	h.logger.Debug("user id: ", slog.String("id", userID))
 
-	resp, ok := h.service.GetFilesForUser(userID)
-	if !ok {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+	dataResp, appError := h.service.GetFilesForUser(userID)
+	if appError != nil {
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(resp)
+	helper.SendDataJson(w, http.StatusOK, dataResp)
 }
 
 func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {
 	h.logger.Debug("getFilesHandler")
 
-	resp, ok := h.service.GetFiles()
-	if !ok {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+	dataResp, appError := h.service.GetFiles()
+	if appError != nil {
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(resp)
+	helper.SendDataJson(w, http.StatusFound, dataResp)
 }
 
 func (h *Handler) getFileHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	h.logger.Debug("getFileHandler ", slog.String("id", id))
 
-	resp, ok := h.service.GetFile(id)
-	if !ok {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+	dataResp, appError := h.service.GetFile(id)
+	if appError != nil {
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(resp)
+	helper.SendDataJson(w, http.StatusFound, dataResp)
 }
 
 func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -103,13 +97,13 @@ func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Parse the multipart form. 8MB stays in RAM, the rest goes to temp files.
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
-		http.Error(w, "File too big", http.StatusBadRequest)
+		helper.SendErrorJson(w, http.StatusBadRequest, "file too big")
 		return
 	}
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		http.Error(w, "Could not find file", http.StatusBadRequest)
+		helper.SendErrorJson(w, http.StatusBadRequest, "could not find file")
 		return
 	}
 	defer file.Close()
@@ -117,13 +111,13 @@ func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value("user_id").(string)
 
 	contentType := header.Header.Get("Content-Type")
-	resp, ok := h.service.StorageFile(file, header, contentType, userID)
-	if !ok {
-		http.Error(w, resp.Msg, http.StatusInternalServerError)
+	message, appError := h.service.StorageFile(file, header, contentType, userID)
+	if appError != nil {
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 
-	fmt.Fprintf(w, resp.Msg, header.Filename)
+	helper.SendMessageJson(w, http.StatusOK, message)
 }
 
 func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
@@ -131,16 +125,16 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value("user_id").(string)
 	h.logger.Debug("downloadHandler ", slog.String("id", fileID), slog.String("userID", userID))
 
-	fileData, ok := h.service.GetFileForUser(fileID, userID)
-	if !ok {
-		http.Error(w, "File not found", http.StatusNotFound)
+	fileData, appError := h.service.GetFileForUser(fileID, userID)
+	if appError != nil {
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 
 	fmt.Println("open: ", fileData.Path)
 	file, err := os.Open(fileData.Path)
 	if err != nil {
-		http.Error(w, "File not found", 404)
+		helper.SendErrorJson(w, http.StatusNotFound, "file not found")
 		return
 	}
 	defer file.Close()
@@ -158,13 +152,13 @@ func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {
 
 	userID := r.Context().Value("user_id").(string)
 
-	resp, ok := h.service.DeleteFileForUser(id, userID)
-	if !ok {
-		http.Error(w, resp.Msg, http.StatusInternalServerError)
+	message, appError := h.service.DeleteFileForUser(id, userID)
+	if appError != nil {
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	helper.SendMessageJson(w, http.StatusOK, message)
 }
 
 func (h *Handler) updateHandler(w http.ResponseWriter, r *http.Request) {
@@ -174,21 +168,23 @@ func (h *Handler) updateHandler(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
 
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
-		http.Error(w, "File too big", http.StatusBadRequest)
+		h.logger.Warn("file too big", slog.Any("error", err.Error()))
+		helper.SendErrorJson(w, http.StatusBadRequest, "file too big")
 		return
 	}
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		http.Error(w, "Could not find file", http.StatusBadRequest)
+		h.logger.Warn("could not find file", slog.Any("error", err.Error()))
+		helper.SendErrorJson(w, http.StatusBadRequest, "could not find file")
 		return
 	}
 	defer file.Close()
 
-	resp, ok := h.service.UpdateFile(id, file, header)
-	if !ok {
-		http.Error(w, resp.Msg, http.StatusInternalServerError)
+	message, appError := h.service.UpdateFile(id, file, header)
+	if appError != nil {
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	helper.SendMessageJson(w, http.StatusOK, message)
 }

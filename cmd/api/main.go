@@ -16,7 +16,6 @@ import (
 	"github.com/fiwon123/eznit/internal/platform/sql"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
-	"github.com/fiwon123/eznit/pkg/types"
 	"github.com/go-chi/chi/v5"
 	"github.com/joho/godotenv"
 )
@@ -96,13 +95,5 @@ func getDBPassword() string {
 }
 
 func healthcheckHandler(w http.ResponseWriter, r *http.Request) {
-	env := types.Envelope{
-		"status": "available",
-	}
-
-	err := helper.WriteJSON(w, http.StatusOK, env, nil)
-	if err != nil {
-		fmt.Println(err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-	}
+	helper.SendMessageJson(w, http.StatusOK, "available")
 }
