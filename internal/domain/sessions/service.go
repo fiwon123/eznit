@@ -95,14 +95,14 @@ func (s *Service) UseToken(token string) bool {
 	return true
 }
 
-func (s *Service) GetUserIDByToken(token string) (string, error) {
-	userID, err := s.db.GetUserIDByToken(token)
-	if err != nil {
+func (s *Service) GetUserIDByToken(token string) (string, bool) {
+	userID, ok := s.db.GetUserIDByToken(token)
+	if !ok {
 		s.logger.Error("user not found")
-		return "", err
+		return "", false
 	}
 
 	s.logger.Debug("user found!")
 
-	return userID, nil
+	return userID, true
 }

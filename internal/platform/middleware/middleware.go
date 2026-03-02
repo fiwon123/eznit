@@ -42,8 +42,8 @@ func (g *Guard) AuthUser(next http.Handler) http.Handler {
 			return
 		}
 
-		userID, err := g.session.GetUserIDByToken(token)
-		if err != nil {
+		userID, ok := g.session.GetUserIDByToken(token)
+		if !ok {
 			g.logger.Error("Unauthorized")
 			http.Error(w, "Unauthorized", 401)
 			return
