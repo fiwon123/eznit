@@ -7,6 +7,7 @@ import (
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
 	"github.com/fiwon123/eznit/internal/platform/middleware"
+	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/go-chi/chi/v5"
 )
@@ -53,23 +54,21 @@ func (h *Handler) loginHandler(w http.ResponseWriter, r *http.Request) {
 	var request LoginRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		h.logger.Error("failed to decode: ", slog.Any("error", err))
-		http.Error(w, "Failed to decode request", http.StatusBadRequest)
+		h.logger.Warn("failed to decode: ", slog.Any("error", err))
+		helper.SendErrorJson(w, http.StatusBadRequest, "Failed to decode request")
 		return
 	}
 
-	resp, ok := h.service.LoginUser(request)
-	if !ok {
-		h.logger.Error("login failed")
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+	resp, appError := h.service.LoginUser(request)
+	if appError != nil {
+		h.logger.Warn("login failed")
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 
 	h.logger.Debug("user logged in!")
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(resp)
+	helper.SendDataJson(w, http.StatusOK, resp)
 }
 
 func (h *Handler) signupHandler(w http.ResponseWriter, r *http.Request) {
@@ -78,31 +77,31 @@ func (h *Handler) signupHandler(w http.ResponseWriter, r *http.Request) {
 	var request SignupRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		h.logger.Error("failed to decode: ", slog.Any("error", err))
-		http.Error(w, "Failed to decode request", http.StatusBadRequest)
+		h.logger.Warn("failed to decode: ", slog.Any("error", err))
+		helper.SendErrorJson(w, http.StatusBadRequest, "Failed to decode request")
 		return
 	}
 
-	resp, ok := h.service.SignupUser(request)
-	if !ok {
-		h.logger.Error("signup failed")
-		http.Error(w, resp.Msg, http.StatusInternalServerError)
+	message, appError := h.service.SignupUser(request)
+	if appError != nil {
+		h.logger.Warn("signup failed")
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 
 	h.logger.Error("user signup!")
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(resp)
+	helper.SendMessageJson(w, http.StatusOK, message)
 }
 
 func (h *Handler) getUsersHandler(w http.ResponseWriter, r *http.Request) {
-	users := h.service.GetUsers()
+	users, appError := h.service.GetUsers()
+	if appError != nil {
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
+		return
+	}
 
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "Application/json")
-	json.NewEncoder(w).Encode(users)
+	helper.SendDataJson(w, http.StatusOK, users)
 }
 
 func (h *Handler) getUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -110,17 +109,16 @@ func (h *Handler) getUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Debug("getUserHandler ", slog.String("id", id))
 
-	resp, found := h.service.GetUser(id)
-	if !found {
-		h.logger.Error("user not found")
-		http.Error(w, "user not found", http.StatusNotFound)
+	resp, appError := h.service.GetUser(id)
+	if appError != nil {
+		h.logger.Warn("user not found")
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 
 	h.logger.Debug("user found!")
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	helper.SendDataJson(w, http.StatusOK, resp)
 }
 
 func (h *Handler) createUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -129,42 +127,40 @@ func (h *Handler) createUserHandler(w http.ResponseWriter, r *http.Request) {
 	var request CreateRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		h.logger.Error("failed to decode: ", slog.Any("error", err))
-		http.Error(w, "Failed to decode request", http.StatusBadRequest)
+		h.logger.Warn("failed to decode: ", slog.Any("error", err))
+		helper.SendErrorJson(w, http.StatusBadRequest, "Failed to decode request")
 		return
 	}
 
-	resp, ok := h.service.CreateUser(request)
-	if !ok {
-		h.logger.Error("create user failed")
-		http.Error(w, resp.Msg, http.StatusInternalServerError)
+	message, appError := h.service.CreateUser(request)
+	if appError != nil {
+		h.logger.Warn("create user failed")
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 
 	h.logger.Debug("user created!")
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(resp)
+	helper.SendMessageJson(w, http.StatusOK, message)
 }
 
 func (h *Handler) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id := h.extractUserID(r)
 
 	h.logger.Debug("deleteUserHandler", slog.String("id", id))
 
-	resp, ok := h.service.DeleteUser(DeleteRequest{
+	message, appError := h.service.DeleteUser(DeleteRequest{
 		Id: id,
 	})
-	if !ok {
+	if appError != nil {
 		h.logger.Error("delete user failed!")
-		http.Error(w, resp.Msg, http.StatusInternalServerError)
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 
 	h.logger.Debug("user deleted!")
 
-	json.NewEncoder(w).Encode(resp)
+	helper.SendMessageJson(w, http.StatusOK, message)
 }
 
 func (h *Handler) updateUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -172,24 +168,23 @@ func (h *Handler) updateUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Debug("updateUserHandler", slog.String("id", id))
 
-	var req UpdateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.logger.Error("failed to decode: ", slog.Any("error", err))
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	var request UpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		h.logger.Warn("failed to decode: ", slog.Any("error", err))
+		helper.SendErrorJson(w, http.StatusBadRequest, "Failed to decode request")
 		return
 	}
 
-	req.Id = id
-	resp, ok := h.service.UpdateUser(req)
-	if !ok {
+	request.Id = id
+	message, appError := h.service.UpdateUser(request)
+	if appError != nil {
 		h.logger.Error("update user failed!")
-		http.Error(w, resp.Msg, http.StatusInternalServerError)
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 
 	h.logger.Debug("user updated!")
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	helper.SendMessageJson(w, http.StatusOK, message)
 
 }
