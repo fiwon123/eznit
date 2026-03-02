@@ -25,7 +25,7 @@ func SendMessageJson(w http.ResponseWriter, statusCode int, msg string) {
 
 	env := types.Envelope{
 		StatusCode: statusCode,
-		Message:    msg,
+		Msg:        msg,
 		Timestamp:  time.Now().Format(time.RFC3339),
 	}
 

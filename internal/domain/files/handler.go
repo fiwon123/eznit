@@ -53,7 +53,7 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 }
 
 func (h *Handler) getFilesForUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("user_id").(string)
+	userID := h.extractUserID(r)
 	h.logger.Debug("user id: ", slog.String("id", userID))
 
 	dataResp, appError := h.service.GetFilesForUser(userID)
@@ -78,7 +78,7 @@ func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getFileHandler(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id := h.extractFileID(r)
 	h.logger.Debug("getFileHandler ", slog.String("id", id))
 
 	dataResp, appError := h.service.GetFile(id)
@@ -92,25 +92,18 @@ func (h *Handler) getFileHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	h.logger.Debug("uploadHandler")
+
 	// Prevents attackers from sending infinite data to crash your server.
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
 
-	// Parse the multipart form. 8MB stays in RAM, the rest goes to temp files.
-	if err := r.ParseMultipartForm(8 << 20); err != nil {
-		helper.SendErrorJson(w, http.StatusBadRequest, "file too big")
-		return
-	}
-
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		helper.SendErrorJson(w, http.StatusBadRequest, "could not find file")
+	file, header, contentType, appError := h.extractFile(r)
+	if appError != nil {
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 	defer file.Close()
 
-	userID := r.Context().Value("user_id").(string)
-
-	contentType := header.Header.Get("Content-Type")
+	userID := h.extractUserID(r)
 	message, appError := h.service.StorageFile(file, header, contentType, userID)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
@@ -121,8 +114,8 @@ func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
-	fileID := chi.URLParam(r, "id")
-	userID := r.Context().Value("user_id").(string)
+	fileID := h.extractFileID(r)
+	userID := h.extractUserID(r)
 	h.logger.Debug("downloadHandler ", slog.String("id", fileID), slog.String("userID", userID))
 
 	fileData, appError := h.service.GetFileForUser(fileID, userID)
@@ -147,10 +140,9 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id := h.extractFileID(r)
+	userID := h.extractUserID(r)
 	h.logger.Debug("deleteHandler ", slog.String("id", id))
-
-	userID := r.Context().Value("user_id").(string)
 
 	message, appError := h.service.DeleteFileForUser(id, userID)
 	if appError != nil {
@@ -162,26 +154,20 @@ func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) updateHandler(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+
+	id := h.extractFileID(r)
 	h.logger.Debug("updateHandler ", slog.String("id", id))
 
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
 
-	if err := r.ParseMultipartForm(8 << 20); err != nil {
-		h.logger.Warn("file too big", slog.Any("error", err.Error()))
-		helper.SendErrorJson(w, http.StatusBadRequest, "file too big")
-		return
-	}
-
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		h.logger.Warn("could not find file", slog.Any("error", err.Error()))
-		helper.SendErrorJson(w, http.StatusBadRequest, "could not find file")
+	file, header, _, appError := h.extractFile(r)
+	if appError != nil {
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 	defer file.Close()
 
-	message, appError := h.service.UpdateFile(id, file, header)
+	message, appError := h.service.UpdateFile(file, header, id)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 	}

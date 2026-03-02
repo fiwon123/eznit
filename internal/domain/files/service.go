@@ -79,6 +79,7 @@ func (s *service) GetFilesForUser(userID string) (ListResponse, *errors.AppError
 }
 
 func (s *service) GetFile(id string) (FileData, *errors.AppError) {
+
 	s.logger.Debug("GetFile", slog.String("id", id))
 
 	file, ok := s.db.GetFile(id)
@@ -94,6 +95,7 @@ func (s *service) GetFile(id string) (FileData, *errors.AppError) {
 }
 
 func (s *service) GetFileForUser(id string, userID string) (*File, *errors.AppError) {
+
 	s.logger.Debug("GetFileForUser", slog.String("id", id), slog.String("userID", userID))
 
 	file, ok := s.db.GetFileForUser(id, userID)
@@ -134,14 +136,14 @@ func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader,
 		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
 	}
 
-	dst, err := os.Create(finalPath)
+	dest, err := os.Create(finalPath)
 	if err != nil {
 		s.logger.Error("create file path failed: ", slog.Any("error", err))
 		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
 	}
-	defer dst.Close()
+	defer dest.Close()
 
-	_, err = io.Copy(dst, file)
+	_, err = io.Copy(dest, file)
 	if err != nil {
 		s.logger.Error("copy file error: ", slog.Any("error", err))
 		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
@@ -183,6 +185,7 @@ func (s *service) DeleteFile(id string) (string, *errors.AppError) {
 }
 
 func (s *service) DeleteFileForUser(id string, userID string) (string, *errors.AppError) {
+
 	s.logger.Debug("DeleteFileForUser ", slog.String("id", id), slog.String("userID", userID))
 
 	if id == "" {
@@ -212,7 +215,7 @@ func (s *service) DeleteFileForUser(id string, userID string) (string, *errors.A
 	return "file deleted!", nil
 }
 
-func (s *service) UpdateFile(id string, file multipart.File, header *multipart.FileHeader) (string, *errors.AppError) {
+func (s *service) UpdateFile(file multipart.File, header *multipart.FileHeader, id string) (string, *errors.AppError) {
 
 	s.logger.Debug("UpdateFile", slog.String("id", id))
 
