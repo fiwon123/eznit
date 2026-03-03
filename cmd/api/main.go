@@ -22,6 +22,9 @@ import (
 
 func main() {
 
+	// .env.local overwrite .env for development
+	_ = godotenv.Load(".env.local", ".env")
+
 	var debugFlag bool
 	flag.BoolVar(&debugFlag, "debug", false, "show debug logs")
 	flag.Parse()
@@ -35,9 +38,6 @@ func main() {
 		log.Fatal(err)
 	}
 	defer logger.Sync()
-
-	// .env.local overwrite .env for development
-	_ = godotenv.Load(".env.local", ".env")
 
 	host := os.Getenv("DB_HOST")
 	port := os.Getenv("DB_PORT")

@@ -111,7 +111,7 @@ func getConsoleEncoder(enableTime bool, enableStack bool) zapcore.Encoder {
 
 func getJsonEncoder() zapcore.Encoder {
 
-	return zapcore.NewConsoleEncoder(zapcore.EncoderConfig{
+	return zapcore.NewJSONEncoder(zapcore.EncoderConfig{
 		TimeKey:       "ts",
 		LevelKey:      "level",
 		NameKey:       "logger",

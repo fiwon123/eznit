@@ -45,5 +45,7 @@ downloads/
 downloads/*
 uploads/
 uploads/*
+logs/
+logs/*
 ~logs/
 ~logs/*
