@@ -30,16 +30,16 @@ func (g *Guard) AuthUser(next http.Handler) http.Handler {
 
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			g.logger.Warn("Unauthorized: No token provided")
-			helper.SendErrorJson(w, http.StatusUnauthorized, "Unauthorized: No token provided")
+			g.logger.Warn("No token provided")
+			helper.SendErrorJson(w, http.StatusUnauthorized, "No token provided")
 			return
 		}
 
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 
 		if !g.session.IsValid(token) {
-			g.logger.Warn("Unauthorized: Invalid token")
-			helper.SendErrorJson(w, http.StatusUnauthorized, "Unauthorized: Invalid token")
+			g.logger.Warn("Invalid token")
+			helper.SendErrorJson(w, http.StatusUnauthorized, "Invalid token")
 			return
 		}
 
@@ -50,7 +50,7 @@ func (g *Guard) AuthUser(next http.Handler) http.Handler {
 			return
 		}
 
-		g.logger.Debug("Authorized User: ", slog.String("userID", userID))
+		g.logger.Debug("Authorized User", slog.String("userID", userID))
 		ctx := context.WithValue(r.Context(), "user_id", userID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -60,12 +60,12 @@ func (g *Guard) AuthAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			helper.SendErrorJson(w, http.StatusUnauthorized, "Unauthorized: No token provided")
+			helper.SendErrorJson(w, http.StatusUnauthorized, "No token provided")
 			return
 		}
 
 		// TODO
-		helper.SendErrorJson(w, http.StatusUnauthorized, "Unauthorized: Invalid token")
+		helper.SendErrorJson(w, http.StatusUnauthorized, "Invalid token")
 
 		next.ServeHTTP(w, r)
 	})

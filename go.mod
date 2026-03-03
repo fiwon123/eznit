@@ -14,10 +14,10 @@ require (
 	go.uber.org/zap/exp v0.3.0
 	golang.org/x/crypto v0.48.0
 	golang.org/x/term v0.40.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
-	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )

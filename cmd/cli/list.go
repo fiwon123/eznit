@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/fiwon123/eznit/internal/domain/files"
+	"github.com/fiwon123/eznit/pkg/types"
 )
 
 type ListCmd struct {
@@ -20,15 +22,15 @@ func (cmd *ListCmd) Run(g *Globals) error {
 	}
 
 	if cmd.All {
-		sendListRequest(g.api.baseURL, false, token)
+		sendListRequest(g.api.baseURL, false, token, g)
 	} else {
-		sendListRequest(g.api.baseURL, true, token)
+		sendListRequest(g.api.baseURL, true, token, g)
 	}
 
 	return nil
 }
 
-func sendListRequest(baseURL string, onlyMe bool, token string) error {
+func sendListRequest(baseURL string, onlyMe bool, token string, g *Globals) {
 
 	url := baseURL + "/v1/files"
 	if onlyMe {
@@ -37,7 +39,8 @@ func sendListRequest(baseURL string, onlyMe bool, token string) error {
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return err
+		g.logger.Warn("error to send request to " + url)
+		return
 	}
 
 	client := &http.Client{
@@ -46,26 +49,36 @@ func sendListRequest(baseURL string, onlyMe bool, token string) error {
 
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	fmt.Println("request: ", url)
+	g.logger.Debug("request: ", slog.String("url", url))
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		g.logger.Error("request failed: %w", slog.String("error", err.Error()))
+		return
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned error: %s", resp.Status)
+	if resp.StatusCode != http.StatusOK {
+		var response types.Envelope
+
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			g.logger.Error("error decode ", slog.String("error", err.Error()))
+			return
+		}
+
+		g.logger.Warn("response", slog.Any("result", response))
+		fmt.Println("signup if not registered and/or login to generate a new token")
+		return
 	}
 
 	var response files.ListResponse
 
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return fmt.Errorf("error decode")
+		g.logger.Error("error decode ", slog.String("error", err.Error()))
+		return
 	}
 
 	for i := 0; i < response.Total; i++ {
 		fmt.Println(response.Data[i])
 	}
 
-	return nil
 }
