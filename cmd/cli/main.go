@@ -66,7 +66,15 @@ func main() {
 	cli := CLI{}
 	ctx := kong.Parse(&cli, kong.Vars{"version": Version})
 
-	l := logger.New(false, cli.Debug)
+	logsFolder, _ := os.LookupEnv("CLI_LOGS")
+	if logsFolder == "" {
+		logsFolder = "./logs/"
+	}
+	l, err := logger.NewConsole(logsFolder, cli.Debug)
+	if err != nil {
+		fmt.Println("failed intialize logger! ", err)
+		return
+	}
 	defer l.Sync()
 
 	host, _ := os.LookupEnv("CLI_API_HOST")
@@ -87,7 +95,7 @@ func main() {
 	api := newAPI(host, port)
 	globals = *newGlobals(api, downloads, l)
 
-	err := ctx.Run(&globals)
+	err = ctx.Run(&globals)
 	ctx.FatalIfErrorf(err)
 }
 
