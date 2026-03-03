@@ -26,7 +26,14 @@ func main() {
 	flag.BoolVar(&debugFlag, "debug", false, "show debug logs")
 	flag.Parse()
 
-	logger := logger.New(true, debugFlag)
+	logsFolder, _ := os.LookupEnv("API_LOGS")
+	if logsFolder == "" {
+		logsFolder = "./logs/"
+	}
+	logger, err := logger.NewJson(logsFolder, debugFlag)
+	if err != nil {
+		log.Fatal(err)
+	}
 	defer logger.Sync()
 
 	// .env.local overwrite .env for development

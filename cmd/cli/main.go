@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -72,8 +73,7 @@ func main() {
 	}
 	l, err := logger.NewConsole(logsFolder, cli.Debug)
 	if err != nil {
-		fmt.Println("failed intialize logger! ", err)
-		return
+		log.Fatal(err)
 	}
 	defer l.Sync()
 
