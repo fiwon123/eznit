@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
 
 	"github.com/fiwon123/eznit/internal/domain/users"
+	"github.com/fiwon123/eznit/pkg/types"
 	"golang.org/x/term"
 )
 
@@ -17,41 +19,48 @@ type SignupCmd struct {
 }
 
 func (cmd *SignupCmd) Run(g *Globals) error {
+	fmt.Println("signup")
+
 	var email string
 
 	fmt.Print("Enter Email: ")
 	fmt.Scan(&email)
 	password, err := promptPassword("Enter Password: ")
 	if err != nil {
-		return err
+		g.logger.Warn("prompt password", slog.String("error", err.Error()))
+		return nil
 	}
 
 	confirm, err := promptPassword("Confirm password: ")
 	if err != nil {
-		return err
+		g.logger.Warn("prompt confirm password", slog.String("error", err.Error()))
+		return nil
 	}
 
+	fmt.Println("")
 	if string(password) != string(confirm) {
-		return fmt.Errorf("passwords do not match")
+		g.logger.Warn("passwords do not match")
+		return nil
 	}
 
-	err = sendSignupRequest(g.api.baseURL, users.SignupRequest{
+	ok := sendSignupRequest(g.api.baseURL, users.SignupRequest{
 		Email:           email,
 		Password:        password,
 		ConfirmPassword: confirm,
-	})
-	if err != nil {
-		return fmt.Errorf("internal server error")
+	}, g)
+	if !ok {
+		return nil
 	}
 
 	fmt.Println("Account created successfully!")
 	return nil
 }
 
-func sendSignupRequest(baseURL string, request users.SignupRequest) error {
+func sendSignupRequest(baseURL string, request users.SignupRequest, g *Globals) bool {
 	jsonData, err := json.Marshal(request)
 	if err != nil {
-		return err
+		g.logger.Error("failed to convert request to json ", slog.Any("error", err))
+		return false
 	}
 
 	client := &http.Client{
@@ -60,15 +69,25 @@ func sendSignupRequest(baseURL string, request users.SignupRequest) error {
 
 	resp, err := client.Post(baseURL+"/v1/signup", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		g.logger.Warn("request failed: %s", slog.String("error", err.Error()))
+		return false
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned error: %s", resp.Status)
+		var response types.Envelope
+
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			g.logger.Error("failed to decode ", slog.String("error", err.Error()))
+			return false
+		}
+
+		g.logger.Warn("signup failed", slog.Any("result", response))
+
+		return false
 	}
 
-	return nil
+	return true
 }
 
 func promptPassword(msg string) (string, error) {

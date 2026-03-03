@@ -32,7 +32,6 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 	r.Group(func(r chi.Router) {
 		r.Use(h.guard.AuthAdmin)
 
-		r.Post("/v1/users", h.createUserHandler)
 		r.Delete("/v1/users/{id}", h.deleteUserHandler)
 		r.Put("/v1/users/{id}", h.updateUserHandler)
 	})
@@ -82,7 +81,7 @@ func (h *Handler) signupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	message, appError := h.service.SignupUser(request)
+	message, appError := h.service.CreateUser(request)
 	if appError != nil {
 		h.logger.Warn("signup failed")
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
@@ -119,29 +118,6 @@ func (h *Handler) getUserHandler(w http.ResponseWriter, r *http.Request) {
 	h.logger.Debug("user found!")
 
 	helper.SendDataJson(w, http.StatusOK, resp)
-}
-
-func (h *Handler) createUserHandler(w http.ResponseWriter, r *http.Request) {
-	h.logger.Debug("createUserHandler")
-
-	var request CreateRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		h.logger.Warn("failed to decode: ", slog.Any("error", err))
-		helper.SendErrorJson(w, http.StatusBadRequest, "Failed to decode request")
-		return
-	}
-
-	message, appError := h.service.CreateUser(request)
-	if appError != nil {
-		h.logger.Warn("create user failed")
-		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
-		return
-	}
-
-	h.logger.Debug("user created!")
-
-	helper.SendMessageJson(w, http.StatusOK, message)
 }
 
 func (h *Handler) deleteUserHandler(w http.ResponseWriter, r *http.Request) {

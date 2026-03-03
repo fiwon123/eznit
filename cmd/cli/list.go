@@ -16,6 +16,8 @@ type ListCmd struct {
 }
 
 func (cmd *ListCmd) Run(g *Globals) error {
+	fmt.Println("list")
+
 	token, err := getToken()
 	if err != nil {
 		return fmt.Errorf("not logged in")

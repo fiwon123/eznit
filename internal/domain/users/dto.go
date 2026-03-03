@@ -4,11 +4,6 @@ type UserData struct {
 	Email string `json:"email"`
 }
 
-type CreateRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
 type SignupRequest struct {
 	Email           string `json:"email"`
 	Password        string `json:"password"`

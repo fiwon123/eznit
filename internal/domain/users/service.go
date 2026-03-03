@@ -57,22 +57,6 @@ func (s *Service) GetUser(id string) (*UserData, *errors.AppError) {
 	return resp, nil
 }
 
-func (s *Service) SignupUser(req SignupRequest) (string, *errors.AppError) {
-	s.logger.Debug("SignupUser", slog.Any("request", req))
-
-	if req.Password != req.ConfirmPassword {
-		s.logger.Error("passwords not match")
-		return "", errors.NewAppError(http.StatusBadRequest, "passwords not match")
-	}
-
-	if req.Password == "" {
-		s.logger.Error("passwords is empty")
-		return "", errors.NewAppError(http.StatusBadRequest, "passwords is empty")
-	}
-
-	return "user registered!", nil
-}
-
 func (s *Service) LoginUser(req LoginRequest) (LoginResponse, *errors.AppError) {
 	s.logger.Debug("LoginUser", slog.Any("request", req))
 
@@ -101,7 +85,7 @@ func (s *Service) LoginUser(req LoginRequest) (LoginResponse, *errors.AppError) 
 	}, nil
 }
 
-func (s *Service) CreateUser(req CreateRequest) (string, *errors.AppError) {
+func (s *Service) CreateUser(req SignupRequest) (string, *errors.AppError) {
 	s.logger.Debug("CreateUser", slog.Any("request", req))
 
 	db := s.db
@@ -114,6 +98,11 @@ func (s *Service) CreateUser(req CreateRequest) (string, *errors.AppError) {
 	if req.Password == "" {
 		s.logger.Warn("password is empty")
 		return "", errors.NewAppError(http.StatusBadRequest, "password is empty")
+	}
+
+	if req.Password != req.ConfirmPassword {
+		s.logger.Warn("passwords do not match")
+		return "", errors.NewAppError(http.StatusBadRequest, "passwords do not match")
 	}
 
 	hash, err := hashPassword(req.Password)
