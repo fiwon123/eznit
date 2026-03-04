@@ -27,7 +27,7 @@ func (cmd *LoginCmd) Run(g *Globals) error {
 
 	password, err := promptPassword("Enter Password: ")
 	if err != nil {
-		g.logger.Warn("promp password", slog.String("error", err.Error()))
+		g.logger.Warn("promp password. ", slog.String("error", err.Error()))
 		return nil
 	}
 
@@ -39,11 +39,11 @@ func (cmd *LoginCmd) Run(g *Globals) error {
 		return nil
 	}
 
-	g.logger.Info("account logged in!")
+	g.logger.Info("account logged in! ")
 
 	err = saveToken(response.Token)
 	if err != nil {
-		g.logger.Warn("failed to save token")
+		g.logger.Warn("failed to save token. ")
 		return nil
 	}
 
@@ -53,7 +53,7 @@ func (cmd *LoginCmd) Run(g *Globals) error {
 func sendLoginRequest(baseURL string, request users.LoginRequest, g *Globals) (users.LoginResponse, bool) {
 	jsonData, err := json.Marshal(request)
 	if err != nil {
-		g.logger.Error("failed to convert request to json ", slog.Any("error", err))
+		g.logger.Error("failed to convert request to json. ", slog.Any("error", err))
 		return users.LoginResponse{}, false
 	}
 
@@ -64,7 +64,7 @@ func sendLoginRequest(baseURL string, request users.LoginRequest, g *Globals) (u
 	fmt.Println()
 	resp, err := client.Post(baseURL+"/v1/login", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		g.logger.Warn("failed to send request to " + baseURL + "/v1/login")
+		g.logger.Warn("failed to send request to " + baseURL + "/v1/login ")
 		return users.LoginResponse{}, false
 	}
 	defer resp.Body.Close()
@@ -73,18 +73,18 @@ func sendLoginRequest(baseURL string, request users.LoginRequest, g *Globals) (u
 		var response types.Envelope
 
 		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-			g.logger.Error("failed to decode ", slog.String("error", err.Error()))
+			g.logger.Error("failed to decode. ", slog.String("error", err.Error()))
 			return users.LoginResponse{}, false
 		}
 
-		g.logger.Warn("signup if not registered", slog.Any("result", response))
+		g.logger.Warn("signup if not registered. ", slog.Any("result", response))
 
 		return users.LoginResponse{}, false
 	}
 
 	var tokenResp users.LoginResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		g.logger.Error("failed to decode", slog.String("error", err.Error()))
+		g.logger.Error("failed to decode. ", slog.String("error", err.Error()))
 		return users.LoginResponse{}, false
 	}
 

@@ -18,9 +18,11 @@ type ListCmd struct {
 func (cmd *ListCmd) Run(g *Globals) error {
 	fmt.Println("list")
 
+	fmt.Println()
 	token, err := getToken()
 	if err != nil {
-		return fmt.Errorf("not logged in")
+		g.logger.Warn("not logged in! ")
+		return nil
 	}
 
 	if cmd.All {
@@ -51,10 +53,10 @@ func sendListRequest(baseURL string, onlyMe bool, token string, g *Globals) {
 
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	g.logger.Debug("request: ", slog.String("url", url))
+	g.logger.Debug("request", slog.String("url", url))
 	resp, err := client.Do(req)
 	if err != nil {
-		g.logger.Warn("request failed: %s", slog.String("error", err.Error()))
+		g.logger.Warn("request failed. ", slog.String("error", err.Error()))
 		return
 	}
 	defer resp.Body.Close()
@@ -63,18 +65,18 @@ func sendListRequest(baseURL string, onlyMe bool, token string, g *Globals) {
 		var response types.Envelope
 
 		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-			g.logger.Error("failed to decode ", slog.String("error", err.Error()))
+			g.logger.Error("failed to decode. ", slog.String("error", err.Error()))
 			return
 		}
 
-		g.logger.Warn("signup if not registered and/or login to generate a new token", slog.Any("result", response))
+		g.logger.Warn("signup if not registered and/or login to generate a new token. ", slog.Any("result", response))
 		return
 	}
 
 	var response files.ListResponse
 
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		g.logger.Error("failed to decode ", slog.String("error", err.Error()))
+		g.logger.Error("failed to decode. ", slog.String("error", err.Error()))
 		return
 	}
 

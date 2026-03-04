@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"os"
@@ -33,25 +34,29 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 	dest, _ := reader.ReadString('\n')
 	dest = strings.TrimSpace(dest)
 
+	fmt.Println()
 	if dest == "" {
 		dest = g.downloads
-		fmt.Println("destination folder is empty, default download folder path will be used: ", dest)
+		g.logger.Warn("destination folder is empty, default download folder path will be used. ", slog.String("default", dest))
 	}
 
 	err := helper.CreatePathIfNotExists(dest)
 	if err != nil {
-		return fmt.Errorf("can't create destination folder path")
+		g.logger.Warn("can't create destination folder path. ", slog.String("error", err.Error()))
+		return nil
 	}
 
 	url := g.api.baseURL + "/v1/files/" + id + "/content"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return err
+		g.logger.Warn("failed to create new request. ", slog.String("error", err.Error()))
+		return nil
 	}
 
 	token, err := getToken()
 	if err != nil {
-		return fmt.Errorf("not logged in")
+		g.logger.Warn("not logged in ", slog.String("error", err.Error()))
+		return nil
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -66,7 +71,8 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status: %s", resp.Status)
+		g.logger.Warn("bad status ", slog.String("status", resp.Status))
+		return nil
 	}
 
 	var filename string
@@ -75,7 +81,7 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 		_, params, err := mime.ParseMediaType(contentDisp)
 		if err == nil {
 			filename = params["filename"]
-			fmt.Println("Server suggests filename:", filename)
+			g.logger.Info("Server suggests filename", slog.String("filename", filename))
 		}
 	}
 
@@ -91,22 +97,28 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 
 	counter := 1
 	exists, _ := helper.PathExists(fullpath)
-	fmt.Println("exists: ", exists)
+	g.logger.Debug("exists value. ", slog.Bool("exists", exists))
 	for exists {
 		fullpath = filepath.Join(dest, fmt.Sprintf("%s_%d.%s", name, counter, ext))
 
-		fmt.Println("for ", fullpath)
+		g.logger.Debug("for ", slog.String("path", fullpath))
 		exists, _ = helper.PathExists(fullpath)
 		counter += 1
 	}
 
-	fmt.Println(fullpath)
+	g.logger.Info(fullpath)
 	out, err := os.Create(fullpath)
 	if err != nil {
-		return err
+		g.logger.Error("can't create path ", slog.String("error", err.Error()))
+		return nil
 	}
 	defer out.Close()
 
 	_, err = io.Copy(out, resp.Body)
-	return err
+	if err != nil {
+		g.logger.Error("can't copy file content ", slog.String("error", err.Error()))
+		return nil
+	}
+
+	return nil
 }

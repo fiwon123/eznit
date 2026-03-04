@@ -27,19 +27,19 @@ func (cmd *SignupCmd) Run(g *Globals) error {
 	fmt.Scan(&email)
 	password, err := promptPassword("Enter Password: ")
 	if err != nil {
-		g.logger.Warn("prompt password", slog.String("error", err.Error()))
+		g.logger.Warn("prompt password. ", slog.String("error", err.Error()))
 		return nil
 	}
 
 	confirm, err := promptPassword("Confirm password: ")
 	if err != nil {
-		g.logger.Warn("prompt confirm password", slog.String("error", err.Error()))
+		g.logger.Warn("prompt confirm password. ", slog.String("error", err.Error()))
 		return nil
 	}
 
 	fmt.Println("")
 	if string(password) != string(confirm) {
-		g.logger.Warn("passwords do not match")
+		g.logger.Warn("passwords do not match. ")
 		return nil
 	}
 
@@ -52,14 +52,14 @@ func (cmd *SignupCmd) Run(g *Globals) error {
 		return nil
 	}
 
-	fmt.Println("Account created successfully!")
+	g.logger.Info("Account created successfully! ")
 	return nil
 }
 
 func sendSignupRequest(baseURL string, request users.SignupRequest, g *Globals) bool {
 	jsonData, err := json.Marshal(request)
 	if err != nil {
-		g.logger.Error("failed to convert request to json ", slog.Any("error", err))
+		g.logger.Error("failed to convert request to json. ", slog.Any("error", err))
 		return false
 	}
 
@@ -69,7 +69,7 @@ func sendSignupRequest(baseURL string, request users.SignupRequest, g *Globals) 
 
 	resp, err := client.Post(baseURL+"/v1/signup", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		g.logger.Warn("request failed: %s", slog.String("error", err.Error()))
+		g.logger.Warn("request failed. ", slog.String("error", err.Error()))
 		return false
 	}
 	defer resp.Body.Close()
@@ -78,11 +78,11 @@ func sendSignupRequest(baseURL string, request users.SignupRequest, g *Globals) 
 		var response types.Envelope
 
 		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-			g.logger.Error("failed to decode ", slog.String("error", err.Error()))
+			g.logger.Error("failed to decode. ", slog.String("error", err.Error()))
 			return false
 		}
 
-		g.logger.Warn("signup failed", slog.Any("result", response))
+		g.logger.Warn("signup failed. ", slog.Any("result", response))
 
 		return false
 	}
