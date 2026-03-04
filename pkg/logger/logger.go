@@ -19,17 +19,20 @@ type Config struct {
 	Sugar     *zap.SugaredLogger
 }
 
-func NewConsole(logFolder string, enableDebug bool) (*Config, error) {
+func NewConsole(logFolder string, enableDebug bool, onlyLogFile bool) (*Config, error) {
 
 	var cores []zapcore.Core
+	var encoder zapcore.Encoder
 
-	// console
-	encoder := getConsoleEncoder(false, false)
-	consoleCore := initConsole(encoder, enableDebug)
-	cores = append(cores, consoleCore)
+	if !onlyLogFile {
+		// console
+		encoder = getConsoleEncoder(false, false, false)
+		consoleCore := initConsole(encoder, enableDebug)
+		cores = append(cores, consoleCore)
+	}
 
 	// log file
-	encoder = getConsoleEncoder(true, true)
+	encoder = getConsoleEncoder(true, true, true)
 	fileCore, err := initLogFile(encoder, logFolder, enableDebug)
 	if err != nil {
 		return nil, err
@@ -85,25 +88,30 @@ func (l *Config) Sync() {
 	l.zapLogger.Sync()
 }
 
-func getConsoleEncoder(enableTime bool, enableStack bool) zapcore.Encoder {
+func getConsoleEncoder(enableTime bool, enableStack bool, enableCaller bool) zapcore.Encoder {
 	timeKey := ""
 	if enableTime {
 		timeKey = "ts"
 	}
 
-	stackKey := "stacktrace"
+	stackKey := ""
 	if enableStack {
 		stackKey = "stacktrace"
+	}
 
+	callerKey := ""
+	if enableCaller {
+		callerKey = "caller"
 	}
 
 	return zapcore.NewConsoleEncoder(zapcore.EncoderConfig{
 		TimeKey:        timeKey,
 		LevelKey:       "level",
+		CallerKey:      callerKey,
 		MessageKey:     "msg",
 		StacktraceKey:  stackKey,
 		EncodeTime:     zapcore.ISO8601TimeEncoder,
-		EncodeLevel:    zapcore.CapitalLevelEncoder,
+		EncodeLevel:    zapcore.CapitalColorLevelEncoder,
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 		EncodeDuration: zapcore.SecondsDurationEncoder,
 	})
@@ -114,7 +122,6 @@ func getJsonEncoder() zapcore.Encoder {
 	return zapcore.NewJSONEncoder(zapcore.EncoderConfig{
 		TimeKey:       "ts",
 		LevelKey:      "level",
-		NameKey:       "logger",
 		CallerKey:     "caller",
 		MessageKey:    "msg",
 		StacktraceKey: "stacktrace",

@@ -18,6 +18,7 @@ type DownloadCmd struct {
 }
 
 func (cmd *DownloadCmd) Run(g *Globals) error {
+	fmt.Println("download")
 
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("id file: ")

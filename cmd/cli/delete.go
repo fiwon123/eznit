@@ -13,6 +13,7 @@ type DeleteCmd struct {
 }
 
 func (cmd *DeleteCmd) Run(g *Globals) error {
+	fmt.Println("delete")
 
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("id file: ")

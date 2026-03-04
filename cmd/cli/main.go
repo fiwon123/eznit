@@ -71,7 +71,7 @@ func main() {
 	if logsFolder == "" {
 		logsFolder = "./logs/"
 	}
-	l, err := logger.NewConsole(logsFolder, cli.Debug)
+	l, err := logger.NewConsole(logsFolder, cli.Debug, false)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -95,8 +95,7 @@ func main() {
 	api := newAPI(host, port)
 	globals = *newGlobals(api, downloads, l)
 
-	err = ctx.Run(&globals)
-	ctx.FatalIfErrorf(err)
+	ctx.Run(&globals)
 }
 
 func getToken() (string, error) {
