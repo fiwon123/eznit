@@ -1,4 +1,4 @@
-include .env
+include .env .env.local
 export
 
 SERVER_NAME := server
@@ -93,7 +93,7 @@ clean:
 	rm -rf $(BUILD_DIR)
 
 ## Migrations
-CONN := "postgresql://$(DB_USER):$(DB_PWD)@localhost:$(DB_PORT)/$(DB_NAME)?sslmode=disable"
+CONN := "postgresql://$(DB_USER):$(DB_PWD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable"
 FOLDER := ./db/migrations
 
 .PHONY: migrate_up migrate_down migrate_create migrate_force

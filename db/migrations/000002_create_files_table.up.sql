@@ -1,6 +1,6 @@
 CREATE TABLE files (
-    id  BIGSERIAL PRIMARY KEY,
-    user_id BIGSERIAL NOT NULL,
+    id  UUID PRIMARY KEY NOT NULL,
+    user_id UUID NOT NULL,
     name TEXT,
     ext TEXT,
     path TEXT,
