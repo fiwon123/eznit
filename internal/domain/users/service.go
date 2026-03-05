@@ -80,6 +80,7 @@ func (s *Service) LoginUser(req LoginRequest) (LoginResponse, *errors.AppError) 
 		return LoginResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to create a new session")
 	}
 
+	s.logger.Debug("user token", slog.String("token", token))
 	return LoginResponse{
 		Token: token,
 	}, nil

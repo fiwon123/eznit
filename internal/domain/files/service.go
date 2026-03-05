@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/fiwon123/eznit/pkg/errors"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
+	"github.com/oklog/ulid/v2"
 )
 
 type service struct {
@@ -116,14 +118,18 @@ func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader,
 		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
 	}
 
-	fullname := filepath.Base(header.Filename)
-	ext := filepath.Ext(fullname)
+	fileName := filepath.Base(header.Filename)
+	ext := filepath.Ext(fileName)
 
-	cleanName := strings.ReplaceAll(fullname, ext, "")
+	cleanName := strings.ReplaceAll(fileName, ext, "")
 	ext = strings.ReplaceAll(ext, ".", "")
-	finalPath := filepath.Join(s.uploadFolder, fmt.Sprintf("%d_%s", time.Now().Unix(), cleanName))
+	fileID := ulid.Make().String()
+	version := 1
+	finalPath := filepath.Join(s.uploadFolder, userID, fileID, strconv.Itoa(version)+"_"+fileName)
 
 	storageFile := File{
+		ID:          fileID,
+		Version:     version,
 		UserID:      userID,
 		Name:        cleanName,
 		Ext:         ext,
@@ -132,6 +138,11 @@ func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader,
 	}
 
 	ok := s.db.StorageFile(storageFile)
+	if !ok {
+		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
+	}
+
+	ok = s.db.StorageFileHistory(storageFile)
 	if !ok {
 		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
 	}

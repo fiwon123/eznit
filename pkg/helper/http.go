@@ -8,7 +8,7 @@ import (
 	"github.com/fiwon123/eznit/pkg/types"
 )
 
-func SendDataJson(w http.ResponseWriter, statusCode int, data interface{}) {
+func SendDataJson(w http.ResponseWriter, statusCode int, data any) {
 
 	env := types.Envelope{
 		StatusCode: statusCode,

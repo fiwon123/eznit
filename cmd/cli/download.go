@@ -42,7 +42,7 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 
 	err := helper.CreatePathIfNotExists(dest)
 	if err != nil {
-		g.logger.Warn("can't create destination folder path. ", slog.String("error", err.Error()))
+		g.logger.Warn("failed to create destination folder path. ", slog.String("error", err.Error()))
 		return nil
 	}
 
@@ -109,14 +109,14 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 	g.logger.Info(fullpath)
 	out, err := os.Create(fullpath)
 	if err != nil {
-		g.logger.Error("can't create path ", slog.String("error", err.Error()))
+		g.logger.Error("failed to create path ", slog.String("error", err.Error()))
 		return nil
 	}
 	defer out.Close()
 
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		g.logger.Error("can't copy file content ", slog.String("error", err.Error()))
+		g.logger.Error("failed to copy file content ", slog.String("error", err.Error()))
 		return nil
 	}
 

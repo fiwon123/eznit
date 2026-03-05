@@ -92,29 +92,31 @@ func (r *sqlRepository) StorageFile(file File) bool {
 
 	r.logger.Debug("storaging file: ", slog.Any("file", file))
 
-	query := `INSERT INTO files (user_id, name, ext, path, content_type)
-          VALUES (:user_id, :name, :ext, :path, :content_type)
-          RETURNING id`
+	query := `INSERT INTO files (id, user_id, name, ext, path, content_type)
+          VALUES (:id, :user_id, :name, :ext, :path, :content_type)`
 
-	var fileID string
-	rows, err := r.db.NamedQuery(query, file)
+	_, err := r.db.NamedExec(query, file)
 	if err != nil {
 		r.logger.Error("storage file table files", slog.Any("error", err))
 		return false
 	}
 
-	if rows.Next() {
-		rows.Scan(&fileID)
-	}
+	r.logger.Debug("file storaged!")
 
-	file.ID = fileID
-	_, err = r.db.NamedExec("INSERT INTO files_history (file_id, path, version) VALUES (:id, :path, :version)", file)
+	return true
+}
+
+func (r *sqlRepository) StorageFileHistory(file File) bool {
+
+	r.logger.Debug("storaging file history: ", slog.Any("file", file))
+
+	_, err := r.db.NamedExec("INSERT INTO files_history (file_id, path, version) VALUES (:id, :path, :version)", file)
 	if err != nil {
 		r.logger.Error("storage file table files_history ", slog.Any("error", err))
 		return false
 	}
 
-	r.logger.Debug("file storaged!")
+	r.logger.Debug("file history storaged!")
 
 	return true
 }

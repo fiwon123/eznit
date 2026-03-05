@@ -22,6 +22,7 @@ type Repository interface {
 	GetFile(id string) (*File, bool)
 	GetFileForUser(id string, userID string) (*File, bool)
 	StorageFile(file File) bool
+	StorageFileHistory(file File) bool
 	DeleteFile(id string) bool
 	DeleteFileForUser(id string, userID string) bool
 	UpdateFile(file File) bool

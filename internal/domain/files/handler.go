@@ -1,7 +1,6 @@
 package files
 
 import (
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -124,7 +123,7 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Println("open: ", fileData.Path)
+	h.logger.Debug("open: ", slog.String("path", fileData.Path))
 	file, err := os.Open(fileData.Path)
 	if err != nil {
 		helper.SendErrorJson(w, http.StatusNotFound, "file not found")

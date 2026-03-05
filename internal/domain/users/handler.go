@@ -67,6 +67,7 @@ func (h *Handler) loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Debug("user logged in!")
 
+	h.logger.Debug("login response", slog.Any("response", resp))
 	helper.SendDataJson(w, http.StatusOK, resp)
 }
 

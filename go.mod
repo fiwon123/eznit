@@ -18,6 +18,7 @@ require (
 )
 
 require (
+	github.com/oklog/ulid/v2 v2.1.1 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 )

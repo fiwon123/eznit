@@ -32,7 +32,7 @@ func (cmd *UploadCmd) Run(g *Globals) error {
 	fmt.Println()
 	token, err := getToken()
 	if err != nil {
-		g.logger.Info("not logged in")
+		g.logger.Warn("not logged in")
 		return nil
 	}
 

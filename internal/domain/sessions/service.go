@@ -24,13 +24,13 @@ func (s *Service) IsValid(token string) bool {
 	s.logger.Debug("token: ", slog.String("token", token))
 	session := s.db.GetSession(token)
 	if session == nil {
-		s.logger.Error("session not found")
+		s.logger.Warn("session not found")
 		return false
 	}
 
 	s.logger.Debug("session: ", slog.Any("session", session))
 	if !session.IsActive || session.ExpiresAt.Before(time.Now()) {
-		s.logger.Error("session is expired")
+		s.logger.Warn("session is expired")
 		return false
 	}
 

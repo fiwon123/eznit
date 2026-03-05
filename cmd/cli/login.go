@@ -31,7 +31,7 @@ func (cmd *LoginCmd) Run(g *Globals) error {
 		return nil
 	}
 
-	response, ok := sendLoginRequest(g.api.baseURL, users.LoginRequest{
+	token, ok := sendLoginRequest(g.api.baseURL, users.LoginRequest{
 		Email:    email,
 		Password: password,
 	}, g)
@@ -41,7 +41,8 @@ func (cmd *LoginCmd) Run(g *Globals) error {
 
 	g.logger.Info("account logged in! ")
 
-	err = saveToken(response.Token)
+	g.logger.Debug("token to save", slog.String("token", token))
+	err = saveToken(token)
 	if err != nil {
 		g.logger.Warn("failed to save token. ")
 		return nil
@@ -50,11 +51,11 @@ func (cmd *LoginCmd) Run(g *Globals) error {
 	return nil
 }
 
-func sendLoginRequest(baseURL string, request users.LoginRequest, g *Globals) (users.LoginResponse, bool) {
+func sendLoginRequest(baseURL string, request users.LoginRequest, g *Globals) (string, bool) {
 	jsonData, err := json.Marshal(request)
 	if err != nil {
 		g.logger.Error("failed to convert request to json. ", slog.Any("error", err))
-		return users.LoginResponse{}, false
+		return "", false
 	}
 
 	client := &http.Client{
@@ -65,30 +66,26 @@ func sendLoginRequest(baseURL string, request users.LoginRequest, g *Globals) (u
 	resp, err := client.Post(baseURL+"/v1/login", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		g.logger.Warn("failed to send request to " + baseURL + "/v1/login ")
-		return users.LoginResponse{}, false
+		return "", false
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		var response types.Envelope
+	var envelope types.Envelope
 
-		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-			g.logger.Error("failed to decode. ", slog.String("error", err.Error()))
-			return users.LoginResponse{}, false
-		}
-
-		g.logger.Warn("signup if not registered. ", slog.Any("result", response))
-
-		return users.LoginResponse{}, false
-	}
-
-	var tokenResp users.LoginResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		g.logger.Error("failed to decode. ", slog.String("error", err.Error()))
-		return users.LoginResponse{}, false
+		return "", false
 	}
 
-	return tokenResp, true
+	if resp.StatusCode != http.StatusOK {
+		g.logger.Warn("signup if not registered. ", slog.Any("result", envelope))
+
+		return "", false
+	}
+
+	g.logger.Debug("response", slog.Any("envelope", envelope))
+
+	return envelope.Data.(map[string]interface{})["token"].(string), true
 }
 
 func saveToken(token string) error {
