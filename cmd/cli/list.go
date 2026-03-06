@@ -12,23 +12,25 @@ import (
 )
 
 type ListCmd struct {
-	All bool `help:"list all available files"`
+	Me bool `help:"list all available files"`
 }
 
 func (cmd *ListCmd) Run(g *Globals) error {
 	fmt.Println("list")
 
 	fmt.Println()
-	token, err := getToken()
-	if err != nil {
-		g.logger.Warn("not logged in! ")
-		return nil
-	}
 
-	if cmd.All {
-		sendListRequest(g.api.baseURL, false, token, g)
-	} else {
+	if cmd.Me {
+		token, err := getToken()
+		if err != nil {
+			g.logger.Warn("not logged in! ")
+			return nil
+		}
+
 		sendListRequest(g.api.baseURL, true, token, g)
+
+	} else {
+		sendListRequest(g.api.baseURL, false, "", g)
 	}
 
 	return nil
