@@ -61,27 +61,21 @@ func sendListRequest(baseURL string, onlyMe bool, token string, g *Globals) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		var response types.Envelope
-
-		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-			g.logger.Error("failed to decode. ", slog.String("error", err.Error()))
-			return
-		}
-
-		g.logger.Warn("signup if not registered and/or login to generate a new token. ", slog.Any("result", response))
-		return
-	}
-
-	var response files.ListResponse
-
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+	var envelope types.Envelope[files.ListResponse]
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		g.logger.Error("failed to decode. ", slog.String("error", err.Error()))
 		return
 	}
 
-	for i := 0; i < response.Total; i++ {
-		fmt.Println(response.Data[i])
+	if resp.StatusCode != http.StatusOK {
+
+		g.logger.Warn("signup if not registered and/or login to generate a new token. ", slog.Any("result", envelope))
+		return
+	}
+
+	data := envelope.Data
+	for i := 0; i < data.Total; i++ {
+		fmt.Println(data.Data[i])
 	}
 
 }

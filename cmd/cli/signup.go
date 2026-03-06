@@ -75,7 +75,7 @@ func sendSignupRequest(baseURL string, request users.SignupRequest, g *Globals) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		var response types.Envelope
+		var response types.Envelope[any]
 
 		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 			g.logger.Error("failed to decode. ", slog.String("error", err.Error()))

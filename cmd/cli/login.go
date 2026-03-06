@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/fiwon123/eznit/internal/domain/sessions"
 	"github.com/fiwon123/eznit/internal/domain/users"
 	"github.com/fiwon123/eznit/pkg/types"
 )
@@ -70,7 +71,7 @@ func sendLoginRequest(baseURL string, request users.LoginRequest, g *Globals) (s
 	}
 	defer resp.Body.Close()
 
-	var envelope types.Envelope
+	var envelope types.Envelope[sessions.DataResponse]
 
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		g.logger.Error("failed to decode. ", slog.String("error", err.Error()))
@@ -85,7 +86,7 @@ func sendLoginRequest(baseURL string, request users.LoginRequest, g *Globals) (s
 
 	g.logger.Debug("response", slog.Any("envelope", envelope))
 
-	return envelope.Data.(map[string]interface{})["token"].(string), true
+	return envelope.Data.Token, true
 }
 
 func saveToken(token string) error {
