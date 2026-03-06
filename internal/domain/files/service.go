@@ -169,39 +169,8 @@ func (s *service) StorageFile(ctx context.Context, file multipart.File, header *
 	return "file storaged!", nil
 }
 
-func (s *service) DeleteFile(ctx context.Context, id uuid.UUID) (string, *errors.AppError) {
-	s.logger.Debug("DeleteFile ", slog.String("id", id.String()))
+func (s *service) DeleteFileForUser(ctx context.Context, id uuid.UUID, userID uuid.UUID) (string, *errors.AppError) {
 
-	if err := uuid.Validate(id.String()); err != nil {
-		s.logger.Warn("invalid id", slog.String("error", err.Error()))
-		return "", errors.NewAppError(http.StatusBadRequest, "invalid id")
-	}
-
-	file, ok := s.db.GetFile(id)
-	if !ok {
-		s.logger.Warn("file not found")
-		return "", errors.NewAppError(http.StatusBadRequest, "file not found")
-	}
-
-	err := os.RemoveAll(file.Path)
-	if err != nil {
-		s.logger.Warn("filepath not exists, but will continue to delete", slog.Any("error", err))
-	}
-
-	ok = s.db.DeleteFile(id)
-	if !ok {
-		s.logger.Error("can't delete file")
-		return "", errors.NewAppError(http.StatusInternalServerError, "can't delete file")
-	}
-
-	s.logger.Debug("File Deleted!")
-
-	return "file deleted!", nil
-}
-
-func (s *service) DeleteFileForUser(ctx context.Context, id uuid.UUID) (string, *errors.AppError) {
-
-	userID := ctx.Value("user_id").(uuid.UUID)
 	s.logger.Debug("DeleteFileForUser ", slog.String("id", id.String()), slog.String("userID", userID.String()))
 
 	if err := uuid.Validate(id.String()); err != nil {
@@ -215,9 +184,15 @@ func (s *service) DeleteFileForUser(ctx context.Context, id uuid.UUID) (string, 
 		return "", errors.NewAppError(http.StatusBadRequest, "file not found")
 	}
 
-	err := os.RemoveAll(file.Path)
+	err := os.RemoveAll(filepath.Dir(file.Path))
 	if err != nil {
 		s.logger.Warn("filepath not exists, but will continue to delete", slog.Any("error", err))
+	}
+
+	ok = s.db.DeleteFileHistoryForUser(id, userID)
+	if !ok {
+		s.logger.Error("can't delete file history")
+		return "", errors.NewAppError(http.StatusInternalServerError, "can't delete file")
 	}
 
 	ok = s.db.DeleteFileForUser(id, userID)

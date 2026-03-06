@@ -19,6 +19,12 @@ type DeleteCmd struct {
 func (cmd *DeleteCmd) Run(g *Globals) error {
 	fmt.Println("delete")
 
+	token, err := getToken()
+	if err != nil {
+		g.logger.Warn("not logged in. ")
+		return nil
+	}
+
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("id file: ")
 	id, _ := reader.ReadString('\n')
@@ -27,12 +33,6 @@ func (cmd *DeleteCmd) Run(g *Globals) error {
 	fmt.Println()
 	if id == "" {
 		g.logger.Warn("id is empty. ")
-		return nil
-	}
-
-	token, err := getToken()
-	if err != nil {
-		g.logger.Warn("not logged in. ")
 		return nil
 	}
 

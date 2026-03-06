@@ -27,5 +27,6 @@ type Repository interface {
 	StorageFileHistory(file File) bool
 	DeleteFile(id uuid.UUID) bool
 	DeleteFileForUser(id uuid.UUID, userID uuid.UUID) bool
+	DeleteFileHistoryForUser(file uuid.UUID, userID uuid.UUID) bool
 	UpdateFile(file File) bool
 }

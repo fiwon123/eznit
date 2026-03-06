@@ -24,17 +24,17 @@ type UploadCmd struct {
 func (cmd *UploadCmd) Run(g *Globals) error {
 	fmt.Println("upload")
 
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("file path: ")
-	path, _ := reader.ReadString('\n')
-	path = strings.TrimSpace(path)
-
 	fmt.Println()
 	token, err := getToken()
 	if err != nil {
 		g.logger.Warn("not logged in")
 		return nil
 	}
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("file path: ")
+	path, _ := reader.ReadString('\n')
+	path = strings.TrimSpace(path)
 
 	if cmd.Update != "" {
 		updateFile(g.api.baseURL, path, cmd.Update, token, g)

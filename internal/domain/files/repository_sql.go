@@ -153,6 +153,25 @@ func (r *sqlRepository) DeleteFileForUser(id uuid.UUID, userID uuid.UUID) bool {
 
 }
 
+func (r sqlRepository) DeleteFileHistoryForUser(id uuid.UUID, userID uuid.UUID) bool {
+	r.logger.Debug("deleting file history: ", slog.String("id", id.String()), slog.String("userID", userID.String()))
+
+	_, err := r.db.Exec(`DELETE FROM files_history AS h
+		    			 USING files AS f, users AS u
+						 WHERE f.user_id = u.id AND
+							   f.id = h.file_id AND
+							   h.file_id=$1 AND
+							   f.user_id=$2`, id, userID)
+	if err != nil {
+		r.logger.Error("db failed to delete file history for user", slog.Any("error", err))
+		return false
+	}
+
+	r.logger.Debug("file history deleted!")
+
+	return true
+}
+
 func (r *sqlRepository) UpdateFile(file File) bool {
 
 	r.logger.Debug("updating file: ", slog.Any("file", file))

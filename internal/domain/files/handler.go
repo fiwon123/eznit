@@ -161,6 +161,7 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value("user_id").(uuid.UUID)
 	id := h.extractFileID(r)
 	h.logger.Debug("deleteHandler ", slog.String("id", id))
 
@@ -171,7 +172,7 @@ func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	message, appError := h.service.DeleteFileForUser(r.Context(), parseID)
+	message, appError := h.service.DeleteFileForUser(r.Context(), parseID, userID)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
