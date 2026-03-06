@@ -73,7 +73,7 @@ func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	helper.SendDataJson(w, http.StatusFound, dataResp)
+	helper.SendDataJson(w, http.StatusOK, dataResp)
 }
 
 func (h *Handler) getFileHandler(w http.ResponseWriter, r *http.Request) {
