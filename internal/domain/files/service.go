@@ -2,7 +2,6 @@ package files
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"mime/multipart"
@@ -11,7 +10,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/fiwon123/eznit/pkg/errors"
 	"github.com/fiwon123/eznit/pkg/helper"
@@ -243,16 +241,20 @@ func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *m
 		return "", errors.NewAppError(http.StatusBadRequest, "file not found")
 	}
 
-	cleanName := filepath.Base(header.Filename)
-	ext := filepath.Ext(cleanName)
-	finalPath := filepath.Join(s.uploadFolder, fmt.Sprintf("%d_%s", time.Now().Unix(), cleanName))
+	newVersion := fileInfo.Version + 1
+
+	fileName := filepath.Base(header.Filename)
+	ext := filepath.Ext(fileName)
+
+	cleanName := strings.ReplaceAll(fileName, ext, "")
+	finalPath := filepath.Join(s.uploadFolder, fileInfo.UserID.String(), fileInfo.ID.String(), strconv.Itoa(newVersion)+"_"+fileName)
 
 	updateFile := File{
 		ID:      id,
 		UserID:  fileInfo.UserID,
 		Name:    cleanName,
 		Ext:     ext,
-		Version: fileInfo.Version + 1,
+		Version: newVersion,
 		Path:    finalPath,
 	}
 
