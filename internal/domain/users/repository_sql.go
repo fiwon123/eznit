@@ -4,6 +4,7 @@ import (
 	"log/slog"
 
 	"github.com/fiwon123/eznit/pkg/logger"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -46,8 +47,8 @@ func (r *sqlRepository) GetUsers() ([]User, bool) {
 	return users, true
 }
 
-func (r *sqlRepository) GetUser(id string) (*User, bool) {
-	r.logger.Debug("GetUser", slog.String("id", id))
+func (r *sqlRepository) GetUser(id uuid.UUID) (*User, bool) {
+	r.logger.Debug("GetUser", slog.String("id", id.String()))
 
 	query := "SELECT id,email,password,created_at,updated_at FROM users WHERE id=$1"
 	row := r.db.QueryRow(query, id)

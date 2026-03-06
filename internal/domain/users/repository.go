@@ -1,6 +1,10 @@
 package users
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type User struct {
 	ID        string    `db:"id"`
@@ -12,7 +16,7 @@ type User struct {
 
 type Repository interface {
 	GetUsers() ([]User, bool)
-	GetUser(id string) (*User, bool)
+	GetUser(id uuid.UUID) (*User, bool)
 	GetUserByEmail(email string) (*User, bool)
 	UserExists(email string) bool
 	CreateUser(user User) bool

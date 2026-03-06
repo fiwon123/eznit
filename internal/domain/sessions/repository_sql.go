@@ -4,8 +4,8 @@ import (
 	"log/slog"
 
 	"github.com/fiwon123/eznit/pkg/logger"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
-	"github.com/oklog/ulid/v2"
 )
 
 type sqlRepository struct {
@@ -31,7 +31,7 @@ func (r *sqlRepository) GetSession(token string) *Session {
 	return &session
 }
 
-func (r *sqlRepository) GetSessionByUserID(userID ulid.ULID) *Session {
+func (r *sqlRepository) GetSessionByUserID(userID uuid.UUID) *Session {
 	var session Session
 
 	err := r.db.Select(&session, "SELECT * FROM sessions WHERE user_id=$1", userID)
@@ -65,17 +65,20 @@ func (r *sqlRepository) UpdateSession(s Session) bool {
 	return true
 }
 
-func (r *sqlRepository) GetUserIDByToken(s string) (ulid.ULID, bool) {
-	exec := `SELECT id FROM users u
+func (r *sqlRepository) GetUserIDByToken(token string) (uuid.UUID, bool) {
+
+	r.logger.Debug("GetUserIDByToken", slog.String("token", token))
+
+	exec := `SELECT u.id FROM users u
 			INNER JOIN sessions s ON u.id = s.user_id
 			WHERE s.token = $1`
 
-	var userID ulid.ULID
+	var userID uuid.UUID
 
-	row := r.db.QueryRow(exec, s)
+	row := r.db.QueryRow(exec, token)
 	if err := row.Scan(&userID); err != nil {
 		r.logger.Error("get user id by token", slog.Any("error", err))
-		return ulid.ULID{}, false
+		return uuid.UUID{}, false
 	}
 
 	return userID, true

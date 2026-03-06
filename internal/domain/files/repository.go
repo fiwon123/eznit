@@ -3,12 +3,12 @@ package files
 import (
 	"time"
 
-	"github.com/oklog/ulid/v2"
+	"github.com/google/uuid"
 )
 
 type File struct {
-	ID          ulid.ULID `db:"id"`
-	UserID      ulid.ULID `db:"user_id"`
+	ID          uuid.UUID `db:"id"`
+	UserID      uuid.UUID `db:"user_id"`
 	Name        string    `db:"name"`
 	Ext         string    `db:"ext"`
 	Path        string    `db:"path"`
@@ -20,12 +20,12 @@ type File struct {
 
 type Repository interface {
 	GetFiles() ([]File, bool)
-	GetFilesForUser(userID ulid.ULID) ([]File, bool)
-	GetFile(id ulid.ULID) (*File, bool)
-	GetFileForUser(id ulid.ULID, userID ulid.ULID) (*File, bool)
+	GetFilesForUser(userID uuid.UUID) ([]File, bool)
+	GetFile(id uuid.UUID) (*File, bool)
+	GetFileForUser(id uuid.UUID, userID uuid.UUID) (*File, bool)
 	StorageFile(file File) bool
 	StorageFileHistory(file File) bool
-	DeleteFile(id ulid.ULID) bool
-	DeleteFileForUser(id ulid.ULID, userID ulid.ULID) bool
+	DeleteFile(id uuid.UUID) bool
+	DeleteFileForUser(id uuid.UUID, userID uuid.UUID) bool
 	UpdateFile(file File) bool
 }

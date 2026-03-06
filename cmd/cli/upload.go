@@ -89,6 +89,19 @@ func updateFile(baseURL string, filePath string, id string, token string, g *Glo
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		var response types.Envelope
+
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			g.logger.Error("failed to decode. ", slog.String("error", err.Error()))
+			return
+		}
+
+		g.logger.Warn("signup if not registered. ", slog.Any("result", response))
+
+		return
+	}
+
 	g.logger.Info("updated file. ")
 
 }

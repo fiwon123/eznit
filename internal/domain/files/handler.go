@@ -10,7 +10,7 @@ import (
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/go-chi/chi/v5"
-	"github.com/oklog/ulid/v2"
+	"github.com/google/uuid"
 )
 
 type Handler struct {
@@ -80,7 +80,7 @@ func (h *Handler) getFileHandler(w http.ResponseWriter, r *http.Request) {
 	id := h.extractFileID(r)
 	h.logger.Debug("getFileHandler ", slog.String("id", id))
 
-	parseID, err := ulid.Parse(id)
+	parseID, err := uuid.Parse(id)
 	if err != nil {
 		h.logger.Warn("failed to parse file id", slog.String("error", err.Error()))
 		helper.SendErrorJson(w, http.StatusBadRequest, "invalid file id")
@@ -122,7 +122,7 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 	fileID := h.extractFileID(r)
 	h.logger.Debug("downloadHandler ", slog.String("id", fileID))
 
-	parseID, err := ulid.Parse(fileID)
+	parseID, err := uuid.Parse(fileID)
 	if err != nil {
 		h.logger.Warn("failed to parse file id", slog.String("error", err.Error()))
 		helper.SendErrorJson(w, http.StatusBadRequest, "invalid file id")
@@ -154,7 +154,7 @@ func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {
 	id := h.extractFileID(r)
 	h.logger.Debug("deleteHandler ", slog.String("id", id))
 
-	parseID, err := ulid.Parse(id)
+	parseID, err := uuid.Parse(id)
 	if err != nil {
 		h.logger.Warn("failed to parse file id", slog.String("error", err.Error()))
 		helper.SendErrorJson(w, http.StatusBadRequest, "invalid file id")
@@ -184,7 +184,7 @@ func (h *Handler) updateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	parseID, err := ulid.Parse(id)
+	parseID, err := uuid.Parse(id)
 	if err != nil {
 		h.logger.Warn("failed to parse file id", slog.String("error", err.Error()))
 		helper.SendErrorJson(w, http.StatusBadRequest, "invalid file id")

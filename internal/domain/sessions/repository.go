@@ -3,7 +3,7 @@ package sessions
 import (
 	"time"
 
-	"github.com/oklog/ulid/v2"
+	"github.com/google/uuid"
 )
 
 type Session struct {
@@ -16,8 +16,8 @@ type Session struct {
 
 type Repository interface {
 	GetSession(token string) *Session
-	GetSessionByUserID(userID ulid.ULID) *Session
+	GetSessionByUserID(userID uuid.UUID) *Session
 	CreateSession(s Session) bool
 	UpdateSession(s Session) bool
-	GetUserIDByToken(s string) (ulid.ULID, bool)
+	GetUserIDByToken(s string) (uuid.UUID, bool)
 }

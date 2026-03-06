@@ -16,7 +16,7 @@ import (
 	"github.com/fiwon123/eznit/pkg/errors"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
-	"github.com/oklog/ulid/v2"
+	"github.com/google/uuid"
 )
 
 type service struct {
@@ -58,7 +58,7 @@ func (s *service) GetFiles(ctx context.Context) (ListResponse, *errors.AppError)
 }
 
 func (s *service) GetFilesForUser(ctx context.Context) (ListResponse, *errors.AppError) {
-	userID := ctx.Value("user_id").(ulid.ULID)
+	userID := ctx.Value("user_id").(uuid.UUID)
 	s.logger.Debug("GetFilesForUser", slog.String("userID", userID.String()))
 
 	files, ok := s.db.GetFilesForUser(userID)
@@ -82,7 +82,7 @@ func (s *service) GetFilesForUser(ctx context.Context) (ListResponse, *errors.Ap
 	}, nil
 }
 
-func (s *service) GetFile(ctx context.Context, id ulid.ULID) (FileData, *errors.AppError) {
+func (s *service) GetFile(ctx context.Context, id uuid.UUID) (FileData, *errors.AppError) {
 
 	s.logger.Debug("GetFile", slog.String("id", id.String()))
 
@@ -98,9 +98,9 @@ func (s *service) GetFile(ctx context.Context, id ulid.ULID) (FileData, *errors.
 	}, nil
 }
 
-func (s *service) GetFileForUser(ctx context.Context, id ulid.ULID) (*File, *errors.AppError) {
+func (s *service) GetFileForUser(ctx context.Context, id uuid.UUID) (*File, *errors.AppError) {
 
-	userID := ctx.Value("user_id").(ulid.ULID)
+	userID := ctx.Value("user_id").(uuid.UUID)
 	s.logger.Debug("GetFileForUser", slog.String("id", id.String()), slog.String("userID", userID.String()))
 
 	file, ok := s.db.GetFileForUser(id, userID)
@@ -112,21 +112,19 @@ func (s *service) GetFileForUser(ctx context.Context, id ulid.ULID) (*File, *err
 }
 
 func (s *service) StorageFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, contentType string) (string, *errors.AppError) {
-	userID := ctx.Value("user_id").(ulid.ULID)
+	userID := ctx.Value("user_id").(uuid.UUID)
 	s.logger.Debug("StorageFile", slog.String("userID", userID.String()))
-
-	err := helper.CreatePathIfNotExists(s.uploadFolder)
-	if err != nil {
-		s.logger.Error("failed to create path", slog.Any("error", err.Error()))
-		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
-	}
 
 	fileName := filepath.Base(header.Filename)
 	ext := filepath.Ext(fileName)
 
 	cleanName := strings.ReplaceAll(fileName, ext, "")
 	ext = strings.ReplaceAll(ext, ".", "")
-	fileID := ulid.Make()
+	fileID, err := uuid.NewV7()
+	if err != nil {
+		s.logger.Error("failed to generate uuid", slog.Any("error", err.Error()))
+		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
+	}
 	version := 1
 	finalPath := filepath.Join(s.uploadFolder, userID.String(), fileID.String(), strconv.Itoa(version)+"_"+fileName)
 
@@ -150,6 +148,12 @@ func (s *service) StorageFile(ctx context.Context, file multipart.File, header *
 		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
 	}
 
+	err = helper.CreatePathIfNotExists(filepath.Dir(finalPath))
+	if err != nil {
+		s.logger.Error("failed to create path", slog.Any("error", err.Error()))
+		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
+	}
+
 	dest, err := os.Create(finalPath)
 	if err != nil {
 		s.logger.Error("create file path failed: ", slog.Any("error", err))
@@ -168,12 +172,12 @@ func (s *service) StorageFile(ctx context.Context, file multipart.File, header *
 	return "file storaged!", nil
 }
 
-func (s *service) DeleteFile(ctx context.Context, id ulid.ULID) (string, *errors.AppError) {
+func (s *service) DeleteFile(ctx context.Context, id uuid.UUID) (string, *errors.AppError) {
 	s.logger.Debug("DeleteFile ", slog.String("id", id.String()))
 
-	if id.IsZero() {
-		s.logger.Warn("id is empty")
-		return "", errors.NewAppError(http.StatusBadRequest, "id is empty")
+	if err := uuid.Validate(id.String()); err != nil {
+		s.logger.Warn("invalid id", slog.String("error", err.Error()))
+		return "", errors.NewAppError(http.StatusBadRequest, "invalid id")
 	}
 
 	file, ok := s.db.GetFile(id)
@@ -198,14 +202,14 @@ func (s *service) DeleteFile(ctx context.Context, id ulid.ULID) (string, *errors
 	return "file deleted!", nil
 }
 
-func (s *service) DeleteFileForUser(ctx context.Context, id ulid.ULID) (string, *errors.AppError) {
+func (s *service) DeleteFileForUser(ctx context.Context, id uuid.UUID) (string, *errors.AppError) {
 
-	userID := ctx.Value("user_id").(ulid.ULID)
+	userID := ctx.Value("user_id").(uuid.UUID)
 	s.logger.Debug("DeleteFileForUser ", slog.String("id", id.String()), slog.String("userID", userID.String()))
 
-	if id.IsZero() {
-		s.logger.Warn("id is empty")
-		return "", errors.NewAppError(http.StatusBadRequest, "id is empty")
+	if err := uuid.Validate(id.String()); err != nil {
+		s.logger.Warn("invalid id", slog.String("error", err.Error()))
+		return "", errors.NewAppError(http.StatusBadRequest, "invalid id")
 	}
 
 	file, ok := s.db.GetFileForUser(id, userID)
@@ -230,7 +234,7 @@ func (s *service) DeleteFileForUser(ctx context.Context, id ulid.ULID) (string, 
 	return "file deleted!", nil
 }
 
-func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, id ulid.ULID) (string, *errors.AppError) {
+func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, id uuid.UUID) (string, *errors.AppError) {
 	s.logger.Debug("UpdateFile", slog.String("id", id.String()))
 
 	fileInfo, ok := s.db.GetFile(id)

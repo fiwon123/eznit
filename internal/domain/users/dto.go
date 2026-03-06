@@ -1,5 +1,7 @@
 package users
 
+import "github.com/google/uuid"
+
 type UserData struct {
 	Email string `json:"email"`
 }
@@ -20,11 +22,11 @@ type LoginResponse struct {
 }
 
 type UpdateRequest struct {
-	Id       string `json:"id"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Id       uuid.UUID `json:"id"`
+	Email    string    `json:"email"`
+	Password string    `json:"password"`
 }
 
 type DeleteRequest struct {
-	Id string `json:"id"`
+	Id uuid.UUID `json:"id"`
 }

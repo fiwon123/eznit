@@ -10,6 +10,7 @@ import (
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type Handler struct {
@@ -58,7 +59,7 @@ func (h *Handler) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, appError := h.service.LoginUser(request)
+	resp, appError := h.service.LoginUser(r.Context(), request)
 	if appError != nil {
 		h.logger.Warn("login failed")
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
@@ -82,20 +83,20 @@ func (h *Handler) signupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	message, appError := h.service.CreateUser(request)
+	message, appError := h.service.CreateUser(r.Context(), request)
 	if appError != nil {
 		h.logger.Warn("signup failed")
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 
-	h.logger.Error("user signup!")
+	h.logger.Info("user signup!")
 
 	helper.SendMessageJson(w, http.StatusOK, message)
 }
 
 func (h *Handler) getUsersHandler(w http.ResponseWriter, r *http.Request) {
-	users, appError := h.service.GetUsers()
+	users, appError := h.service.GetUsers(r.Context())
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
@@ -109,7 +110,14 @@ func (h *Handler) getUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Debug("getUserHandler ", slog.String("id", id))
 
-	resp, appError := h.service.GetUser(id)
+	parseID, err := uuid.Parse(id)
+	if err != nil {
+		h.logger.Error("get user failed!", slog.String("error", err.Error()))
+		helper.SendErrorJson(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	resp, appError := h.service.GetUser(r.Context(), parseID)
 	if appError != nil {
 		h.logger.Warn("user not found")
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
@@ -126,9 +134,14 @@ func (h *Handler) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Debug("deleteUserHandler", slog.String("id", id))
 
-	message, appError := h.service.DeleteUser(DeleteRequest{
-		Id: id,
-	})
+	parseID, err := uuid.Parse(id)
+	if err != nil {
+		h.logger.Error("delete user failed!", slog.String("error", err.Error()))
+		helper.SendErrorJson(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	message, appError := h.service.DeleteUser(r.Context(), DeleteRequest{Id: parseID})
 	if appError != nil {
 		h.logger.Error("delete user failed!")
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
@@ -152,8 +165,15 @@ func (h *Handler) updateUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	request.Id = id
-	message, appError := h.service.UpdateUser(request)
+	var err error
+	request.Id, err = uuid.Parse(id)
+	if err != nil {
+		h.logger.Error("update user failed!", slog.String("error", err.Error()))
+		helper.SendErrorJson(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	message, appError := h.service.UpdateUser(r.Context(), request)
 	if appError != nil {
 		h.logger.Error("update user failed!")
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())

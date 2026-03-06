@@ -1,12 +1,14 @@
 package users
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
 	"github.com/fiwon123/eznit/pkg/errors"
 	"github.com/fiwon123/eznit/pkg/logger"
+	"github.com/google/uuid"
 )
 
 type Service struct {
@@ -23,7 +25,7 @@ func NewService(db Repository, session *sessions.Service, logger *logger.Config)
 	}
 }
 
-func (s *Service) GetUsers() ([]UserData, *errors.AppError) {
+func (s *Service) GetUsers(ctx context.Context) ([]UserData, *errors.AppError) {
 	s.logger.Debug("GetUsers")
 
 	usersModel, ok := s.db.GetUsers()
@@ -41,8 +43,8 @@ func (s *Service) GetUsers() ([]UserData, *errors.AppError) {
 	return resp, nil
 }
 
-func (s *Service) GetUser(id string) (*UserData, *errors.AppError) {
-	s.logger.Debug("GetUser", slog.String("id", id))
+func (s *Service) GetUser(ctx context.Context, id uuid.UUID) (*UserData, *errors.AppError) {
+	s.logger.Debug("GetUser", slog.String("id", id.String()))
 
 	user, ok := s.db.GetUser(id)
 	if !ok {
@@ -57,7 +59,7 @@ func (s *Service) GetUser(id string) (*UserData, *errors.AppError) {
 	return resp, nil
 }
 
-func (s *Service) LoginUser(req LoginRequest) (LoginResponse, *errors.AppError) {
+func (s *Service) LoginUser(ctx context.Context, req LoginRequest) (LoginResponse, *errors.AppError) {
 	s.logger.Debug("LoginUser", slog.Any("request", req))
 
 	db := s.db
@@ -86,7 +88,7 @@ func (s *Service) LoginUser(req LoginRequest) (LoginResponse, *errors.AppError) 
 	}, nil
 }
 
-func (s *Service) CreateUser(req SignupRequest) (string, *errors.AppError) {
+func (s *Service) CreateUser(ctx context.Context, req SignupRequest) (string, *errors.AppError) {
 	s.logger.Debug("CreateUser", slog.Any("request", req))
 
 	db := s.db
@@ -125,7 +127,7 @@ func (s *Service) CreateUser(req SignupRequest) (string, *errors.AppError) {
 	return "user created!", nil
 }
 
-func (s *Service) DeleteUser(req DeleteRequest) (string, *errors.AppError) {
+func (s *Service) DeleteUser(ctx context.Context, req DeleteRequest) (string, *errors.AppError) {
 	s.logger.Debug("DeleteUser", slog.Any("request", req))
 
 	db := s.db
@@ -144,7 +146,7 @@ func (s *Service) DeleteUser(req DeleteRequest) (string, *errors.AppError) {
 	return "user deleted!", nil
 }
 
-func (s *Service) UpdateUser(req UpdateRequest) (string, *errors.AppError) {
+func (s *Service) UpdateUser(ctx context.Context, req UpdateRequest) (string, *errors.AppError) {
 	s.logger.Debug("UpdateUser", slog.Any("request", req))
 
 	if req.Password == "" {

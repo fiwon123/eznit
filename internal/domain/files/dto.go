@@ -1,9 +1,9 @@
 package files
 
-import "github.com/oklog/ulid/v2"
+import "github.com/google/uuid"
 
 type FileData struct {
-	ID      ulid.ULID `json:"id"`
+	ID      uuid.UUID `json:"id"`
 	Name    string    `json:"name"`
 	Ext     string    `json:"ext"`
 	Version int       `json:"version"`
