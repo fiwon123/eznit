@@ -92,12 +92,17 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 		ext = split[1]
 	}
 
+	g.logger.Debug("adding to filepath", slog.String("filepath", filename))
 	fullpath := filepath.Join(dest, filename)
 	counter := 1
 	exists, _ := helper.PathExists(fullpath)
 	g.logger.Debug("exists value. ", slog.Bool("exists", exists))
 	for exists {
-		fullpath = filepath.Join(dest, fmt.Sprintf("%s_%d.%s", name, counter, ext))
+		if ext != "" {
+			fullpath = filepath.Join(dest, fmt.Sprintf("%s_%d.%s", name, counter, ext))
+		} else {
+			fullpath = filepath.Join(dest, fmt.Sprintf("%s_%d", name, counter))
+		}
 
 		g.logger.Debug("for ", slog.String("path", fullpath))
 		exists, _ = helper.PathExists(fullpath)

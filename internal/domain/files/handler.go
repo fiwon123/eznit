@@ -129,7 +129,7 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fileData, appError := h.service.GetFileForUser(r.Context(), parseID)
+	fileData, appError := h.service.GetFile(r.Context(), parseID)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
@@ -145,7 +145,14 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	h.logger.Debug("found file", slog.Any("fileData", fileData))
-	fullname := fileData.Name + "." + fileData.Ext
+
+	var fullname string
+	if fileData.Ext != "" {
+		fullname = fileData.Name + "." + fileData.Ext
+	} else {
+		fullname = fileData.Name
+	}
+
 	w.Header().Set("Content-Disposition", "attachment; filename="+fullname)
 	w.Header().Set("Content-Type", fileData.ContentType)
 	w.WriteHeader(http.StatusOK)

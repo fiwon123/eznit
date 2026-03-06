@@ -80,20 +80,16 @@ func (s *service) GetFilesForUser(ctx context.Context) (ListResponse, *errors.Ap
 	}, nil
 }
 
-func (s *service) GetFile(ctx context.Context, id uuid.UUID) (FileData, *errors.AppError) {
+func (s *service) GetFile(ctx context.Context, id uuid.UUID) (*File, *errors.AppError) {
 
 	s.logger.Debug("GetFile", slog.String("id", id.String()))
 
 	file, ok := s.db.GetFile(id)
 	if !ok {
-		return FileData{}, errors.NewAppError(http.StatusInternalServerError, "failed to get file")
+		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get file")
 	}
 
-	return FileData{
-		ID:   file.ID,
-		Name: file.Name,
-		Ext:  file.Ext,
-	}, nil
+	return file, nil
 }
 
 func (s *service) GetFileForUser(ctx context.Context, id uuid.UUID) (*File, *errors.AppError) {
@@ -119,6 +115,9 @@ func (s *service) StorageFile(ctx context.Context, file multipart.File, header *
 	cleanName := strings.ReplaceAll(fileName, ext, "")
 	ext = strings.ReplaceAll(ext, ".", "")
 	fileID, err := uuid.NewV7()
+
+	s.logger.Debug("clean name", slog.String("name", cleanName))
+
 	if err != nil {
 		s.logger.Error("failed to generate uuid", slog.Any("error", err.Error()))
 		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
