@@ -42,6 +42,7 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 
 		r.Get("/v1/users", h.getUsersHandler)
 		r.Get("/v1/users/{id}", h.getUserHandler)
+		r.Get("/v1/logout", h.logoutHandler)
 	})
 
 	r.Post("/v1/login", h.loginHandler)
@@ -70,6 +71,30 @@ func (h *Handler) loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Debug("login response", slog.Any("response", resp))
 	helper.SendDataJson(w, http.StatusOK, resp)
+}
+
+func (h *Handler) logoutHandler(w http.ResponseWriter, r *http.Request) {
+	h.logger.Debug("logoutHandler")
+	userID := r.Context().Value("user_id").(uuid.UUID)
+
+	data := h.session.GetToken(r.Context(), userID)
+	if data == nil {
+		h.logger.Warn("failed to get token")
+		helper.SendErrorJson(w, http.StatusBadRequest, "invalid token")
+		return
+	}
+
+	ok := h.session.UseToken(r.Context(), data.Token)
+
+	if !ok {
+		h.logger.Warn("logout failed")
+		helper.SendErrorJson(w, http.StatusInternalServerError, "logout failed")
+		return
+	}
+
+	h.logger.Debug("user logout!")
+
+	helper.SendMessageJson(w, http.StatusOK, "user logout!")
 }
 
 func (h *Handler) signupHandler(w http.ResponseWriter, r *http.Request) {

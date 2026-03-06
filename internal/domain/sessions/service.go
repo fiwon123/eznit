@@ -1,6 +1,7 @@
 package sessions
 
 import (
+	"context"
 	"log/slog"
 	"time"
 
@@ -38,10 +39,10 @@ func (s *Service) IsValid(token string) bool {
 	return true
 }
 
-func (s *Service) GetToken(userID uuid.UUID) *DataResponse {
+func (s *Service) GetToken(ctx context.Context, userID uuid.UUID) *DataResponse {
 	s.logger.Debug("userID: ", slog.String("id", userID.String()))
-	session := s.db.GetSessionByUserID(userID)
-	if session == nil {
+	session, ok := s.db.GetSessionByUserID(userID)
+	if !ok {
 		s.logger.Error("session not found")
 		return &DataResponse{
 			Token: "",
@@ -79,7 +80,7 @@ func (s *Service) CreateToken(userdID string) (string, bool) {
 	return token, true
 }
 
-func (s *Service) UseToken(token string) bool {
+func (s *Service) UseToken(ctx context.Context, token string) bool {
 	s.logger.Debug("token: ", slog.String("token", token))
 	ok := s.db.UpdateSession(Session{
 		Token:    token,

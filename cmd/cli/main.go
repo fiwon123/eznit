@@ -50,6 +50,7 @@ type CLI struct {
 	Upload   UploadCmd   `cmd:"" aliases:"u" help:"upload a file"`
 	List     ListCmd     `cmd:"" help:"list files"`
 	Delete   DeleteCmd   `cmd:"" help:"delete file"`
+	Logout   LogoutCmd   `cmd:"" help:"logout user and remove credential"`
 }
 
 var globals Globals

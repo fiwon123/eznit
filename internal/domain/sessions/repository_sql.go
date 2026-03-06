@@ -31,16 +31,17 @@ func (r *sqlRepository) GetSession(token string) *Session {
 	return &session
 }
 
-func (r *sqlRepository) GetSessionByUserID(userID uuid.UUID) *Session {
+func (r *sqlRepository) GetSessionByUserID(userID uuid.UUID) (*Session, bool) {
+	r.logger.Logger.Debug("GetSessionByUserID")
 	var session Session
 
-	err := r.db.Select(&session, "SELECT * FROM sessions WHERE user_id=$1", userID)
+	err := r.db.Get(&session, "SELECT * FROM sessions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1", userID)
 	if err != nil {
 		r.logger.Error("get session by user id", slog.Any("error", err))
-		return nil
+		return nil, false
 	}
 
-	return &session
+	return &session, true
 }
 
 func (r *sqlRepository) CreateSession(s Session) bool {

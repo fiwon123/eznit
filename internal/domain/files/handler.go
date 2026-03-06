@@ -138,14 +138,17 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 	h.logger.Debug("open: ", slog.String("path", fileData.Path))
 	file, err := os.Open(fileData.Path)
 	if err != nil {
+		h.logger.Debug("error to open file", slog.Any("error", err))
 		helper.SendErrorJson(w, http.StatusNotFound, "file not found")
 		return
 	}
 	defer file.Close()
 
+	h.logger.Debug("found file", slog.Any("fileData", fileData))
 	fullname := fileData.Name + "." + fileData.Ext
 	w.Header().Set("Content-Disposition", "attachment; filename="+fullname)
 	w.Header().Set("Content-Type", fileData.ContentType)
+	w.WriteHeader(http.StatusOK)
 
 	io.Copy(w, file)
 }

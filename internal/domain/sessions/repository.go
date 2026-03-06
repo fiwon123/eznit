@@ -16,7 +16,7 @@ type Session struct {
 
 type Repository interface {
 	GetSession(token string) *Session
-	GetSessionByUserID(userID uuid.UUID) *Session
+	GetSessionByUserID(userID uuid.UUID) (*Session, bool)
 	CreateSession(s Session) bool
 	UpdateSession(s Session) bool
 	GetUserIDByToken(s string) (uuid.UUID, bool)

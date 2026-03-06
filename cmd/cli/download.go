@@ -93,8 +93,6 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 	}
 
 	fullpath := filepath.Join(dest, filename)
-	fmt.Println(fullpath)
-
 	counter := 1
 	exists, _ := helper.PathExists(fullpath)
 	g.logger.Debug("exists value. ", slog.Bool("exists", exists))
@@ -106,7 +104,7 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 		counter += 1
 	}
 
-	g.logger.Info(fullpath)
+	g.logger.Info("fullpath", slog.String("fullpath", fullpath))
 	out, err := os.Create(fullpath)
 	if err != nil {
 		g.logger.Error("failed to create path ", slog.String("error", err.Error()))
