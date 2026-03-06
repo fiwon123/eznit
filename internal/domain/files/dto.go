@@ -1,10 +1,12 @@
 package files
 
+import "github.com/oklog/ulid/v2"
+
 type FileData struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Ext     string `json:"ext"`
-	Version int    `json:"version"`
+	ID      ulid.ULID `json:"id"`
+	Name    string    `json:"name"`
+	Ext     string    `json:"ext"`
+	Version int       `json:"version"`
 }
 
 type ListResponse struct {

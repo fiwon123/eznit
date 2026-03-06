@@ -7,10 +7,6 @@ import (
 	"github.com/fiwon123/eznit/pkg/errors"
 )
 
-func (h *Handler) extractUserID(r *http.Request) string {
-	return r.Context().Value("user_id").(string)
-}
-
 func (h *Handler) extractFileID(r *http.Request) string {
 	return r.PathValue("id")
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
+	"github.com/oklog/ulid/v2"
 )
 
 type Service struct {
@@ -37,8 +38,8 @@ func (s *Service) IsValid(token string) bool {
 	return true
 }
 
-func (s *Service) GetToken(userID string) *DataResponse {
-	s.logger.Debug("userID: ", slog.String("id", userID))
+func (s *Service) GetToken(userID ulid.ULID) *DataResponse {
+	s.logger.Debug("userID: ", slog.String("id", userID.String()))
 	session := s.db.GetSessionByUserID(userID)
 	if session == nil {
 		s.logger.Error("session not found")
@@ -95,11 +96,11 @@ func (s *Service) UseToken(token string) bool {
 	return true
 }
 
-func (s *Service) GetUserIDByToken(token string) (string, bool) {
+func (s *Service) GetUserIDByToken(token string) (ulid.ULID, bool) {
 	userID, ok := s.db.GetUserIDByToken(token)
 	if !ok {
 		s.logger.Error("user not found")
-		return "", false
+		return ulid.ULID{}, false
 	}
 
 	s.logger.Debug("user found!")

@@ -5,6 +5,7 @@ import (
 
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/jmoiron/sqlx"
+	"github.com/oklog/ulid/v2"
 )
 
 type sqlRepository struct {
@@ -35,8 +36,8 @@ func (r *sqlRepository) GetFiles() ([]File, bool) {
 	return files, true
 }
 
-func (r *sqlRepository) GetFilesForUser(userID string) ([]File, bool) {
-	r.logger.Debug("getting files for user: ", slog.String("userID", userID))
+func (r *sqlRepository) GetFilesForUser(userID ulid.ULID) ([]File, bool) {
+	r.logger.Debug("getting files for user: ", slog.String("userID", userID.String()))
 
 	var files []File
 
@@ -51,9 +52,9 @@ func (r *sqlRepository) GetFilesForUser(userID string) ([]File, bool) {
 	return files, true
 }
 
-func (r *sqlRepository) GetFile(id string) (*File, bool) {
+func (r *sqlRepository) GetFile(id ulid.ULID) (*File, bool) {
 
-	r.logger.Debug("getting file: ", slog.String("id", id))
+	r.logger.Debug("getting file: ", slog.String("id", id.String()))
 
 	var file File
 
@@ -68,9 +69,9 @@ func (r *sqlRepository) GetFile(id string) (*File, bool) {
 	return &file, true
 }
 
-func (r *sqlRepository) GetFileForUser(id string, userID string) (*File, bool) {
+func (r *sqlRepository) GetFileForUser(id ulid.ULID, userID ulid.ULID) (*File, bool) {
 
-	r.logger.Debug("getting file for user: ", slog.String("id", id), slog.String("userID", userID))
+	r.logger.Debug("getting file for user: ", slog.String("id", id.String()), slog.String("userID", userID.String()))
 
 	var file File
 
@@ -121,9 +122,9 @@ func (r *sqlRepository) StorageFileHistory(file File) bool {
 	return true
 }
 
-func (r *sqlRepository) DeleteFile(id string) bool {
+func (r *sqlRepository) DeleteFile(id ulid.ULID) bool {
 
-	r.logger.Debug("deleting file: ", slog.String("id", id))
+	r.logger.Debug("deleting file: ", slog.String("id", id.String()))
 
 	_, err := r.db.Exec("DELETE FROM files WHERE id=$1", id)
 	if err != nil {
@@ -137,8 +138,8 @@ func (r *sqlRepository) DeleteFile(id string) bool {
 
 }
 
-func (r *sqlRepository) DeleteFileForUser(id string, userID string) bool {
-	r.logger.Debug("deleting file: ", slog.String("id", id), slog.String("userID", userID))
+func (r *sqlRepository) DeleteFileForUser(id ulid.ULID, userID ulid.ULID) bool {
+	r.logger.Debug("deleting file: ", slog.String("id", id.String()), slog.String("userID", userID.String()))
 
 	_, err := r.db.Exec("DELETE FROM files WHERE id=$1 AND user_id=$2", id, userID)
 	if err != nil {

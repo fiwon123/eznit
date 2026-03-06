@@ -50,7 +50,7 @@ func (g *Guard) AuthUser(next http.Handler) http.Handler {
 			return
 		}
 
-		g.logger.Debug("Authorized User", slog.String("userID", userID))
+		g.logger.Debug("Authorized User", slog.String("userID", userID.String()))
 		ctx := context.WithValue(r.Context(), "user_id", userID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

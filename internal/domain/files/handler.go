@@ -10,6 +10,7 @@ import (
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/go-chi/chi/v5"
+	"github.com/oklog/ulid/v2"
 )
 
 type Handler struct {
@@ -52,10 +53,9 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 }
 
 func (h *Handler) getFilesForUserHandler(w http.ResponseWriter, r *http.Request) {
-	userID := h.extractUserID(r)
-	h.logger.Debug("user id: ", slog.String("id", userID))
+	h.logger.Debug("getFilesForUserHandler")
 
-	dataResp, appError := h.service.GetFilesForUser(userID)
+	dataResp, appError := h.service.GetFilesForUser(r.Context())
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
@@ -67,7 +67,7 @@ func (h *Handler) getFilesForUserHandler(w http.ResponseWriter, r *http.Request)
 func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {
 	h.logger.Debug("getFilesHandler")
 
-	dataResp, appError := h.service.GetFiles()
+	dataResp, appError := h.service.GetFiles(r.Context())
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
@@ -80,7 +80,14 @@ func (h *Handler) getFileHandler(w http.ResponseWriter, r *http.Request) {
 	id := h.extractFileID(r)
 	h.logger.Debug("getFileHandler ", slog.String("id", id))
 
-	dataResp, appError := h.service.GetFile(id)
+	parseID, err := ulid.Parse(id)
+	if err != nil {
+		h.logger.Warn("failed to parse file id", slog.String("error", err.Error()))
+		helper.SendErrorJson(w, http.StatusBadRequest, "invalid file id")
+		return
+	}
+
+	dataResp, appError := h.service.GetFile(r.Context(), parseID)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
@@ -102,8 +109,7 @@ func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	userID := h.extractUserID(r)
-	message, appError := h.service.StorageFile(file, header, contentType, userID)
+	message, appError := h.service.StorageFile(r.Context(), file, header, contentType)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
@@ -114,10 +120,16 @@ func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 	fileID := h.extractFileID(r)
-	userID := h.extractUserID(r)
-	h.logger.Debug("downloadHandler ", slog.String("id", fileID), slog.String("userID", userID))
+	h.logger.Debug("downloadHandler ", slog.String("id", fileID))
 
-	fileData, appError := h.service.GetFileForUser(fileID, userID)
+	parseID, err := ulid.Parse(fileID)
+	if err != nil {
+		h.logger.Warn("failed to parse file id", slog.String("error", err.Error()))
+		helper.SendErrorJson(w, http.StatusBadRequest, "invalid file id")
+		return
+	}
+
+	fileData, appError := h.service.GetFileForUser(r.Context(), parseID)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
@@ -140,10 +152,16 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {
 	id := h.extractFileID(r)
-	userID := h.extractUserID(r)
 	h.logger.Debug("deleteHandler ", slog.String("id", id))
 
-	message, appError := h.service.DeleteFileForUser(id, userID)
+	parseID, err := ulid.Parse(id)
+	if err != nil {
+		h.logger.Warn("failed to parse file id", slog.String("error", err.Error()))
+		helper.SendErrorJson(w, http.StatusBadRequest, "invalid file id")
+		return
+	}
+
+	message, appError := h.service.DeleteFileForUser(r.Context(), parseID)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
@@ -166,7 +184,14 @@ func (h *Handler) updateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	message, appError := h.service.UpdateFile(file, header, id)
+	parseID, err := ulid.Parse(id)
+	if err != nil {
+		h.logger.Warn("failed to parse file id", slog.String("error", err.Error()))
+		helper.SendErrorJson(w, http.StatusBadRequest, "invalid file id")
+		return
+	}
+
+	message, appError := h.service.UpdateFile(r.Context(), file, header, parseID)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 	}

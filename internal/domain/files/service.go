@@ -1,6 +1,7 @@
 package files
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -32,7 +33,7 @@ func NewService(db Repository, uploadFolder string, logger *logger.Config) *serv
 	}
 }
 
-func (s *service) GetFiles() (ListResponse, *errors.AppError) {
+func (s *service) GetFiles(ctx context.Context) (ListResponse, *errors.AppError) {
 	s.logger.Debug("GetFiles")
 
 	files, ok := s.db.GetFiles()
@@ -56,8 +57,9 @@ func (s *service) GetFiles() (ListResponse, *errors.AppError) {
 	}, nil
 }
 
-func (s *service) GetFilesForUser(userID string) (ListResponse, *errors.AppError) {
-	s.logger.Debug("GetFilesForUser", slog.String("userID", userID))
+func (s *service) GetFilesForUser(ctx context.Context) (ListResponse, *errors.AppError) {
+	userID := ctx.Value("user_id").(ulid.ULID)
+	s.logger.Debug("GetFilesForUser", slog.String("userID", userID.String()))
 
 	files, ok := s.db.GetFilesForUser(userID)
 	if !ok {
@@ -80,9 +82,9 @@ func (s *service) GetFilesForUser(userID string) (ListResponse, *errors.AppError
 	}, nil
 }
 
-func (s *service) GetFile(id string) (FileData, *errors.AppError) {
+func (s *service) GetFile(ctx context.Context, id ulid.ULID) (FileData, *errors.AppError) {
 
-	s.logger.Debug("GetFile", slog.String("id", id))
+	s.logger.Debug("GetFile", slog.String("id", id.String()))
 
 	file, ok := s.db.GetFile(id)
 	if !ok {
@@ -96,9 +98,10 @@ func (s *service) GetFile(id string) (FileData, *errors.AppError) {
 	}, nil
 }
 
-func (s *service) GetFileForUser(id string, userID string) (*File, *errors.AppError) {
+func (s *service) GetFileForUser(ctx context.Context, id ulid.ULID) (*File, *errors.AppError) {
 
-	s.logger.Debug("GetFileForUser", slog.String("id", id), slog.String("userID", userID))
+	userID := ctx.Value("user_id").(ulid.ULID)
+	s.logger.Debug("GetFileForUser", slog.String("id", id.String()), slog.String("userID", userID.String()))
 
 	file, ok := s.db.GetFileForUser(id, userID)
 	if !ok {
@@ -108,9 +111,9 @@ func (s *service) GetFileForUser(id string, userID string) (*File, *errors.AppEr
 	return file, nil
 }
 
-func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader, contentType string, userID string) (string, *errors.AppError) {
-
-	s.logger.Debug("StorageFile", slog.String("userID", userID))
+func (s *service) StorageFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, contentType string) (string, *errors.AppError) {
+	userID := ctx.Value("user_id").(ulid.ULID)
+	s.logger.Debug("StorageFile", slog.String("userID", userID.String()))
 
 	err := helper.CreatePathIfNotExists(s.uploadFolder)
 	if err != nil {
@@ -123,9 +126,9 @@ func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader,
 
 	cleanName := strings.ReplaceAll(fileName, ext, "")
 	ext = strings.ReplaceAll(ext, ".", "")
-	fileID := ulid.Make().String()
+	fileID := ulid.Make()
 	version := 1
-	finalPath := filepath.Join(s.uploadFolder, userID, fileID, strconv.Itoa(version)+"_"+fileName)
+	finalPath := filepath.Join(s.uploadFolder, userID.String(), fileID.String(), strconv.Itoa(version)+"_"+fileName)
 
 	storageFile := File{
 		ID:          fileID,
@@ -165,10 +168,10 @@ func (s *service) StorageFile(file multipart.File, header *multipart.FileHeader,
 	return "file storaged!", nil
 }
 
-func (s *service) DeleteFile(id string) (string, *errors.AppError) {
-	s.logger.Debug("DeleteFile ", slog.String("id", id))
+func (s *service) DeleteFile(ctx context.Context, id ulid.ULID) (string, *errors.AppError) {
+	s.logger.Debug("DeleteFile ", slog.String("id", id.String()))
 
-	if id == "" {
+	if id.IsZero() {
 		s.logger.Warn("id is empty")
 		return "", errors.NewAppError(http.StatusBadRequest, "id is empty")
 	}
@@ -195,11 +198,12 @@ func (s *service) DeleteFile(id string) (string, *errors.AppError) {
 	return "file deleted!", nil
 }
 
-func (s *service) DeleteFileForUser(id string, userID string) (string, *errors.AppError) {
+func (s *service) DeleteFileForUser(ctx context.Context, id ulid.ULID) (string, *errors.AppError) {
 
-	s.logger.Debug("DeleteFileForUser ", slog.String("id", id), slog.String("userID", userID))
+	userID := ctx.Value("user_id").(ulid.ULID)
+	s.logger.Debug("DeleteFileForUser ", slog.String("id", id.String()), slog.String("userID", userID.String()))
 
-	if id == "" {
+	if id.IsZero() {
 		s.logger.Warn("id is empty")
 		return "", errors.NewAppError(http.StatusBadRequest, "id is empty")
 	}
@@ -226,9 +230,8 @@ func (s *service) DeleteFileForUser(id string, userID string) (string, *errors.A
 	return "file deleted!", nil
 }
 
-func (s *service) UpdateFile(file multipart.File, header *multipart.FileHeader, id string) (string, *errors.AppError) {
-
-	s.logger.Debug("UpdateFile", slog.String("id", id))
+func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, id ulid.ULID) (string, *errors.AppError) {
+	s.logger.Debug("UpdateFile", slog.String("id", id.String()))
 
 	fileInfo, ok := s.db.GetFile(id)
 	if !ok {

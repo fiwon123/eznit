@@ -148,13 +148,21 @@ docker_down_v:
 	docker compose down -v
 
 ## Development
-.PHONY: run_api run_cli
+.PHONY: run_api run_cli run_jq
 
 run_api:
 	go run $(API_FOLDER) $(filter-out $@,$(MAKECMDGOALS))
 
 run_cli:
 	go run $(CLI_FOLDER) $(filter-out $@,$(MAKECMDGOALS))
+
+run_jq:
+	@if [ -z "$(VAL)" ]; then \
+	    echo "need to specify filepath using VAL"; \
+	    exit 1; \
+	fi
+
+	cat $(VAL) | jq -C . | sed 's/\\n/\n/g; s/\\t/\t/g'
 
 # args
 %:
