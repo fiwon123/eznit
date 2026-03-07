@@ -11,12 +11,15 @@ import (
 	"github.com/google/uuid"
 )
 
+// User Service handle all incoming request passed by handlers
+// and calling other necessary services or repositories to complete request
 type Service struct {
 	db      Repository
 	session *sessions.Service
 	logger  *logger.Config
 }
 
+// Return a new User Service
 func NewService(db Repository, session *sessions.Service, logger *logger.Config) *Service {
 	return &Service{
 		db:      db,
@@ -25,6 +28,7 @@ func NewService(db Repository, session *sessions.Service, logger *logger.Config)
 	}
 }
 
+// Return a user list containing all registered users data
 func (s *Service) GetUsers(ctx context.Context) ([]UserData, *errors.AppError) {
 	s.logger.Debug("GetUsers")
 
@@ -43,6 +47,7 @@ func (s *Service) GetUsers(ctx context.Context) ([]UserData, *errors.AppError) {
 	return resp, nil
 }
 
+// Return only a user based in the user identity
 func (s *Service) GetUser(ctx context.Context, id uuid.UUID) (*UserData, *errors.AppError) {
 	s.logger.Debug("GetUser", slog.String("id", id.String()))
 
@@ -59,6 +64,7 @@ func (s *Service) GetUser(ctx context.Context, id uuid.UUID) (*UserData, *errors
 	return resp, nil
 }
 
+// Check if user credentials are valid
 func (s *Service) LoginUser(ctx context.Context, req LoginRequest) (LoginResponse, *errors.AppError) {
 	s.logger.Debug("LoginUser", slog.Any("request", req))
 
@@ -88,6 +94,7 @@ func (s *Service) LoginUser(ctx context.Context, req LoginRequest) (LoginRespons
 	}, nil
 }
 
+// Create a new user based on signup request
 func (s *Service) CreateUser(ctx context.Context, req SignupRequest) (string, *errors.AppError) {
 	s.logger.Debug("CreateUser", slog.Any("request", req))
 
@@ -127,6 +134,7 @@ func (s *Service) CreateUser(ctx context.Context, req SignupRequest) (string, *e
 	return "user created!", nil
 }
 
+// Delete User based on delete request
 func (s *Service) DeleteUser(ctx context.Context, req DeleteRequest) (string, *errors.AppError) {
 	s.logger.Debug("DeleteUser", slog.Any("request", req))
 
@@ -146,6 +154,7 @@ func (s *Service) DeleteUser(ctx context.Context, req DeleteRequest) (string, *e
 	return "user deleted!", nil
 }
 
+// Update user based on update request
 func (s *Service) UpdateUser(ctx context.Context, req UpdateRequest) (string, *errors.AppError) {
 	s.logger.Debug("UpdateUser", slog.Any("request", req))
 

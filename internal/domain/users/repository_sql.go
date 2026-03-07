@@ -8,11 +8,14 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// A implementation of users repository interface
+// All useful function related to users
 type sqlRepository struct {
 	db     *sqlx.DB
 	logger *logger.Config
 }
 
+// Return a new sqlRepository related to users
 func NewRepository(db *sqlx.DB, logger *logger.Config) *sqlRepository {
 	return &sqlRepository{
 		db:     db,
@@ -20,6 +23,7 @@ func NewRepository(db *sqlx.DB, logger *logger.Config) *sqlRepository {
 	}
 }
 
+// Get a list of users
 func (r *sqlRepository) GetUsers() ([]User, bool) {
 	var users []User
 
@@ -47,6 +51,7 @@ func (r *sqlRepository) GetUsers() ([]User, bool) {
 	return users, true
 }
 
+// Get only a user
 func (r *sqlRepository) GetUser(id uuid.UUID) (*User, bool) {
 	r.logger.Debug("GetUser", slog.String("id", id.String()))
 
@@ -62,6 +67,7 @@ func (r *sqlRepository) GetUser(id uuid.UUID) (*User, bool) {
 	return &user, true
 }
 
+// Get user by email
 func (r *sqlRepository) GetUserByEmail(email string) (*User, bool) {
 	r.logger.Debug("GetUserByEmail", slog.String("email", email))
 
@@ -77,6 +83,7 @@ func (r *sqlRepository) GetUserByEmail(email string) (*User, bool) {
 	return &user, true
 }
 
+// Verify if user is already registered based on email
 func (r *sqlRepository) UserExists(email string) bool {
 	r.logger.Debug("UserExists", slog.String("email", email))
 
@@ -98,6 +105,7 @@ func (r *sqlRepository) UserExists(email string) bool {
 	return true
 }
 
+// Create a new user based on user model data
 func (r *sqlRepository) CreateUser(user User) bool {
 	r.logger.Debug("CreateUser", slog.Any("user", user))
 
@@ -112,6 +120,7 @@ func (r *sqlRepository) CreateUser(user User) bool {
 	return true
 }
 
+// Delete a user based on user model data
 func (r *sqlRepository) DeleteUser(user User) bool {
 	r.logger.Debug("DeleteUser", slog.Any("user", user))
 
@@ -126,6 +135,7 @@ func (r *sqlRepository) DeleteUser(user User) bool {
 	return true
 }
 
+// update a user based on user model data
 func (r *sqlRepository) UpdateUser(user User) bool {
 	r.logger.Debug("UpdateUser", slog.Any("user", user))
 

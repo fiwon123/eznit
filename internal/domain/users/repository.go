@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// User Model
 type User struct {
 	ID        string    `db:"id"`
 	Email     string    `db:"email"`
@@ -14,6 +15,7 @@ type User struct {
 	UpdatedAt time.Time `db:"updated_at"`
 }
 
+// User repostory interface
 type Repository interface {
 	GetUsers() ([]User, bool)
 	GetUser(id uuid.UUID) (*User, bool)

@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// User Handler is responsible to handle incoming request after middleware
 type Handler struct {
 	service *Service
 	session *sessions.Service
@@ -20,6 +21,7 @@ type Handler struct {
 	logger  *logger.Config
 }
 
+// Retunr a new User Handler
 func NewHandler(service *Service, session *sessions.Service, guard *middleware.Guard, logger *logger.Config) *Handler {
 	return &Handler{
 		service: service,
@@ -29,6 +31,7 @@ func NewHandler(service *Service, session *sessions.Service, guard *middleware.G
 	}
 }
 
+// All user routes
 func (h *Handler) RegisterRoutes(r *chi.Mux) {
 	r.Group(func(r chi.Router) {
 		r.Use(h.guard.AuthAdmin)
