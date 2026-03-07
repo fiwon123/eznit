@@ -54,7 +54,8 @@ func (s *Service) GetToken(ctx context.Context, userID uuid.UUID) *DataResponse 
 	}
 }
 
-func (s *Service) CreateToken(userdID string) (string, bool) {
+// Create a new token for user
+func (s *Service) CreateToken(userdID uuid.UUID) (string, bool) {
 
 	s.logger.Debug("generating token...")
 	token, err := helper.GenerateToken(32)
@@ -80,6 +81,8 @@ func (s *Service) CreateToken(userdID string) (string, bool) {
 	return token, true
 }
 
+// Invalidate a token after user logout
+// token is active and user not loggout, repository has a expiration date time to control it too
 func (s *Service) UseToken(ctx context.Context, token string) bool {
 	s.logger.Debug("token: ", slog.String("token", token))
 	ok := s.db.UpdateSession(Session{
@@ -97,6 +100,7 @@ func (s *Service) UseToken(ctx context.Context, token string) bool {
 	return true
 }
 
+// Get UserId by token string
 func (s *Service) GetUserIDByToken(token string) (uuid.UUID, bool) {
 	userID, ok := s.db.GetUserIDByToken(token)
 	if !ok {

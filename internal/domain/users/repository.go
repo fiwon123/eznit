@@ -8,7 +8,7 @@ import (
 
 // User Model
 type User struct {
-	ID        string    `db:"id"`
+	ID        uuid.UUID `db:"id"`
 	Email     string    `db:"email"`
 	Password  []byte    `db:"password"`
 	CreatedAt time.Time `db:"created_at"`

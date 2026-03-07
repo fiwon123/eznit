@@ -8,17 +8,21 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// Session repository implementation
 type sqlRepository struct {
 	db     *sqlx.DB
 	logger *logger.Config
 }
 
+// Return a new session repository
 func NewRepository(db *sqlx.DB, logger *logger.Config) *sqlRepository {
 	return &sqlRepository{
 		db:     db,
 		logger: logger,
 	}
 }
+
+// Get session by token
 func (r *sqlRepository) GetSession(token string) *Session {
 	var session Session
 
@@ -31,6 +35,7 @@ func (r *sqlRepository) GetSession(token string) *Session {
 	return &session
 }
 
+// Get session by user id
 func (r *sqlRepository) GetSessionByUserID(userID uuid.UUID) (*Session, bool) {
 	r.logger.Logger.Debug("GetSessionByUserID")
 	var session Session
@@ -44,6 +49,7 @@ func (r *sqlRepository) GetSessionByUserID(userID uuid.UUID) (*Session, bool) {
 	return &session, true
 }
 
+// Create a new session using session model
 func (r *sqlRepository) CreateSession(s Session) bool {
 	_, err := r.db.NamedExec("INSERT INTO sessions(token, user_id, expires_at) VALUES (:token, :user_id, :expires_at)", s)
 	if err != nil {
@@ -54,6 +60,7 @@ func (r *sqlRepository) CreateSession(s Session) bool {
 	return true
 }
 
+// Update session using session model
 func (r *sqlRepository) UpdateSession(s Session) bool {
 	exec := "UPDATE sessions SET is_active=:is_active WHERE token=:token"
 
@@ -66,6 +73,7 @@ func (r *sqlRepository) UpdateSession(s Session) bool {
 	return true
 }
 
+// Get user id by token
 func (r *sqlRepository) GetUserIDByToken(token string) (uuid.UUID, bool) {
 
 	r.logger.Debug("GetUserIDByToken", slog.String("token", token))
