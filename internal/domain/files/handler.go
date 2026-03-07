@@ -38,10 +38,17 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 			r.Post("/", h.uploadHandler)
 			r.Get("/me", h.getFilesForUserHandler)
 
-			r.Route("/{id}", func(r chi.Router) {
+		})
+
+		r.Route("/{id}", func(r chi.Router) {
+
+			r.Get("/content", h.downloadHandler)
+
+			r.Group(func(r chi.Router) {
+				r.Use(h.guard.AuthUser)
+
 				r.Get("/", h.getFileHandler)
 				r.Put("/", h.updateHandler)
-				r.Get("/content", h.downloadHandler)
 				r.Delete("/", h.deleteHandler)
 			})
 		})

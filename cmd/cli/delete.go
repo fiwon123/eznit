@@ -19,6 +19,7 @@ type DeleteCmd struct {
 func (cmd *DeleteCmd) Run(g *Globals) error {
 	fmt.Println("delete")
 
+	fmt.Println()
 	token, err := getToken()
 	if err != nil {
 		g.logger.Warn("not logged in. ")
@@ -30,7 +31,6 @@ func (cmd *DeleteCmd) Run(g *Globals) error {
 	id, _ := reader.ReadString('\n')
 	id = strings.TrimSpace(id)
 
-	fmt.Println()
 	if id == "" {
 		g.logger.Warn("id is empty. ")
 		return nil

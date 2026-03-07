@@ -22,12 +22,6 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 	fmt.Println("download")
 
 	fmt.Println()
-	token, err := getToken()
-	if err != nil {
-		g.logger.Warn("not logged in ", slog.String("error", err.Error()))
-		return nil
-	}
-
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("id file: ")
 	id, _ := reader.ReadString('\n')
@@ -47,7 +41,7 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 		g.logger.Warn("destination folder is empty, default download folder path will be used. ", slog.String("default", dest))
 	}
 
-	err = helper.CreatePathIfNotExists(dest)
+	err := helper.CreatePathIfNotExists(dest)
 	if err != nil {
 		g.logger.Warn("failed to create destination folder path. ", slog.String("error", err.Error()))
 		return nil
@@ -59,8 +53,6 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 		g.logger.Warn("failed to create new request. ", slog.String("error", err.Error()))
 		return nil
 	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
 
 	client := &http.Client{
 		Timeout: 10 * time.Second,
