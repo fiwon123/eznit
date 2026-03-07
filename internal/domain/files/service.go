@@ -17,12 +17,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// Files Service is responsible to handle all incoming request from handler
 type service struct {
 	uploadFolder string
 	db           Repository
 	logger       *logger.Config
 }
 
+// Return a new Files Service
 func NewService(db Repository, uploadFolder string, logger *logger.Config) *service {
 	return &service{
 		uploadFolder: uploadFolder,
@@ -31,6 +33,7 @@ func NewService(db Repository, uploadFolder string, logger *logger.Config) *serv
 	}
 }
 
+// Get a list of files
 func (s *service) GetFiles(ctx context.Context) (ListResponse, *errors.AppError) {
 	s.logger.Debug("GetFiles")
 
@@ -55,6 +58,7 @@ func (s *service) GetFiles(ctx context.Context) (ListResponse, *errors.AppError)
 	}, nil
 }
 
+// Get a list of Files for user
 func (s *service) GetFilesForUser(ctx context.Context) (ListResponse, *errors.AppError) {
 	userID := ctx.Value("user_id").(uuid.UUID)
 	s.logger.Debug("GetFilesForUser", slog.String("userID", userID.String()))
@@ -80,6 +84,7 @@ func (s *service) GetFilesForUser(ctx context.Context) (ListResponse, *errors.Ap
 	}, nil
 }
 
+// Get only a single File for any user
 func (s *service) GetFile(ctx context.Context, id uuid.UUID) (*File, *errors.AppError) {
 
 	s.logger.Debug("GetFile", slog.String("id", id.String()))
@@ -92,6 +97,7 @@ func (s *service) GetFile(ctx context.Context, id uuid.UUID) (*File, *errors.App
 	return file, nil
 }
 
+// Get only a single File for user
 func (s *service) GetFileForUser(ctx context.Context, id uuid.UUID) (*File, *errors.AppError) {
 
 	userID := ctx.Value("user_id").(uuid.UUID)
@@ -105,6 +111,7 @@ func (s *service) GetFileForUser(ctx context.Context, id uuid.UUID) (*File, *err
 	return file, nil
 }
 
+// Storage a single file for user
 func (s *service) StorageFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, contentType string) (string, *errors.AppError) {
 	userID := ctx.Value("user_id").(uuid.UUID)
 	s.logger.Debug("StorageFile", slog.String("userID", userID.String()))
@@ -169,6 +176,7 @@ func (s *service) StorageFile(ctx context.Context, file multipart.File, header *
 	return "file storaged!", nil
 }
 
+// Delete a single file for user
 func (s *service) DeleteFileForUser(ctx context.Context, id uuid.UUID, userID uuid.UUID) (string, *errors.AppError) {
 
 	s.logger.Debug("DeleteFileForUser ", slog.String("id", id.String()), slog.String("userID", userID.String()))
@@ -206,6 +214,7 @@ func (s *service) DeleteFileForUser(ctx context.Context, id uuid.UUID, userID uu
 	return "file deleted!", nil
 }
 
+// Update a single file for user
 func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, id uuid.UUID, userID uuid.UUID) (string, *errors.AppError) {
 	s.logger.Debug("UpdateFile", slog.String("id", id.String()))
 

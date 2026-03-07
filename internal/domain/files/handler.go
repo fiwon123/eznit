@@ -13,12 +13,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// Files handler reponsible to handle all incoming request from files handler
 type Handler struct {
 	service *service
 	guard   *middleware.Guard
 	logger  *logger.Config
 }
 
+// Return a new Files Handler
 func NewHandler(service *service, guard *middleware.Guard, logger *logger.Config) *Handler {
 	return &Handler{
 		service: service,
@@ -27,6 +29,7 @@ func NewHandler(service *service, guard *middleware.Guard, logger *logger.Config
 	}
 }
 
+// Files routes
 func (h *Handler) RegisterRoutes(r *chi.Mux) {
 
 	r.Route("/v1/files", func(r chi.Router) {

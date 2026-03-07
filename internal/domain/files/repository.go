@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// File Model
 type File struct {
 	ID          uuid.UUID `db:"id"`
 	UserID      uuid.UUID `db:"user_id"`
@@ -18,6 +19,7 @@ type File struct {
 	UpdatedAt   time.Time `db:"updated_at"`
 }
 
+// Files repository interface
 type Repository interface {
 	GetFiles() ([]File, bool)
 	GetFilesForUser(userID uuid.UUID) ([]File, bool)

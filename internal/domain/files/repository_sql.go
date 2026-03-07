@@ -8,11 +8,13 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// Files Repository implementation
 type sqlRepository struct {
 	db     *sqlx.DB
 	logger *logger.Config
 }
 
+// Return a new files repository
 func NewRepository(db *sqlx.DB, logger *logger.Config) *sqlRepository {
 	return &sqlRepository{
 		db:     db,
@@ -20,6 +22,7 @@ func NewRepository(db *sqlx.DB, logger *logger.Config) *sqlRepository {
 	}
 }
 
+// Get a list of files
 func (r *sqlRepository) GetFiles() ([]File, bool) {
 	r.logger.Debug("getting files")
 
@@ -36,6 +39,7 @@ func (r *sqlRepository) GetFiles() ([]File, bool) {
 	return files, true
 }
 
+// Get a list of files data for user by user id
 func (r *sqlRepository) GetFilesForUser(userID uuid.UUID) ([]File, bool) {
 	r.logger.Debug("getting files for user: ", slog.String("userID", userID.String()))
 
@@ -52,6 +56,7 @@ func (r *sqlRepository) GetFilesForUser(userID uuid.UUID) ([]File, bool) {
 	return files, true
 }
 
+// Get file data using id file
 func (r *sqlRepository) GetFile(id uuid.UUID) (*File, bool) {
 
 	r.logger.Debug("getting file: ", slog.String("id", id.String()))
@@ -69,6 +74,7 @@ func (r *sqlRepository) GetFile(id uuid.UUID) (*File, bool) {
 	return &file, true
 }
 
+// Get file data for user using id file and user id
 func (r *sqlRepository) GetFileForUser(id uuid.UUID, userID uuid.UUID) (*File, bool) {
 
 	r.logger.Debug("getting file for user: ", slog.String("id", id.String()), slog.String("userID", userID.String()))
@@ -89,6 +95,7 @@ func (r *sqlRepository) GetFileForUser(id uuid.UUID, userID uuid.UUID) (*File, b
 	return &file, true
 }
 
+// Storage file using file model
 func (r *sqlRepository) StorageFile(file File) bool {
 
 	r.logger.Debug("storaging file: ", slog.Any("file", file))
