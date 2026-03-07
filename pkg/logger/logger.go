@@ -13,12 +13,15 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
+// Contains data to zapLogger and Sugar in some scenario
 type Config struct {
 	*slog.Logger
 	zapLogger *zap.Logger
 	Sugar     *zap.SugaredLogger
 }
 
+// Use this function to print logs more friendly on user terminal
+// while keep file logs readable for maintance
 func NewConsole(logFolder string, enableDebug bool, onlyLogFile bool) (*Config, error) {
 
 	var cores []zapcore.Core
@@ -53,6 +56,8 @@ func NewConsole(logFolder string, enableDebug bool, onlyLogFile bool) (*Config, 
 	}, nil
 }
 
+// Use this function to print logs as json, very useful for APIs
+// files logs will be storage as json as well
 func NewJson(logFolder string, enableDebug bool) (*Config, error) {
 	var cores []zapcore.Core
 

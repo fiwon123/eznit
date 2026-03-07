@@ -84,7 +84,7 @@ func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getFileHandler(w http.ResponseWriter, r *http.Request) {
-	id := h.extractFileID(r)
+	id := extractFileID(r)
 	h.logger.Debug("getFileHandler ", slog.String("id", id))
 
 	parseID, err := uuid.Parse(id)
@@ -109,7 +109,7 @@ func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Prevents attackers from sending infinite data to crash your server.
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
 
-	file, header, contentType, appError := h.extractFile(r)
+	file, header, contentType, appError := extractFile(r)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
@@ -126,7 +126,7 @@ func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
-	fileID := h.extractFileID(r)
+	fileID := extractFileID(r)
 	h.logger.Debug("downloadHandler ", slog.String("id", fileID))
 
 	parseID, err := uuid.Parse(fileID)
@@ -169,7 +169,7 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value("user_id").(uuid.UUID)
-	id := h.extractFileID(r)
+	id := extractFileID(r)
 	h.logger.Debug("deleteHandler ", slog.String("id", id))
 
 	parseID, err := uuid.Parse(id)
@@ -190,12 +190,12 @@ func (h *Handler) deleteHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) updateHandler(w http.ResponseWriter, r *http.Request) {
 
-	id := h.extractFileID(r)
+	id := extractFileID(r)
 	h.logger.Debug("updateHandler ", slog.String("id", id))
 
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
 
-	file, header, _, appError := h.extractFile(r)
+	file, header, _, appError := extractFile(r)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return

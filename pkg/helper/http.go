@@ -8,6 +8,7 @@ import (
 	"github.com/fiwon123/eznit/pkg/types"
 )
 
+// Use to send data to user
 func SendDataJson[T any](w http.ResponseWriter, statusCode int, data T) {
 
 	env := types.Envelope[T]{
@@ -21,6 +22,7 @@ func SendDataJson[T any](w http.ResponseWriter, statusCode int, data T) {
 	json.NewEncoder(w).Encode(env)
 }
 
+// Use to send just a message to user
 func SendMessageJson(w http.ResponseWriter, statusCode int, msg string) {
 
 	env := types.Envelope[any]{
@@ -34,6 +36,7 @@ func SendMessageJson(w http.ResponseWriter, statusCode int, msg string) {
 	json.NewEncoder(w).Encode(env)
 }
 
+// Use to send just a error message
 func SendErrorJson(w http.ResponseWriter, statusCode int, msg string) {
 
 	env := types.Envelope[any]{

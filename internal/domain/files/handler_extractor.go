@@ -7,11 +7,11 @@ import (
 	"github.com/fiwon123/eznit/pkg/errors"
 )
 
-func (h *Handler) extractFileID(r *http.Request) string {
+func extractFileID(r *http.Request) string {
 	return r.PathValue("id")
 }
 
-func (h *Handler) extractFile(r *http.Request) (multipart.File, *multipart.FileHeader, string, *errors.AppError) {
+func extractFile(r *http.Request) (multipart.File, *multipart.FileHeader, string, *errors.AppError) {
 
 	// Parse the multipart form. 8MB stays in RAM, the rest goes to temp files.
 	if err := r.ParseMultipartForm(8 << 20); err != nil {

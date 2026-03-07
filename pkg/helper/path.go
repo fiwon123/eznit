@@ -6,6 +6,7 @@ import (
 	"os"
 )
 
+// A helper function to create a new folder if not exists
 func CreatePathIfNotExists(path string) error {
 	if err := os.MkdirAll(path, 0755); err != nil {
 		return err
@@ -14,6 +15,7 @@ func CreatePathIfNotExists(path string) error {
 	return nil
 }
 
+// A helper function to verify if path exists
 func PathExists(path string) (bool, error) {
 	_, err := os.Stat(path)
 	if err == nil {
