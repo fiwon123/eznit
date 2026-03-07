@@ -29,4 +29,5 @@ type Repository interface {
 	DeleteFileForUser(id uuid.UUID, userID uuid.UUID) bool
 	DeleteFileHistoryForUser(file uuid.UUID, userID uuid.UUID) bool
 	UpdateFile(file File) bool
+	IsUserOwner(id uuid.UUID, userID uuid.UUID) bool
 }

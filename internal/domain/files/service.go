@@ -206,8 +206,13 @@ func (s *service) DeleteFileForUser(ctx context.Context, id uuid.UUID, userID uu
 	return "file deleted!", nil
 }
 
-func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, id uuid.UUID) (string, *errors.AppError) {
+func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, id uuid.UUID, userID uuid.UUID) (string, *errors.AppError) {
 	s.logger.Debug("UpdateFile", slog.String("id", id.String()))
+
+	if !s.db.IsUserOwner(id, userID) {
+		s.logger.Warn("not owner")
+		return "", errors.NewAppError(http.StatusConflict, "not owner")
+	}
 
 	fileInfo, ok := s.db.GetFile(id)
 	if !ok {

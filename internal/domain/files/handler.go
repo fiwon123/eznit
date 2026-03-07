@@ -209,7 +209,9 @@ func (h *Handler) updateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	message, appError := h.service.UpdateFile(r.Context(), file, header, parseID)
+	userID := r.Context().Value("user_id").(uuid.UUID)
+
+	message, appError := h.service.UpdateFile(r.Context(), file, header, parseID, userID)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 	}

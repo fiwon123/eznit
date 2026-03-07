@@ -193,3 +193,22 @@ func (r *sqlRepository) UpdateFile(file File) bool {
 
 	return true
 }
+
+func (r *sqlRepository) IsUserOwner(id uuid.UUID, userID uuid.UUID) bool {
+	r.logger.Debug("IsUserOwner", slog.String("id", id.String()), slog.String("userID", userID.String()))
+
+	var count int
+
+	query := "SELECT count(*) FROM files WHERE id=$1 AND user_id=$2"
+	err := r.db.Get(&count, query, id, userID)
+	if err != nil {
+		r.logger.Error("failed to verify owner file", slog.Any("error", err))
+		return false
+	}
+
+	if count <= 0 {
+		return false
+	}
+
+	return true
+}
