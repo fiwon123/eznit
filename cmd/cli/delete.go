@@ -13,6 +13,8 @@ import (
 	"github.com/fiwon123/eznit/pkg/types"
 )
 
+// Delete Cmd is used to delete a file uploaded by user
+// Just the owner can delete the file
 type DeleteCmd struct {
 }
 

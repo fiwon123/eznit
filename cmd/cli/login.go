@@ -15,6 +15,7 @@ import (
 	"github.com/fiwon123/eznit/pkg/types"
 )
 
+// Login Cmd keep token storaged
 type LoginCmd struct {
 }
 

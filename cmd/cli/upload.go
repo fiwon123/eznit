@@ -17,6 +17,8 @@ import (
 	"github.com/fiwon123/eznit/pkg/types"
 )
 
+// Upload Cmd uploads filepath
+// Necessary be logged in
 type UploadCmd struct {
 	Update string `help:"update a file using id"`
 }

@@ -11,6 +11,8 @@ import (
 	"github.com/fiwon123/eznit/pkg/types"
 )
 
+// Login Cmd show all files uploaded any user
+// if used me parameter only filed uploaded by user will be listed
 type ListCmd struct {
 	Me bool `help:"list all available files"`
 }

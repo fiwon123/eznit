@@ -15,6 +15,7 @@ import (
 	"github.com/fiwon123/eznit/pkg/helper"
 )
 
+// Download Cmd is used to download any uploaded file by any user
 type DownloadCmd struct {
 }
 

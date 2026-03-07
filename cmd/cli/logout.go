@@ -13,6 +13,7 @@ import (
 	"github.com/fiwon123/eznit/pkg/types"
 )
 
+// Logout Cmd remove current session
 type LogoutCmd struct {
 }
 

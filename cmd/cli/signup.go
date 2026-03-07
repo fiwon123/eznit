@@ -15,6 +15,7 @@ import (
 	"golang.org/x/term"
 )
 
+// Signup Cmd register a new user
 type SignupCmd struct {
 }
 
