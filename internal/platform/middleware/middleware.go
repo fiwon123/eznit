@@ -11,11 +11,14 @@ import (
 	"github.com/fiwon123/eznit/pkg/logger"
 )
 
+// Guard is responsible to storage middleware data
+// middleware is responsible to verify who is sending the request before procceed to handlers
 type Guard struct {
 	session *sessions.Service
 	logger  *logger.Config
 }
 
+// Use to generate a new Guard Data
 func NewGuard(session *sessions.Service, logger *logger.Config) *Guard {
 	return &Guard{
 		session: session,
@@ -23,6 +26,8 @@ func NewGuard(session *sessions.Service, logger *logger.Config) *Guard {
 	}
 }
 
+// Check if user has a session to send request that must be logged
+// And storage userID inside the request context after verified user exists as well
 func (g *Guard) AuthUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -56,6 +61,7 @@ func (g *Guard) AuthUser(next http.Handler) http.Handler {
 	})
 }
 
+// Check if user is a admin and has permissions to make request
 func (g *Guard) AuthAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
