@@ -58,9 +58,24 @@ func (s *service) GetFiles(ctx context.Context) (ListResponse, *errors.AppError)
 	}, nil
 }
 
+// userIDFromContext returns the user the guard put in the context. The
+// guard is the only thing that sets it, so a missing value means the
+// request never went through the guard — the route is registered without
+// it. The caller is rejected instead of the request panicking on the type
+// assertion, so a misregistered route fails closed.
+func userIDFromContext(ctx context.Context) (uuid.UUID, bool) {
+	userID, ok := ctx.Value("user_id").(uuid.UUID)
+	return userID, ok
+}
+
 // Get a list of Files for user
 func (s *service) GetFilesForUser(ctx context.Context) (ListResponse, *errors.AppError) {
-	userID := ctx.Value("user_id").(uuid.UUID)
+	userID, ok := userIDFromContext(ctx)
+	if !ok {
+		s.logger.Warn("no user in the request context")
+		return ListResponse{}, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
+	}
+
 	s.logger.Debug("GetFilesForUser", slog.String("userID", userID.String()))
 
 	files, ok := s.db.GetFilesForUser(userID)
@@ -100,12 +115,21 @@ func (s *service) GetFile(ctx context.Context, id uuid.UUID) (*File, *errors.App
 // Get only a single File for user
 func (s *service) GetFileForUser(ctx context.Context, id uuid.UUID) (*File, *errors.AppError) {
 
-	userID := ctx.Value("user_id").(uuid.UUID)
+	userID, ok := userIDFromContext(ctx)
+	if !ok {
+		s.logger.Warn("no user in the request context")
+		return nil, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
+	}
+
 	s.logger.Debug("GetFileForUser", slog.String("id", id.String()), slog.String("userID", userID.String()))
 
 	file, ok := s.db.GetFileForUser(id, userID)
 	if !ok {
-		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get faile for user")
+		s.logger.Warn("file not found for user")
+		// The file does not exist, or it belongs to somebody else. Both
+		// answer the same way: a caller must not be able to tell an id
+		// that exists from one that does not.
+		return nil, errors.NewAppError(http.StatusNotFound, "file not found")
 	}
 
 	return file, nil
@@ -113,7 +137,12 @@ func (s *service) GetFileForUser(ctx context.Context, id uuid.UUID) (*File, *err
 
 // Storage a single file for user
 func (s *service) StorageFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, contentType string) (string, *errors.AppError) {
-	userID := ctx.Value("user_id").(uuid.UUID)
+	userID, ok := userIDFromContext(ctx)
+	if !ok {
+		s.logger.Warn("no user in the request context")
+		return "", errors.NewAppError(http.StatusUnauthorized, "unauthorized")
+	}
+
 	s.logger.Debug("StorageFile", slog.String("userID", userID.String()))
 
 	fileName := filepath.Base(header.Filename)
@@ -142,7 +171,7 @@ func (s *service) StorageFile(ctx context.Context, file multipart.File, header *
 		ContentType: contentType,
 	}
 
-	ok := s.db.StorageFile(storageFile)
+	ok = s.db.StorageFile(storageFile)
 	if !ok {
 		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
 	}

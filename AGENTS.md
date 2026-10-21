@@ -146,15 +146,15 @@ These are tracked issues, not surprises for a reviewer to find:
 
 | Gap | Issue | Why it matters |
 | --- | --- | --- |
-| `GET /v1/files/{id}/content` requires no token, and the CLI never sends one | #4 | Anyone who has ever seen a file id can fetch the bytes |
 | `GET /v1/files/` returns every user's file metadata, unauthenticated | #5 | Metadata of every upload, to anyone |
 | The stored filename comes from the client | #5 | Path traversal is currently blocked incidentally, by one `filepath.Base` |
-| There are no tests | — | `make check` compiles and vets; it executes nothing |
+| The users, sessions and middleware packages have no tests | — | `make check` compiles and vets them; it executes nothing |
 
-**There is no test file in this repository yet.** `go test ./...` prints
-`[no test files]` for every package and exits 0. A green `Test` step in CI
-means "the packages compiled", not "the behaviour was checked". Say so when
-reporting a result — a run that executed nothing is not coverage.
+**The files domain and the CLI have tests; the rest of the repository does
+not.** `go test ./...` prints `[no test files]` for the packages without
+one, and still exits 0. A green `Test` step in CI means "the packages with
+tests passed" — name the packages when you report a result, because a run
+that executed nothing is not coverage.
 
 ## Git Workflow
 
