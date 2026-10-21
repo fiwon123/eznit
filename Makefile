@@ -52,6 +52,7 @@ WINDOWS_SERVER_ZIP := $(BUILD_API)/$(APP_NAME)_$(SERVER_NAME)_$(VERSION)_windows
 .PHONY: clean
 .PHONY: build build_cli build_api verify
 .PHONY: zip
+.PHONY: check
 
 build: clean zip
 	@echo "Release ready: $(VERSION)"
@@ -163,6 +164,44 @@ run_jq:
 	fi
 
 	cat $(VAL) | jq -C . | sed 's/\\n/\n/g; s/\\t/\t/g'
+
+# ---------------------------------------------------------------------------
+# Local verification gate
+#
+# gofmt, vet, test, build — in that order, because a formatting failure hides
+# everything after it.
+#
+# It needs no database, no secret file and no container: the API and the CLI
+# are compiled, not run. The `-include` at the top of this file is what makes
+# that true on a fresh clone.
+#
+# Two properties this target deliberately has:
+#
+#   - A missing toolchain FAILS the target. It does not skip. A gate that
+#     cannot fail is worse than no gate: it reads green and proves nothing.
+#   - After the run it names the packages that have no test files. `go test`
+#     prints "[no test files]" for those and still exits 0, so a green run
+#     would otherwise look like coverage that does not exist.
+#
+# This repository has no test file at all yet, so every package shows up in
+# that list. That is the state of the suite, not a pass.
+# ---------------------------------------------------------------------------
+check: ## gofmt, vet, test, build — the local verification gate
+	@if ! command -v go >/dev/null 2>&1; then \
+		echo "ERROR: go is not installed — the check cannot run, so nothing is verified" >&2; \
+		exit 1; \
+	fi; \
+	out="$$(gofmt -l .)"; \
+	if [ -n "$$out" ]; then echo "unformatted files:"; echo "$$out"; exit 1; fi; \
+	go vet ./...; \
+	go test ./...; \
+	go build ./...; \
+	notested="$$(go list -f '{{if and (not .TestGoFiles) (not .XTestGoFiles)}}{{.ImportPath}}{{end}}' ./... | grep -v '^$$')"; \
+	if [ -n "$$notested" ]; then \
+		echo ""; \
+		echo "NOTE: these packages have no test files — this run does not cover them:"; \
+		echo "$$notested" | sed 's/^/  /'; \
+	fi
 
 # args
 %:
