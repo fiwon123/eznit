@@ -46,7 +46,6 @@ func main() {
 	name := os.Getenv("DB_NAME")
 
 	dsn := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=disable", user, pwd, host, port, name)
-	fmt.Println(dsn)
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		logger.Error("Unable to connect to PostgreSQL!")
