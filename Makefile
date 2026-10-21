@@ -255,11 +255,12 @@ OPENCODE_ARGS ?=
 HOST_UID ?= $(shell stat -c '%u' . 2>/dev/null || stat -f '%u' . 2>/dev/null || id -u)
 HOST_GID ?= $(shell stat -c '%g' . 2>/dev/null || stat -f '%g' . 2>/dev/null || id -g)
 HOST_HOME ?= $(HOME)
-# Re-exported here on purpose. The bare `unexport` in the Docker section above
-# clears the export attribute of every variable defined before it — and of
-# every variable defined after it too, unless it is exported explicitly. Without
-# this line the sandbox would silently run as UID/GID 1000 on a Linux host
-# whose uid is different, and the bind mount would end up root-owned.
+# Exported by name. A bare `unexport` cancels the *default* export of the
+# variables defined after it, but it cannot cancel an export that names the
+# variable — so naming them here is what keeps the host identity reaching
+# compose, whatever the surrounding sections do with export attributes.
+# Without a named export the sandbox would start as UID/GID 1000 on a Linux
+# host whose uid differs, and the bind mount would end up root-owned.
 export HOST_UID HOST_GID HOST_HOME
 
 # --- Optional in-container agent ---------------------------------------------
