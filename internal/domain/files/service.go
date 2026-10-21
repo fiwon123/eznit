@@ -33,11 +33,23 @@ func NewService(db Repository, uploadFolder string, logger *logger.Config) *serv
 	}
 }
 
+// listLimit is the most files one list call returns. The list is a
+// catalogue of every upload, so it needs a bound: without one the route
+// reads the whole table on every call.
+const listLimit = 100
+
 // Get a list of files
 func (s *service) GetFiles(ctx context.Context) (ListResponse, *errors.AppError) {
+	// The route is behind the session guard. The check is here as well, so
+	// a route registered without the guard fails closed.
+	if _, ok := userIDFromContext(ctx); !ok {
+		s.logger.Warn("no user in the request context")
+		return ListResponse{}, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
+	}
+
 	s.logger.Debug("GetFiles")
 
-	files, ok := s.db.GetFiles()
+	files, ok := s.db.GetFiles(listLimit)
 	if !ok {
 		return ListResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to get failes")
 	}
@@ -135,6 +147,36 @@ func (s *service) GetFileForUser(ctx context.Context, id uuid.UUID) (*File, *err
 	return file, nil
 }
 
+// safeFileName validates the name the client sent and returns it unchanged.
+//
+// The name ends up in the path of the stored file, so a name carrying a
+// path separator is rejected instead of being stripped. Stripping it
+// quietly turns a traversal attempt into a file with an unrelated name,
+// stored without a word to the client about it — the write stays inside
+// the upload folder either way, but a request that is refused is a request
+// the client can see.
+func safeFileName(name string) (string, *errors.AppError) {
+	if name == "" {
+		return "", errors.NewAppError(http.StatusBadRequest, "invalid file name")
+	}
+
+	if strings.ContainsAny(name, `/\`) {
+		return "", errors.NewAppError(http.StatusBadRequest, "invalid file name")
+	}
+
+	// A name that is a directory reference on its own. Any other ".."
+	// inside a name is part of the name, not a path.
+	if name == "." || name == ".." {
+		return "", errors.NewAppError(http.StatusBadRequest, "invalid file name")
+	}
+
+	if strings.ContainsRune(name, 0) {
+		return "", errors.NewAppError(http.StatusBadRequest, "invalid file name")
+	}
+
+	return name, nil
+}
+
 // Storage a single file for user
 func (s *service) StorageFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, contentType string) (string, *errors.AppError) {
 	userID, ok := userIDFromContext(ctx)
@@ -145,9 +187,12 @@ func (s *service) StorageFile(ctx context.Context, file multipart.File, header *
 
 	s.logger.Debug("StorageFile", slog.String("userID", userID.String()))
 
-	fileName := filepath.Base(header.Filename)
-	ext := filepath.Ext(fileName)
+	fileName, appError := safeFileName(header.Filename)
+	if appError != nil {
+		return "", appError
+	}
 
+	ext := filepath.Ext(fileName)
 	cleanName := strings.ReplaceAll(fileName, ext, "")
 	ext = strings.ReplaceAll(ext, ".", "")
 	fileID, err := uuid.NewV7()
@@ -160,6 +205,14 @@ func (s *service) StorageFile(ctx context.Context, file multipart.File, header *
 	}
 	version := 1
 	finalPath := filepath.Join(s.uploadFolder, userID.String(), fileID.String(), strconv.Itoa(version)+"_"+fileName)
+
+	// The name is validated and the path is built from it, so the write
+	// lands inside the upload root. The check is here anyway: it is the
+	// one place that can say so, and it costs nothing.
+	if !helper.PathIsInside(s.uploadFolder, finalPath) {
+		s.logger.Error("the storage path is outside the upload folder", slog.String("path", finalPath))
+		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
+	}
 
 	storageFile := File{
 		ID:          fileID,
@@ -260,11 +313,20 @@ func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *m
 
 	newVersion := fileInfo.Version + 1
 
-	fileName := filepath.Base(header.Filename)
+	fileName, appError := safeFileName(header.Filename)
+	if appError != nil {
+		return "", appError
+	}
+
 	ext := filepath.Ext(fileName)
 
 	cleanName := strings.ReplaceAll(fileName, ext, "")
 	finalPath := filepath.Join(s.uploadFolder, fileInfo.UserID.String(), fileInfo.ID.String(), strconv.Itoa(newVersion)+"_"+fileName)
+
+	if !helper.PathIsInside(s.uploadFolder, finalPath) {
+		s.logger.Error("the storage path is outside the upload folder", slog.String("path", finalPath))
+		return "", errors.NewAppError(http.StatusInternalServerError, "update file failed")
+	}
 
 	updateFile := File{
 		ID:      id,

@@ -104,6 +104,48 @@ func writeFileOnDisk(t *testing.T, content string) string {
 	return path
 }
 
+// The catalogue lists every upload in the instance, so it is not public:
+// without a token it is refused.
+func TestListWithoutTokenIsRejected(t *testing.T) {
+	owner := uuid.New()
+
+	repo := newFakeRepository(File{ID: uuid.New(), UserID: owner, Name: "secret", Ext: "txt"})
+	router := newTestRouter(t, repo, t.TempDir(), owner)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/files/", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+	}
+
+	if !strings.Contains(rec.Body.String(), "No token provided") {
+		t.Errorf("expected the session guard to reject the request, got %q", rec.Body.String())
+	}
+}
+
+// The owner still gets the catalogue.
+func TestListWithATokenReturnsTheFiles(t *testing.T) {
+	owner := uuid.New()
+
+	repo := newFakeRepository(File{ID: uuid.New(), UserID: owner, Name: "secret", Ext: "txt"})
+	router := newTestRouter(t, repo, t.TempDir(), owner)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/files/", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	if !strings.Contains(rec.Body.String(), "secret") {
+		t.Errorf("expected the file in the response, got %q", rec.Body.String())
+	}
+}
+
 // The download route is behind the session guard: without a token nothing is
 // served.
 //

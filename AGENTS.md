@@ -146,15 +146,14 @@ These are tracked issues, not surprises for a reviewer to find:
 
 | Gap | Issue | Why it matters |
 | --- | --- | --- |
-| `GET /v1/files/` returns every user's file metadata, unauthenticated | #5 | Metadata of every upload, to anyone |
-| The stored filename comes from the client | #5 | Path traversal is currently blocked incidentally, by one `filepath.Base` |
 | The users, sessions and middleware packages have no tests | — | `make check` compiles and vets them; it executes nothing |
+| The list of every upload is one catalogue for all users | — | A token is required, but any user sees every other user's file names |
 
-**The files domain and the CLI have tests; the rest of the repository does
-not.** `go test ./...` prints `[no test files]` for the packages without
-one, and still exits 0. A green `Test` step in CI means "the packages with
-tests passed" — name the packages when you report a result, because a run
-that executed nothing is not coverage.
+**The files domain, the CLI and the path helper have tests; the rest of the
+repository does not.** `go test ./...` prints `[no test files]` for the
+packages without one, and still exits 0. A green `Test` step in CI means
+"the packages with tests passed" — name the packages when you report a
+result, because a run that executed nothing is not coverage.
 
 ## Git Workflow
 

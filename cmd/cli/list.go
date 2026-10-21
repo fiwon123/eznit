@@ -11,7 +11,7 @@ import (
 	"github.com/fiwon123/eznit/pkg/types"
 )
 
-// Login Cmd show all files uploaded any user
+// List Cmd show all files uploaded any user
 // if used me parameter only filed uploaded by user will be listed
 type ListCmd struct {
 	Me bool `help:"list all available files"`
@@ -22,18 +22,15 @@ func (cmd *ListCmd) Run(g *Globals) error {
 
 	fmt.Println()
 
-	if cmd.Me {
-		token, err := getToken()
-		if err != nil {
-			g.logger.Warn("not logged in! ")
-			return nil
-		}
-
-		sendListRequest(g.api.baseURL, true, token, g)
-
-	} else {
-		sendListRequest(g.api.baseURL, false, "", g)
+	// Both routes are behind the session guard: the catalogue lists every
+	// upload in the instance, so it is not public.
+	token, err := getToken()
+	if err != nil {
+		g.logger.Warn("not logged in! ")
+		return nil
 	}
+
+	sendListRequest(g.api.baseURL, cmd.Me, token, g)
 
 	return nil
 }

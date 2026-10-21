@@ -33,11 +33,13 @@ func NewHandler(service *service, guard *middleware.Guard, logger *logger.Config
 func (h *Handler) RegisterRoutes(r *chi.Mux) {
 
 	r.Route("/v1/files", func(r chi.Router) {
-		r.Get("/", h.getFilesHandler)
 
 		r.Group(func(r chi.Router) {
 			r.Use(h.guard.AuthUser)
 
+			// The catalogue lists every upload in the instance, so it
+			// needs a session like every other route on this resource.
+			r.Get("/", h.getFilesHandler)
 			r.Post("/", h.uploadHandler)
 			r.Get("/me", h.getFilesForUserHandler)
 
