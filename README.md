@@ -159,6 +159,11 @@ make dev-shell  # a shell inside the sandbox
 make dev-down   # stop it (keeps the volumes)
 ```
 
+The sandbox waits for the stack: compose starts PostgreSQL, waits for it to
+be healthy, runs the migrations, and only then starts the sandbox. A
+failed migration keeps the sandbox down rather than starting it against an
+unmigrated database.
+
 Everything also works without Make:
 
 ```sh

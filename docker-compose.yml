@@ -84,6 +84,18 @@ services:
         required: false
     secrets:
       - db_password
+    # The sandbox is configured to talk to the `db` service, so compose starts
+    # the database with it — and waits for it. The database has a healthcheck
+    # and the migration is a one-shot service, so the real sequence can be
+    # expressed: database healthy, then migration finished, then the sandbox.
+    # Without this, `docker compose up dev` starts against no database, and
+    # the paths that do start the database start the sandbox in parallel with
+    # the migration.
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       # The workspace bind mount is the only mount in this file: it exists on
       # every platform and needs no host setup.
@@ -162,7 +174,10 @@ services:
   #   volumes:
   #     - ./build/api/server:/api/server:ro
   #   depends_on:
-  #     - migrate
+  #     db:
+  #       condition: service_healthy
+  #     migrate:
+  #       condition: service_completed_successfully
 
 secrets:
   db_password:
