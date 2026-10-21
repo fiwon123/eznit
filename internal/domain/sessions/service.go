@@ -23,7 +23,7 @@ func NewService(db Repository, logger *logger.Config) *Service {
 }
 
 func (s *Service) IsValid(token string) bool {
-	s.logger.Debug("token: ", slog.String("token", token))
+	s.logger.Debug("token: ", slog.String("token_fp", helper.Fingerprint(token)))
 	session := s.db.GetSession(token)
 	if session == nil {
 		s.logger.Warn("session not found")
@@ -64,7 +64,7 @@ func (s *Service) CreateToken(userdID uuid.UUID) (string, bool) {
 		return "", false
 	}
 
-	s.logger.Debug("token: ", slog.String("token", token))
+	s.logger.Debug("token: ", slog.String("token_fp", helper.Fingerprint(token)))
 	ok := s.db.CreateSession(Session{
 		Token:     token,
 		UserID:    userdID,
@@ -84,7 +84,7 @@ func (s *Service) CreateToken(userdID uuid.UUID) (string, bool) {
 // Invalidate a token after user logout
 // token is active and user not loggout, repository has a expiration date time to control it too
 func (s *Service) UseToken(ctx context.Context, token string) bool {
-	s.logger.Debug("token: ", slog.String("token", token))
+	s.logger.Debug("token: ", slog.String("token_fp", helper.Fingerprint(token)))
 	ok := s.db.UpdateSession(Session{
 		Token:    token,
 		IsActive: false,

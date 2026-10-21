@@ -3,6 +3,7 @@ package sessions
 import (
 	"log/slog"
 
+	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -76,7 +77,7 @@ func (r *sqlRepository) UpdateSession(s Session) bool {
 // Get user id by token
 func (r *sqlRepository) GetUserIDByToken(token string) (uuid.UUID, bool) {
 
-	r.logger.Debug("GetUserIDByToken", slog.String("token", token))
+	r.logger.Debug("GetUserIDByToken", slog.String("token_fp", helper.Fingerprint(token)))
 
 	exec := `SELECT u.id FROM users u
 			INNER JOIN sessions s ON u.id = s.user_id

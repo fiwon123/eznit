@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
+	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/types"
 )
 
@@ -39,7 +40,7 @@ func (cmd *LogoutCmd) Run(g *Globals) error {
 
 func sendLogoutRequest(baseURL string, token string, g *Globals) bool {
 
-	g.logger.Debug("token", slog.String("token", token))
+	g.logger.Debug("token", slog.String("token_fp", helper.Fingerprint(token)))
 
 	req, err := http.NewRequest("GET", baseURL+"/v1/logout", nil)
 	if err != nil {
