@@ -12,6 +12,7 @@ import (
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
 	"github.com/fiwon123/eznit/internal/domain/users"
+	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/types"
 )
 
@@ -43,7 +44,7 @@ func (cmd *LoginCmd) Run(g *Globals) error {
 
 	g.logger.Info("account logged in! ")
 
-	g.logger.Debug("token to save", slog.String("token", token))
+	g.logger.Debug("token to save", slog.String("token_fp", helper.Fingerprint(token)))
 	err = saveToken(token)
 	if err != nil {
 		g.logger.Warn("failed to save token. ")
@@ -85,7 +86,10 @@ func sendLoginRequest(baseURL string, request users.LoginRequest, g *Globals) (s
 		return "", false
 	}
 
-	g.logger.Debug("response", slog.Any("envelope", envelope))
+	g.logger.Debug("response",
+		slog.Int("status_code", resp.StatusCode),
+		slog.String("message", envelope.Msg),
+	)
 
 	return envelope.Data.Token, true
 }
