@@ -26,7 +26,7 @@ empty field here means a placeholder somewhere else.
 | CLI | `alecthomas/kong` |
 | Logging | `go.uber.org/zap` via `log/slog`, rotating files with `lumberjack` |
 | Config | `joho/godotenv` |
-| Containers | Docker Compose (`db`, `migrate`, `api`) |
+| Containers | Docker Compose — the dev sandbox (`dev`) and the local stack (`db`, `migrate`; `api` is kept as a commented block) |
 
 ## Architecture
 
@@ -66,7 +66,10 @@ index; the path column is what `download` opens.
 | `make run_api` | Run the API against the configured database |
 | `make run_cli` | Run the CLI |
 | `make build` | Build both binaries into `./build` |
-| `make docker_up_all` | Bring up db + migrations + API |
+| `make setup` | One-time: create `.env` and the database secret from their examples |
+| `make docker_up` | Bring up db + the migrations |
+| `make docker_up_all` | Bring up db + the migrations + the dev sandbox |
+| `make dev-up` | Start the dev sandbox (pinned Go toolchain) with the stack |
 
 ## Environment
 

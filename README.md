@@ -33,27 +33,42 @@ Two entry points:
 > **Pre-1.0 and unhardened.** Read [Security status](#security-status) before
 > exposing this anywhere but `localhost`.
 
-**Supported platforms:** Linux and macOS. Windows works through WSL2; the CLI
-and the API are pure Go, but the development flow below assumes a POSIX shell.
+**Supported platforms:** Linux, macOS and Windows. The CLI and the API are pure
+Go; the development flow below runs through the dev sandbox, so it behaves the
+same on all three — see [How to develop](#how-to-develop).
 
 ## How to use
 
 ### Run the stack
 
-Docker Compose brings up PostgreSQL, runs the migrations, and starts the API:
+Two local files come first — the configuration and the database secret. Both
+are gitignored, and `make setup` creates them from the committed examples:
 
 ```sh
-make docker_up_all
+make setup
 ```
 
 The database password comes from `secrets/db_password.txt`, which Compose
-mounts as a Docker secret and the API reads through `DB_PASSWORD_FILE`. Create
-it from the example before the first run:
+mounts as a Docker secret and the API reads through `DB_PASSWORD_FILE`. It is
+never an environment variable.
+
+Then bring up the database and run the migrations:
 
 ```sh
-cp secrets/db_password.txt.example secrets/db_password.txt
-chmod 600 secrets/db_password.txt
+make docker_up      # or: docker compose up db migrate
 ```
+
+The API runs from source, not from a container: `make run_api` on the host, or
+inside the dev sandbox (see [How to develop](#how-to-develop)). The host CLI
+talks to it on `http://localhost:4000`.
+
+> The `api` service in `docker-compose.yml` is kept as a commented block: it
+> runs the **prebuilt** binary from `./build`, which is the path a release
+> bundle takes. Uncomment it when that is what you want.
+>
+> In a **release bundle** the same file ships without the sandbox's image
+> source, so start the database with `docker compose up db migrate` — the
+> `dev` service is the development sandbox, and it is not part of the bundle.
 
 ### Build the CLI
 
@@ -110,7 +125,8 @@ Also true today:
 `.env`, `.env.local` and `secrets/db_password.txt` must be mode `600` — they
 hold credentials, and the default umask makes them readable by every user on
 the machine. They are gitignored, so this cannot be fixed by a commit; set it
-on each checkout:
+on each checkout (`make setup` creates the first and the third with that mode
+already set):
 
 ```sh
 chmod 600 .env .env.local secrets/db_password.txt
@@ -129,6 +145,44 @@ the API and the CLI, it does not run them. That is deliberate — the gate has t
 work on a fresh clone. It fails loudly if the Go toolchain is missing rather
 than skipping, and it lists the packages with no test files, because `go test`
 prints `[no test files]` and still exits 0.
+
+### Dev sandbox
+
+The commands above need a Go toolchain on the host. The sandbox removes that
+requirement: it is a container with Go **1.24.1** — the version in `go.mod`,
+the same one CI uses — and the workspace is bind-mounted into it, so the files
+you edit are the same files.
+
+```sh
+make dev-up     # start the sandbox + PostgreSQL + the migrations
+make dev-shell  # a shell inside the sandbox
+make dev-down   # stop it (keeps the volumes)
+```
+
+Everything also works without Make:
+
+```sh
+docker compose up                              # the sandbox and the stack
+python scripts/dev-up.py dev-up                # native Windows
+```
+
+| Platform | How to run the dev flow |
+| --- | --- |
+| Linux, macOS | `make dev-up`, or `docker compose up` |
+| WSL2 | `make dev-up`, or `docker compose up` (the host is Linux) |
+| Windows (native) | `python scripts/dev-up.py dev-up`, or `docker compose up` |
+
+The sandbox shares the Compose network with PostgreSQL, so the API started
+inside it (`make run_api`) reaches the database at `db:5432` with the stock
+`.env` — no `DB_HOST` override, and no password on the command line: the
+container reads the same file secret the API container reads.
+
+`make dev-opencode` runs the AI coding agent inside the sandbox, with the
+host's `~/.config/gh`, `~/.config/opencode` and `~/.gitconfig` mounted
+read-only. It needs a **Linux** opencode binary: on macOS and native Windows
+the target refuses with a clear message and the agent stays on the host (use
+WSL2, where the host binary *is* Linux). The container has no Docker socket —
+the agent inside it cannot manage containers, on purpose.
 
 ### Layout
 
@@ -175,6 +229,7 @@ connection string.
 
 The migration targets need a database connection. Copy `.env.example` to
 `.env`, fill it in, and try again. `make check` and `make build` do not need it.
+`make setup` creates the file for you.
 
 **`make check` passes, but nothing seems tested**
 
@@ -192,6 +247,28 @@ secret. If you are running the API by hand, set one of them.
 
 The file is mode `600` and owned by another user. See
 [Local secret files](#local-secret-files).
+
+**`set: pipefail: invalid option name` (or `bad interpreter`) in the sandbox**
+
+The scripts run through the bind mount, so bash parses your working tree's
+bytes. A checkout made before the `.gitattributes` rule was added keeps CRLF
+endings, and `git status` stays clean while it does. Re-check the files out
+with LF endings:
+
+```sh
+git rm --cached -r . >/dev/null && git reset --hard
+```
+
+**`docker compose up` fails on a missing secret**
+
+The database secret is a file secret, so Compose refuses to start without it.
+`make setup` creates it from the committed example.
+
+**`bind: address already in use` on port 4000**
+
+The sandbox publishes 4000 so the host CLI can reach the API inside it. If the
+API runs on the host instead, publish a different host port:
+`HOST_PORT=4001 docker compose up`.
 
 ## License
 

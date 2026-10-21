@@ -1,0 +1,174 @@
+# Dev sandbox + local stack — one file, no host prerequisites.
+#
+# `docker compose up` works on this file alone, on any OS, with **no host-side
+# prerequisites beyond Docker itself**: no Make, no Python, no opencode, no gh.
+# Every host-derived value below has an inline default, so nothing has to be
+# exported first.
+#
+# Host-only mounts (the gh/opencode config dirs, `~/.gitconfig`) deliberately do
+# NOT live here. Compose treats a missing bind-mount source as fatal on Windows
+# and creates a root-owned directory for it on Linux, so a single absent
+# `~/.config/gh` would break the one command this file exists to support. They
+# live in `docker-compose.agent.yml`, merged only by the developer entry points
+# and only when the host can actually provide them.
+#
+# This file replaces the old `docker-compose.yaml`, which held only the local
+# stack. The stack is unchanged — `db`, `migrate` and the file secret are the
+# same — and the sandbox joins it here instead of living in a second file that
+# could drift away from this one.
+#
+# The `api` service is kept as a commented block at the bottom: it runs the
+# PREBUILT binary from ./build, which is the path a release bundle takes. It is
+# commented out because the development flow does not use it — the API runs
+# from source inside the sandbox (`make run_api`), where it is rebuilt with the
+# change instead of from a stale binary. Uncomment it to run the prebuilt
+# binary; the block is kept valid so it still parses when you do.
+
+name: eznit
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    # Host identity defaults to UID/GID 1000, which is correct for Docker
+    # Desktop (macOS/Windows virtualise bind-mount ownership). A Linux user
+    # whose uid differs overrides it: `HOST_UID="$(id -u)" docker compose up`.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    extra_hosts:
+      # Docker Desktop injects this name itself; plain Linux Docker does not,
+      # so it is declared for both.
+      - "host.docker.internal:host-gateway"
+    # Invoked through bash rather than executed directly: a Windows checkout
+    # does not preserve the executable bit through a bind mount, so running the
+    # path itself fails with "Permission denied". This also makes the LF policy
+    # in .gitattributes a redundancy rather than a hard requirement here.
+    command: ["/bin/bash", "/workspace/scripts/dev-entrypoint.sh"]
+    # The API listens on 4000 inside the container (hardcoded in cmd/api), and
+    # the host-side CLI talks to `http://localhost:4000` by default — so
+    # publishing 4000 makes the CLI work against the sandboxed API with no
+    # configuration at all. Override the host port when the API runs on the
+    # host instead, which would otherwise collide: `HOST_PORT=4001`.
+    ports:
+      - "${HOST_PORT:-4000}:4000"
+    environment:
+      - GH_TOKEN=${GH_TOKEN:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - HOME=/home/devuser
+      # Forwarded so the entrypoint can probe ownership and the compose
+      # interpolation above has something to fall back to.
+      - HOST_UID=${HOST_UID:-1000}
+      - HOST_GID=${HOST_GID:-1000}
+      # The API reads its database settings from the environment. Inside the
+      # sandbox the database is the `db` service on the compose network, so
+      # these are the in-network address — NOT the host port the database is
+      # published on. They are set explicitly because `env_file` below can
+      # carry a host-side DB_PORT, which would point the API at a port that
+      # does not exist inside the network.
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-root}
+      - DB_NAME=${DB_NAME:-eznit}
+      # The password stays a file secret, the same way the API container reads
+      # it — never an environment variable.
+      - DB_PASSWORD_FILE=/run/secrets/db_password
+    # The local configuration, when it exists: API_UPLOADS and API_LOGS are
+    # relative paths, so they resolve inside the bind mount and the files are
+    # the ones the host sees. `required: false` keeps a clean clone loadable —
+    # the sandbox must come up even before the configuration exists.
+    env_file:
+      - path: ./.env
+        required: false
+    secrets:
+      - db_password
+    volumes:
+      # The workspace bind mount is the only mount in this file: it exists on
+      # every platform and needs no host setup.
+      - .:/workspace:cached
+      # The Go module cache and build cache live OUTSIDE the bind mount, in the
+      # image's own filesystem. Without these volumes every rebuild re-downloads
+      # the whole dependency set and re-compiles the standard library.
+      - gomodcache:/go/pkg/mod
+      - gocache:/home/devuser/.cache/go-build
+    tty: true
+    stdin_open: true
+
+  db:
+    image: postgres:18.3-bookworm
+    restart: always
+    environment:
+      # Inline defaults, so the file loads on a clean clone with no .env file.
+      # Compose reads .env itself for the interpolation, so a configured
+      # checkout still gets its own values.
+      POSTGRES_USER: ${DB_USER:-root}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_DB: ${DB_NAME:-eznit}
+    secrets:
+      - db_password
+    ports:
+      # The host port is overridable, so two checkouts can run side by side.
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+  migrate:
+    image: migrate/migrate:4
+    # The local configuration, when it exists. `required: false` keeps a clean
+    # clone loadable: the service reports a clear error of its own if the
+    # variables it needs are missing, which beats the whole project refusing
+    # to load.
+    env_file:
+      - path: ./.env
+        required: false
+    # `environment` wins over `env_file`, and deliberately here: inside the
+    # compose network the database is always on 5432, whatever host port it is
+    # published on. The migration DSN is built from these variables, so a host
+    # port override must not reach it.
+    environment:
+      DB_USER: ${DB_USER:-root}
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-eznit}
+    secrets:
+      - db_password
+    volumes:
+      - ./db/migrations:/migrations:ro
+      - ./scripts/run_migrate.sh:/scripts/run_migrate.sh:ro
+    entrypoint: ["/scripts/run_migrate.sh"]
+    command: []
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # api:
+  #   image: alpine:3.23
+  #   env_file:
+  #     - path: ./.env
+  #       required: true
+  #   environment:
+  #     DB_PASSWORD_FILE: /run/secrets/db_password
+  #   secrets:
+  #     - db_password
+  #   command: ./api/server
+  #   ports:
+  #     - "${API_PORT:-4000}:4000"
+  #   volumes:
+  #     - ./build/api/server:/api/server:ro
+  #   depends_on:
+  #     - migrate
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+
+volumes:
+  postgres-data:
+  gomodcache:
+  gocache:
