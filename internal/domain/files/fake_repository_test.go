@@ -10,6 +10,9 @@ import (
 type fakeRepository struct {
 	files  map[uuid.UUID]File
 	stored []File
+	// lastLimit is the limit the last GetFiles call was made with, so a
+	// test can assert the route asked for a bounded list.
+	lastLimit int
 }
 
 // newFakeRepository returns a repository holding the given files.
@@ -21,11 +24,18 @@ func newFakeRepository(files ...File) *fakeRepository {
 	return repo
 }
 
-func (r *fakeRepository) GetFiles() ([]File, bool) {
+func (r *fakeRepository) GetFiles(limit int) ([]File, bool) {
+	r.lastLimit = limit
+
 	all := make([]File, 0, len(r.files))
 	for _, file := range r.files {
 		all = append(all, file)
 	}
+
+	if limit > 0 && len(all) > limit {
+		all = all[:limit]
+	}
+
 	return all, true
 }
 
