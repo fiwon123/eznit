@@ -85,7 +85,7 @@ make build        # both binaries into ./build
 | `eznit login` | Start a session; the token is stored in `~/.eznit/config.json` (mode 0600) |
 | `eznit list` | List files |
 | `eznit upload` | Upload a file |
-| `eznit download` | Download a file by id |
+| `eznit download` | Download one of your own files by id |
 | `eznit delete` | Delete a file |
 | `eznit logout` | End the session |
 
@@ -104,14 +104,15 @@ as issues rather than left for you to discover:
 
 | Gap | Issue |
 | --- | --- |
-| `download` requires no token, and the CLI never sends one | [#4](https://github.com/fiwon123/eznit/issues/4) |
 | `list` returns every user's file metadata, unauthenticated | [#5](https://github.com/fiwon123/eznit/issues/5) |
 | The stored filename comes from the client | [#5](https://github.com/fiwon123/eznit/issues/5) |
 
 Also true today:
 
-- **There are no automated tests.** `make check` compiles and vets; it executes
-  nothing. Treat a green run as "it builds", not "it works".
+- **The coverage is partial.** The files domain and the CLI have tests; the
+  users, sessions, middleware and platform packages have none.
+  `make check` compiles and vets everything. Treat a green run as "it
+  builds, and the tested packages passed" — not "it works".
 - Files are stored unencrypted on the server's disk.
 - There is no rate limiting on `signup` or `login`.
 - Passwords are hashed; session tokens are random and stored in the database
