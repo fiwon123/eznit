@@ -7,6 +7,7 @@ import (
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
 	"github.com/fiwon123/eznit/pkg/errors"
+	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/google/uuid"
 )
@@ -88,7 +89,7 @@ func (s *Service) LoginUser(ctx context.Context, req LoginRequest) (LoginRespons
 		return LoginResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to create a new session")
 	}
 
-	s.logger.Debug("user token", slog.String("token", token))
+	s.logger.Debug("user token", slog.String("token_fp", helper.Fingerprint(token)))
 	return LoginResponse{
 		Token: token,
 	}, nil

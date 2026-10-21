@@ -1,0 +1,67 @@
+version: 2
+
+# Dependabot opens its pull requests against `dev`, never against the default
+# branch. Without `target-branch: "dev"`, dependency bumps would land straight
+# on the release branch and bypass the integration branch entirely. See
+# AGENTS.md -> Branch Strategy.
+#
+# The `groups` blocks group the bumps that belong together, so a routine
+# dependency update is one pull request instead of five.
+
+updates:
+  # Go module dependencies
+  - package-ecosystem: "gomod"
+    directory: "/"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "go"
+    commit-message:
+      prefix: "deps"
+    groups:
+      # The HTTP stack
+      http:
+        patterns:
+          - "go-chi/chi"
+      # The database stack
+      database:
+        patterns:
+          - "jmoiron/sqlx"
+          - "lib/pq"
+      # The command line
+      cli:
+        patterns:
+          - "alecthomas/kong"
+      # Logging
+      logging:
+        patterns:
+          - "go.uber.org/zap"
+          - "gopkg.in/natefinch/lumberjack.v2"
+          - "go.uber.org/multierr"
+      # Platform and crypto
+      system:
+        patterns:
+          - "golang.org/x/crypto"
+          - "golang.org/x/term"
+          - "golang.org/x/sys"
+          - "google/uuid"
+      # Environment files
+      env:
+        patterns:
+          - "joho/godotenv"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"
