@@ -1,7 +1,15 @@
+<div align="center">
+
 # eznit
 
 Self-hosted file storage. A Go API and a CLI client for uploading, listing and
 retrieving your own files, backed by PostgreSQL.
+
+[![License: MIT](https://img.shields.io/github/license/fiwon123/eznit)](LICENSE)
+[![Go version](https://img.shields.io/github/go-mod/go-version/fiwon123/eznit?logo=go&logoColor=white)](go.mod)
+[![CI (Go)](https://github.com/fiwon123/eznit/actions/workflows/ci.go.yml/badge.svg)](https://github.com/fiwon123/eznit/actions/workflows/ci.go.yml)
+
+</div>
 
 ## Table of contents
 
