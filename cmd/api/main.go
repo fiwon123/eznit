@@ -11,6 +11,7 @@ import (
 
 	"github.com/fiwon123/eznit/internal/domain/files"
 	"github.com/fiwon123/eznit/internal/domain/sessions"
+	"github.com/fiwon123/eznit/internal/domain/templates"
 	"github.com/fiwon123/eznit/internal/domain/users"
 	"github.com/fiwon123/eznit/internal/platform/middleware"
 	"github.com/fiwon123/eznit/internal/platform/sql"
@@ -75,6 +76,12 @@ func main() {
 	fileService := files.NewService(fileRepo, uploadFolder, logger)
 	fileHandler := files.NewHandler(fileService, guard, logger)
 	fileHandler.RegisterRoutes(r)
+
+	templateRepo := templates.NewRepository(db, logger)
+	templateService := templates.NewService(templateRepo, logger)
+	templateHandler := templates.NewHandler(templateService, guard, logger)
+	templateHandler.RegisterRoutes(r)
+
 	logger.Info("Initialized routes!")
 
 	srv := &http.Server{
