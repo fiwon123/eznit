@@ -35,7 +35,10 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <Link className="brand" to="/">
-          eznit
+          {/* The mark carries the word too, so the plain-text heading goes: two
+              "eznit"s side by side read as a mistake. The alt text is what a
+              screen reader announces for the link. */}
+          <img src="/logo.svg" alt="eznit" className="brand-logo" />
         </Link>
         <nav className="topnav">
           <Link to="/">catalogue</Link>
