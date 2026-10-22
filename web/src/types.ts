@@ -1,6 +1,7 @@
-// The JSON shapes the API speaks. They mirror internal/domain/templates/dto.go
-// and internal/domain/users/dto.go: the field names below are the wire
-// contract, so a rename on the Go side has to happen here too.
+// The JSON shapes the API speaks. They mirror internal/domain/templates/dto.go,
+// internal/domain/users/dto.go and internal/domain/files/dto.go: the field names
+// below are the wire contract, so a rename on the Go side has to happen here
+// too.
 
 export interface TemplateData {
   id: string;
@@ -38,8 +39,18 @@ export interface TemplateDetail extends TemplateData {
   variables: TemplateVariableData[];
 }
 
-export interface ListResponse {
-  data: TemplateData[];
+// One entry of the files catalogue. It mirrors internal/domain/files/dto.go:
+// the files resource sends the id, the name, the extension and the version —
+// the path and the content type stay on the server.
+export interface FileData {
+  id: string;
+  name: string;
+  ext: string;
+  version: number;
+}
+
+export interface ListResponse<T = TemplateData> {
+  data: T[];
   total: number;
 }
 

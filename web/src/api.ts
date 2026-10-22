@@ -1,4 +1,4 @@
-import type { Envelope, ListResponse, LoginResponse, TemplateDetail } from "./types";
+import type { Envelope, FileData, ListResponse, LoginResponse, TemplateDetail } from "./types";
 
 const TOKEN_KEY = "eznit.token";
 
@@ -47,25 +47,42 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   const response = await fetch(`/v1${path}`, { ...init, headers });
-
-  // The API always answers with the envelope, but a proxy or a crash can
-  // answer with something else, and a JSON parse error must not hide the
-  // status code.
-  let envelope: Envelope<T> = {};
-  try {
-    envelope = (await response.json()) as Envelope<T>;
-  } catch {
-    envelope = {};
-  }
+  const envelope = await readEnvelope<T>(response);
 
   if (!response.ok) {
-    throw new ApiError(
-      response.status,
-      envelope.error ?? `The request failed (${response.status}).`,
-    );
+    throw new ApiError(response.status, reason(envelope, response.status));
   }
 
   return envelope.data as T;
+}
+
+// readEnvelope reads the envelope a response wears, or an empty one when the
+// body is not JSON at all — a proxy or a crash can answer with something else,
+// and a parse error must not hide the status code.
+async function readEnvelope<T>(response: Response): Promise<Envelope<T>> {
+  try {
+    return (await response.json()) as Envelope<T>;
+  } catch {
+    return {};
+  }
+}
+
+function reason(envelope: Envelope<unknown>, status: number): string {
+  if (envelope.error !== undefined && envelope.error !== "") {
+    return envelope.error;
+  }
+  return `The request failed (${status}).`;
+}
+
+// authHeaders carries the session token the guard reads. The files routes sit
+// behind the same guard as the catalogue, so they all send it.
+function authHeaders(): Headers {
+  const headers = new Headers();
+  const token = getToken();
+  if (token !== null) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return headers;
 }
 
 export function login(email: string, password: string): Promise<LoginResponse> {
@@ -82,4 +99,64 @@ export function listTemplates(kind: string): Promise<ListResponse> {
 
 export function getTemplate(id: string): Promise<TemplateDetail> {
   return request<TemplateDetail>(`/templates/${encodeURIComponent(id)}`);
+}
+
+// The most the API takes in one upload: it caps the body with
+// http.MaxBytesReader at 32 MiB, so the browser refuses first and says why.
+export const MAX_UPLOAD_BYTES = 32 * 1024 * 1024;
+
+// fileNameOf is the name the file was uploaded under. The service splits
+// "notes.md" into the name "notes" and the extension "md", so the dot goes
+// back in.
+export function fileNameOf(file: FileData): string {
+  return file.ext === "" ? file.name : `${file.name}.${file.ext}`;
+}
+
+// listFiles is the caller's own uploads. The instance-wide catalogue route
+// exists too, but its owner scoping is a tracked gap, and this page does not
+// lean on it.
+export function listFiles(): Promise<ListResponse<FileData>> {
+  return request<ListResponse<FileData>>("/files/me");
+}
+
+export async function uploadFile(file: File): Promise<void> {
+  const form = new FormData();
+  form.append("file", file);
+
+  // No Content-Type here: the browser sets it with the multipart boundary.
+  const response = await fetch("/v1/files", {
+    method: "POST",
+    headers: authHeaders(),
+    body: form,
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, reason(await readEnvelope(response), response.status));
+  }
+}
+
+// downloadFile fetches the bytes and hands them to the browser as a download.
+// It cannot be a plain link: the route is behind the guard, so the request
+// needs the Authorization header.
+export async function downloadFile(file: FileData): Promise<void> {
+  const response = await fetch(`/v1/files/${encodeURIComponent(file.id)}/content`, {
+    headers: authHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, reason(await readEnvelope(response), response.status));
+  }
+
+  const url = window.URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileNameOf(file);
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+export function deleteFile(id: string): Promise<void> {
+  return request<void>(`/files/${encodeURIComponent(id)}`, { method: "DELETE" });
 }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, Route, Routes } from "react-router-dom";
 import { clearToken, getToken, setToken } from "./api";
 import Catalogue from "./pages/Catalogue";
+import Files from "./pages/Files";
 import Login from "./pages/Login";
 import TemplateDetailPage from "./pages/TemplateDetail";
 
@@ -31,9 +32,12 @@ export default function App() {
           {token === null ? (
             <Link to="/login">log in</Link>
           ) : (
-            <button className="linkbutton" type="button" onClick={logOut}>
-              log out
-            </button>
+            <>
+              <Link to="/files">files</Link>
+              <button className="linkbutton" type="button" onClick={logOut}>
+                log out
+              </button>
+            </>
           )}
         </nav>
       </header>
@@ -42,6 +46,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Catalogue />} />
           <Route path="/templates/:id" element={<TemplateDetailPage />} />
+          <Route path="/files" element={<Files />} />
           <Route path="/login" element={<Login onAuthenticated={logIn} />} />
           <Route
             path="*"
