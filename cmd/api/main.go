@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/fiwon123/eznit/internal/domain/files"
@@ -84,9 +86,21 @@ func main() {
 
 	logger.Info("Initialized routes!")
 
+	// The web UI, when it is built. In development the Vite dev server
+	// proxies /v1 to this API; in production the API serves web/dist itself.
+	// One origin either way, so the API needs no CORS headers.
+	var handler http.Handler = r
+	dist := webDistFolder()
+	if info, statErr := os.Stat(dist); statErr == nil && info.IsDir() {
+		logger.Info("Serving the web UI from " + dist)
+		handler = webHandler(dist, r)
+	} else {
+		logger.Info("No web UI found at " + dist + " — serving the API only")
+	}
+
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", 4000),
-		Handler: r,
+		Handler: handler,
 	}
 
 	logger.Info("Server Running...")
@@ -96,6 +110,43 @@ func main() {
 	}
 
 	logger.Info("Server Stopped")
+}
+
+// webDistFolder is where the built web UI lives. It is relative to the
+// working directory of the API, and API_WEB_DIST moves it.
+func webDistFolder() string {
+	if dir := os.Getenv("API_WEB_DIST"); dir != "" {
+		return dir
+	}
+	return "web/dist"
+}
+
+// webHandler serves the built web UI in front of the API.
+//
+// The UI is a single page application: its routes live in the browser, so a
+// path like /templates/<id> has to answer with index.html and not with a 404.
+// The API keeps its own paths, so anything under /v1 goes to the router
+// untouched — including the 404 the router gives for an unknown API path.
+func webHandler(dist string, api http.Handler) http.Handler {
+	files := http.FileServer(http.Dir(dist))
+	index := filepath.Join(dist, "index.html")
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/v1/") {
+			api.ServeHTTP(w, r)
+			return
+		}
+
+		// path.Clean collapses "..", and filepath.Join keeps the result
+		// inside dist, so a crafted path cannot read a file outside it.
+		cleaned := path.Clean("/" + strings.TrimPrefix(r.URL.Path, "/"))
+		if info, err := os.Stat(filepath.Join(dist, filepath.FromSlash(cleaned))); err == nil && !info.IsDir() {
+			files.ServeHTTP(w, r)
+			return
+		}
+
+		http.ServeFile(w, r, index)
+	})
 }
 
 func getDBPassword() string {

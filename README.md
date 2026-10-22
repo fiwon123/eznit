@@ -18,6 +18,7 @@ retrieving your own files, backed by PostgreSQL.
   - [Run the stack](#run-the-stack)
   - [Build the CLI](#build-the-cli)
   - [Commands](#commands)
+- [Web UI](#web-ui)
 - [Security status](#security-status)
 - [How to develop](#how-to-develop)
   - [Layout](#layout)
@@ -107,6 +108,36 @@ eznit upload
 eznit list
 eznit download
 ```
+
+## Web UI
+
+The web UI lives in `web/`. The API serves `web/dist` when it exists, so a
+production build runs from the same origin as the API — no CORS is needed.
+
+| Command | What it does |
+| --- | --- |
+| `make web_install` | Install the web dependencies (`npm ci`) |
+| `make web_dev` | Run the Vite dev server on `http://localhost:5173`; `/v1` is proxied to `http://localhost:4000` |
+| `make web_build` | Build the static assets into `web/dist` |
+| `make web_check` | Lint, format check, typecheck and build the web UI (fails on any error) |
+
+Run it locally:
+
+```sh
+make setup
+make docker_up          # start Postgres + run migrations
+make run_api            # start the API (it serves web/dist if present)
+make web_install
+make web_build          # or make web_dev for hot reload
+```
+
+For hot reload during development, run the Vite dev server in one terminal
+(`make web_dev`) and the API in another (`make run_api`). The dev server
+proxies API calls to the API on `:4000`. Sign up or log in through the CLI or
+the API, put the session token in `localStorage` as `eznit.token` in the
+browser, or use the login page.
+
+Node is pinned in `mise.toml` (the CI reads it via `node-version-file`).
 
 ## Security status
 
