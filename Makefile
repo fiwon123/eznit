@@ -15,6 +15,7 @@ INJECT_VERSION:= main.Version
 
 API_FOLDER := ./cmd/api
 CLI_FOLDER := ./cmd/cli
+WEB_FOLDER := ./web
 
 DOCKER_COMPOSE := ./docker-compose.yml
 MIGRATIONS := ./db/migrations
@@ -226,6 +227,63 @@ check: ## gofmt, vet, test, build — the local verification gate
 		echo "NOTE: these packages have no test files — this run does not cover them:"; \
 		echo "$$notested" | sed 's/^/  /'; \
 	fi
+
+# ---------------------------------------------------------------------------
+# The web UI (web/)
+#
+# A second toolchain, so a second gate. `make check` stays Go-only on purpose:
+# the Go gate must not start failing because an npm package moved.
+#
+# The same rules as the Go gate:
+#
+#   - A missing toolchain FAILS the target. It does not skip. A gate that
+#     cannot fail is worse than no gate: it reads green and proves nothing.
+#   - Every step can fail on its own. `oxlint` exits non-zero on a lint error
+#     and `oxfmt --check` exits non-zero on a misformatted file, so the gate
+#     fails when the code is wrong and not only when it is missing.
+#
+# What this gate does NOT prove: the web has no test suite, so nothing here
+# checks what the pages do in a browser. It proves that the code lints,
+# formats, typechecks and builds.
+# ---------------------------------------------------------------------------
+.PHONY: web_install web_check web_build web_dev
+
+web_install: ## Install the web dependencies from the lockfile (npm ci)
+	@if ! command -v npm >/dev/null 2>&1; then \
+		echo "ERROR: npm is not installed — mise install puts the pinned Node on PATH (see mise.toml)" >&2; \
+		exit 1; \
+	fi; \
+	(cd $(WEB_FOLDER) && npm ci)
+
+web_check: ## lint, format check, typecheck and build the web UI — the web gate
+	@if ! command -v node >/dev/null 2>&1; then \
+		echo "ERROR: node is not installed — the check cannot run, so nothing is verified" >&2; \
+		echo "       mise install puts the pinned version on PATH (see mise.toml)" >&2; \
+		exit 1; \
+	fi; \
+	if [ ! -d "$(WEB_FOLDER)/node_modules" ]; then \
+		echo "[web] node_modules is missing — installing the pinned dependencies..."; \
+		(cd $(WEB_FOLDER) && npm ci); \
+	fi; \
+	cd $(WEB_FOLDER) && \
+		npm run lint && \
+		npm run format:check && \
+		npm run typecheck && \
+		npm run build
+
+web_build: ## Build the web UI into web/dist
+	@if ! command -v node >/dev/null 2>&1; then \
+		echo "ERROR: node is not installed — mise install puts the pinned Node on PATH (see mise.toml)" >&2; \
+		exit 1; \
+	fi; \
+	cd $(WEB_FOLDER) && npm run build
+
+web_dev: ## Run the web UI dev server on http://localhost:5173
+	@if ! command -v node >/dev/null 2>&1; then \
+		echo "ERROR: node is not installed — mise install puts the pinned Node on PATH (see mise.toml)" >&2; \
+		exit 1; \
+	fi; \
+	cd $(WEB_FOLDER) && npm run dev
 
 # ---------------------------------------------------------------------------
 # Dev sandbox (multiplatform)

@@ -63,3 +63,7 @@ logs/
 logs/*
 ~logs/
 ~logs/*
+
+# the web UI (web/) — the installed packages and the build output
+web/node_modules/
+web/dist/
