@@ -234,9 +234,10 @@ func TestTheReadQueriesNameColumnsThatExist(t *testing.T) {
 			"a template",
 			"templates",
 			templateColumns,
-			// The owner's email comes from the users table, and the
-			// columns of a template are prefixed with the table name.
-			[]string{"owner_email"},
+			// The owner's email comes from the users table, the file
+			// count is counted by the database, and the columns of a
+			// template are prefixed with the table name.
+			[]string{"owner_email", "file_count"},
 		},
 	}
 

@@ -72,6 +72,53 @@ func TestPublishTemplateStoresTheFilesAndTheVariables(t *testing.T) {
 	}
 }
 
+// The files and the variables carry the id of the template they belong to.
+//
+// The row has a foreign key on it, and the database refuses a row without
+// one — but the fake repository stores what it is given and never checks a
+// key, so the rows the service builds are what the test has to look at.
+func TestPublishTemplateGivesTheFilesAndTheVariablesTheTemplateID(t *testing.T) {
+	owner := uuid.New()
+
+	repo := newFakeRepository()
+	svc := newTestService(t, repo)
+
+	detail, appError := svc.PublishTemplate(contextFor(owner), validRequest())
+	if appError != nil {
+		t.Fatalf("expected the template to be published, got error %v", appError)
+	}
+
+	files, ok := repo.GetTemplateFiles(detail.ID)
+	if !ok {
+		t.Fatal("expected the files to be stored")
+	}
+
+	if len(files) == 0 {
+		t.Fatal("expected the files to be stored")
+	}
+
+	for _, file := range files {
+		if file.TemplateID != detail.ID {
+			t.Errorf("expected the file %q to belong to the template %s, got %s", file.Path, detail.ID, file.TemplateID)
+		}
+	}
+
+	variables, ok := repo.GetTemplateVariables(detail.ID)
+	if !ok {
+		t.Fatal("expected the variables to be stored")
+	}
+
+	if len(variables) == 0 {
+		t.Fatal("expected the variables to be stored")
+	}
+
+	for _, variable := range variables {
+		if variable.TemplateID != detail.ID {
+			t.Errorf("expected the variable %q to belong to the template %s, got %s", variable.Key, detail.ID, variable.TemplateID)
+		}
+	}
+}
+
 // The slug is derived from the name when the client sends none.
 func TestPublishTemplateDerivesTheSlugFromTheName(t *testing.T) {
 	owner := uuid.New()
@@ -344,6 +391,27 @@ func TestListTemplatesFiltersByKind(t *testing.T) {
 
 	if resp.Data[0].Name != "codex one" {
 		t.Errorf("expected the codex template, got %q", resp.Data[0].Name)
+	}
+}
+
+// The catalogue carries the number of files a template holds: the count
+// comes with the template, so the list and the detail page cannot disagree.
+func TestListTemplatesCarriesTheFileCount(t *testing.T) {
+	caller := uuid.New()
+
+	repo := newFakeRepository(
+		Template{ID: uuid.New(), UserID: caller, Name: "mine", Slug: "mine", Kind: KindGeneric, FileCount: 3},
+	)
+
+	svc := newTestService(t, repo)
+
+	resp, appError := svc.ListTemplates(contextFor(caller), "")
+	if appError != nil {
+		t.Fatalf("expected the catalogue, got error %v", appError)
+	}
+
+	if resp.Data[0].FileCount != 3 {
+		t.Errorf("expected 3 files, got %d", resp.Data[0].FileCount)
 	}
 }
 

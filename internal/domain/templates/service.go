@@ -120,6 +120,7 @@ func listResponse(templates []Template) ListResponse {
 			IsPublic:    template.IsPublic,
 			Owner:       template.UserID.String(),
 			OwnerEmail:  template.OwnerEmail,
+			FileCount:   template.FileCount,
 			CreatedAt:   template.CreatedAt,
 			UpdatedAt:   template.UpdatedAt,
 		})
@@ -366,16 +367,6 @@ func (s *service) validate(request PublishRequest, currentID uuid.UUID) (Templat
 		return Template{}, nil, nil, errors.NewAppError(http.StatusBadRequest, "too many variables in the template")
 	}
 
-	files, appError := s.buildFiles(request.Files)
-	if appError != nil {
-		return Template{}, nil, nil, appError
-	}
-
-	variables, appError := s.buildVariables(request.Variables)
-	if appError != nil {
-		return Template{}, nil, nil, appError
-	}
-
 	templateID := currentID
 	if templateID == uuid.Nil {
 		id, err := uuid.NewV7()
@@ -386,7 +377,20 @@ func (s *service) validate(request PublishRequest, currentID uuid.UUID) (Templat
 		templateID = id
 	}
 
-	slug, appError := s.resolveSlug(request.Slug, name, templateID)
+	// The files and the variables belong to the template, so they carry its
+	// id: the table has a foreign key on it, and a row without it is
+	// refused by the database.
+	files, appError := s.buildFiles(request.Files, templateID)
+	if appError != nil {
+		return Template{}, nil, nil, appError
+	}
+
+	variables, appError := s.buildVariables(request.Variables, templateID)
+	if appError != nil {
+		return Template{}, nil, nil, appError
+	}
+
+	slug, appError := s.resolveSlug(request.Slug, name, currentID, templateID)
 	if appError != nil {
 		return Template{}, nil, nil, appError
 	}
@@ -405,7 +409,10 @@ func (s *service) validate(request PublishRequest, currentID uuid.UUID) (Templat
 
 // buildFiles turns the files of a request into rows, refusing the paths that
 // cannot be written safely and the contents that are too big.
-func (s *service) buildFiles(requestFiles []PublishFile) ([]TemplateFile, *errors.AppError) {
+//
+// Every row carries the id of the template it belongs to: the table has a
+// foreign key on it, and the row without one is refused by the database.
+func (s *service) buildFiles(requestFiles []PublishFile, templateID uuid.UUID) ([]TemplateFile, *errors.AppError) {
 	files := make([]TemplateFile, 0, len(requestFiles))
 	seen := make(map[string]bool, len(requestFiles))
 	total := 0
@@ -439,6 +446,7 @@ func (s *service) buildFiles(requestFiles []PublishFile) ([]TemplateFile, *error
 
 		files = append(files, TemplateFile{
 			ID:           fileID,
+			TemplateID:   templateID,
 			Path:         path,
 			Content:      requestFile.Content,
 			IsExecutable: requestFile.IsExecutable,
@@ -449,7 +457,10 @@ func (s *service) buildFiles(requestFiles []PublishFile) ([]TemplateFile, *error
 }
 
 // buildVariables turns the variables of a request into rows.
-func (s *service) buildVariables(requestVariables []PublishVariable) ([]TemplateVariable, *errors.AppError) {
+//
+// Every row carries the id of the template it belongs to: the table has a
+// foreign key on it, and the row without one is refused by the database.
+func (s *service) buildVariables(requestVariables []PublishVariable, templateID uuid.UUID) ([]TemplateVariable, *errors.AppError) {
 	variables := make([]TemplateVariable, 0, len(requestVariables))
 	seen := make(map[string]bool, len(requestVariables))
 
@@ -481,6 +492,7 @@ func (s *service) buildVariables(requestVariables []PublishVariable) ([]Template
 
 		variables = append(variables, TemplateVariable{
 			ID:           variableID,
+			TemplateID:   templateID,
 			Key:          key,
 			Prompt:       prompt,
 			DefaultValue: requestVariable.DefaultValue,
@@ -495,14 +507,19 @@ func (s *service) buildVariables(requestVariables []PublishVariable) ([]Template
 // resolveSlug finds the slug of a template: the one the client asked for, or
 // one derived from the name. A slug that is taken gets a short suffix, so
 // two users can publish a template with the same name.
-func (s *service) resolveSlug(requested string, name string, templateID uuid.UUID) (string, *errors.AppError) {
+//
+// currentID is the template being updated, and uuid.Nil for a new one. It is
+// not the same thing as templateID, the id the row will carry: a publish
+// already knows the id its template will have, but that template does not
+// exist yet, so asking the database about it is a question with no answer.
+func (s *service) resolveSlug(requested string, name string, currentID uuid.UUID, templateID uuid.UUID) (string, *errors.AppError) {
 	slug := strings.ToLower(strings.TrimSpace(requested))
 
 	if slug == "" {
 		// An update keeps the slug the template already has. The slug is
 		// the address of the template, so renaming it should not move it.
-		if templateID != uuid.Nil {
-			if existing, ok := s.db.GetTemplate(templateID); ok {
+		if currentID != uuid.Nil {
+			if existing, ok := s.db.GetTemplate(currentID); ok {
 				return existing.Slug, nil
 			}
 		}
@@ -517,9 +534,24 @@ func (s *service) resolveSlug(requested string, name string, templateID uuid.UUI
 	// The template may keep its own slug: an update that does not change the
 	// slug is not a conflict with itself.
 	if s.db.SlugExists(slug) {
-		existing, ok := s.db.GetTemplate(templateID)
-		if !ok || existing.Slug != slug {
-			slug = slug + "-" + templateID.String()[:6]
+		owned := false
+
+		if currentID != uuid.Nil {
+			if existing, ok := s.db.GetTemplate(currentID); ok && existing.Slug == slug {
+				owned = true
+			}
+		}
+
+		if !owned {
+			suffix := "-" + templateID.String()[:6]
+
+			// The slug is a URL segment and the pattern caps it at 63
+			// characters, so the suffix has to fit in what is left.
+			if len(slug)+len(suffix) > 63 {
+				slug = strings.Trim(slug[:63-len(suffix)], "-")
+			}
+
+			slug = slug + suffix
 		}
 	}
 

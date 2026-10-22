@@ -17,8 +17,12 @@ type Template struct {
 	Version     int       `db:"version"`
 	IsPublic    bool      `db:"is_public"`
 	OwnerEmail  string    `db:"owner_email"`
-	CreatedAt   time.Time `db:"created_at"`
-	UpdatedAt   time.Time `db:"updated_at"`
+	// FileCount is not a column of the table: the query counts the files
+	// of the template, so the catalogue and the detail page cannot
+	// disagree about how many files a template holds.
+	FileCount int       `db:"file_count"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
 }
 
 // TemplateFile Model

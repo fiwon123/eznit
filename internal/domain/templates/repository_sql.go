@@ -1,6 +1,8 @@
 package templates
 
 import (
+	"database/sql"
+	"errors"
 	"log/slog"
 
 	"github.com/fiwon123/eznit/pkg/logger"
@@ -24,8 +26,14 @@ func NewRepository(db *sqlx.DB, logger *logger.Config) *sqlRepository {
 
 // templateColumns is the read shape of a template, with the owner's email
 // joined in: the catalogue shows who published what.
+//
+// The file count comes with the row, counted by the database: the catalogue
+// lists a hundred templates, and a count per template would be a hundred
+// queries to answer a question the database can answer once.
 const templateColumns = `t.id, t.user_id, t.name, t.slug, t.description, t.kind,
-	t.version, t.is_public, t.created_at, t.updated_at, u.email AS owner_email`
+	t.version, t.is_public, t.created_at, t.updated_at,
+	(SELECT count(*) FROM template_files f WHERE f.template_id = t.id) AS file_count,
+	u.email AS owner_email`
 
 // templateFileColumns is the read shape of a file of a template, and
 // templateVariableColumns the read shape of a variable.
@@ -98,7 +106,16 @@ func (r *sqlRepository) GetTemplate(id uuid.UUID) (*Template, bool) {
 
 	err := r.db.Get(&template, query, id)
 	if err != nil {
-		r.logger.Error("get template query", slog.Any("error", err))
+		// A template that is not there is an answer, not a failure: the
+		// caller asks for templates that may not exist, and logging an
+		// error with a stack trace for every one of them buries the
+		// failures that matter.
+		if errors.Is(err, sql.ErrNoRows) {
+			r.logger.Debug("template not found", slog.String("id", id.String()))
+		} else {
+			r.logger.Error("get template query", slog.Any("error", err))
+		}
+
 		return nil, false
 	}
 
