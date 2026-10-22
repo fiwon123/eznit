@@ -83,3 +83,13 @@ export function listTemplates(kind: string): Promise<ListResponse> {
 export function getTemplate(id: string): Promise<TemplateDetail> {
   return request<TemplateDetail>(`/templates/${encodeURIComponent(id)}`);
 }
+
+export async function downloadTemplateArchive(id: string, token: string): Promise<Blob> {
+  const response = await fetch(`${API}/templates/${encodeURIComponent(id)}/archive`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+  return response.blob();
+}

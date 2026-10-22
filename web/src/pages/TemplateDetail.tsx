@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getTemplate, messageOf } from "../api";
+import { downloadTemplateArchive, getTemplate, getToken, messageOf } from "../api";
 import FileTree, { buildTree } from "../components/FileTree";
 import type { TemplateDetail, TemplateFileData } from "../types";
 
@@ -17,6 +17,36 @@ export default function TemplateDetailPage() {
   const [result, setResult] = useState<DetailResult | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
+  const [downloading, setDownloading] = useState<boolean>(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  async function downloadZip(): Promise<void> {
+    if (id === undefined) {
+      return;
+    }
+    const token = getToken();
+    if (token === null) {
+      setDownloadError("Log in to download the archive.");
+      return;
+    }
+    setDownloading(true);
+    setDownloadError(null);
+    try {
+      const blob = await downloadTemplateArchive(id, token);
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${template !== null ? template.name.replace(/[^a-zA-Z0-9.-]+/g, "-") : id}.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+    } catch (cause: unknown) {
+      setDownloadError(messageOf(cause));
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   useEffect(() => {
     if (id === undefined) {
@@ -122,10 +152,21 @@ export default function TemplateDetailPage() {
           <span className="applylabel">Apply it with</span>
           <code className="applycommand">{applyCommand}</code>
         </div>
-        <button type="button" className="secondary" onClick={copyCommand}>
-          {copied ? "copied" : "copy"}
-        </button>
+        <div className="applyactions">
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => void downloadZip()}
+            disabled={downloading}
+          >
+            {downloading ? "Downloading…" : "Download ZIP"}
+          </button>
+          <button type="button" className="secondary" onClick={copyCommand}>
+            {copied ? "copied" : "copy"}
+          </button>
+        </div>
       </div>
+      {downloadError !== null ? <p className="error">{downloadError}</p> : null}
 
       <div className="detail">
         <aside className="detailside">

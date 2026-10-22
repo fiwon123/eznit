@@ -251,6 +251,7 @@ select:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 1rem;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -265,6 +266,12 @@ select:focus {
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--muted);
+}
+
+.applyactions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .applycommand {
