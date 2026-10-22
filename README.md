@@ -272,6 +272,25 @@ git rm --cached -r . >/dev/null && git reset --hard
 The database secret is a file secret, so Compose refuses to start without it.
 `make setup` creates it from the committed example.
 
+**`EACCES: permission denied, mkdir '/home/devuser/.cache/opencode'`, or `mkdir /go/pkg/mod/cache: permission denied` in the sandbox**
+
+The sandbox's caches are Docker volumes, and Docker creates a mount destination
+the image does not contain **as root** — while the container runs as your UID.
+The image now creates those directories itself, so a sandbox built from the
+current `Dockerfile` is fine.
+
+A sandbox created **before** that fix keeps its old, root-owned volumes:
+Docker does not re-initialise a volume that already exists. Recreate them
+once:
+
+```sh
+make dev-reset     # docker compose down --volumes
+make dev-up
+```
+
+`make dev-reset` also drops the `postgres-data` volume — that is why it is not
+called `reset` — so the migrations run again on the next `make dev-up`.
+
 **`bind: address already in use` on port 4000**
 
 The sandbox publishes 4000 so the host CLI can reach the API inside it. If the

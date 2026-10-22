@@ -136,9 +136,22 @@ make dev-down   # stop it (keeps the volumes)
 the local files `make setup` creates — the database secret is a file secret, and
 Compose refuses to start without it.
 
-A claim about the sandbox is only as good as the run behind it: the container
-is not started here, so anything that needs a live PostgreSQL stays **unverified**
-rather than green.
+The image creates the directories the compose file mounts into, owned by the
+runtime user: Docker creates a mount destination the image does not contain as
+**root**, and the container runs as `${HOST_UID}`, so a sandbox whose image
+omits them cannot write its own caches — the agent dies with
+`EACCES: permission denied, mkdir '/home/devuser/.cache/opencode'` and the
+build fails with `mkdir /go/pkg/mod/cache: permission denied`. A sandbox
+created before that fix keeps its old root-owned volumes — Docker does not
+re-initialise a volume that already exists — so it needs `make dev-reset` once,
+which also drops the local database.
+
+A claim about the sandbox is only as good as the run behind it. The stack was
+run on a machine with Docker for this change: PostgreSQL came up healthy, the
+migrations exited 0, `make check` completed inside the container, and the
+agent answered from the project's own `opencode.json`. Anything that needs a
+live PostgreSQL is still **unverified** until you run it yourself — the point
+is that the sandbox can now be run at all, which it could not before.
 
 ## Known gaps — read this before trusting a green run
 
