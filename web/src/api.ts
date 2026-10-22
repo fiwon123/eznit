@@ -101,6 +101,46 @@ export function getTemplate(id: string): Promise<TemplateDetail> {
   return request<TemplateDetail>(`/templates/${encodeURIComponent(id)}`);
 }
 
+// saveDownload turns an archive or a file route's answer into a download under
+// the given name. It cannot be a plain link: both routes sit behind the guard,
+// so the request carries the Authorization header and the bytes arrive here.
+async function saveDownload(response: Response, name: string): Promise<void> {
+  if (!response.ok) {
+    throw new ApiError(response.status, reason(await readEnvelope(response), response.status));
+  }
+
+  const url = window.URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = name;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  // The revoke waits a turn of the event loop: revoking in the same tick as the
+  // click can cancel a download that has not started yet.
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+}
+
+// downloadTemplateArchive fetches the whole template as a zip and hands it to
+// the browser.
+export async function downloadTemplateArchive(template: TemplateDetail): Promise<void> {
+  const response = await fetch(`/v1/templates/${encodeURIComponent(template.id)}/archive`, {
+    headers: authHeaders(),
+  });
+
+  await saveDownload(response, `${archiveNameOf(template)}.zip`);
+}
+
+// archiveNameOf is the name the zip is saved under: the template's slug when it
+// has one, its name otherwise, with anything that is not safe in a filename
+// collapsed to a dash.
+export function archiveNameOf(template: TemplateDetail): string {
+  const source = template.slug !== "" ? template.slug : template.name;
+  const safe = source.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return safe === "" ? "template" : safe;
+}
+
 // The most the API takes in one upload: it caps the body with
 // http.MaxBytesReader at 32 MiB, so the browser refuses first and says why.
 export const MAX_UPLOAD_BYTES = 32 * 1024 * 1024;
@@ -143,18 +183,7 @@ export async function downloadFile(file: FileData): Promise<void> {
     headers: authHeaders(),
   });
 
-  if (!response.ok) {
-    throw new ApiError(response.status, reason(await readEnvelope(response), response.status));
-  }
-
-  const url = window.URL.createObjectURL(await response.blob());
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileNameOf(file);
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.URL.revokeObjectURL(url);
+  await saveDownload(response, fileNameOf(file));
 }
 
 export function deleteFile(id: string): Promise<void> {

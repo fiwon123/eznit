@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getTemplate, messageOf } from "../api";
+import { downloadTemplateArchive, getTemplate, messageOf } from "../api";
 import FileTree, { buildTree } from "../components/FileTree";
 import type { TemplateDetail, TemplateFileData } from "../types";
 
@@ -17,6 +17,13 @@ export default function TemplateDetailPage() {
   const [result, setResult] = useState<DetailResult | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
+  const [downloading, setDownloading] = useState<boolean>(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  // reload is the retry: a refusal — an expired session, a network hiccup —
+  // must not leave the reader stuck on an error with only a full page load to
+  // escape it.
+  const [attempt, setAttempt] = useState<number>(0);
 
   useEffect(() => {
     if (id === undefined) {
@@ -45,7 +52,7 @@ export default function TemplateDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, attempt]);
 
   const current = result !== null && result.id === id ? result : null;
   const template = current === null ? null : current.template;
@@ -77,6 +84,22 @@ export default function TemplateDetailPage() {
     setSelectedPath(file.path);
   }
 
+  async function downloadZip(): Promise<void> {
+    if (template === null) {
+      return;
+    }
+
+    setDownloading(true);
+    try {
+      await downloadTemplateArchive(template);
+      setDownloadError(null);
+    } catch (cause: unknown) {
+      setDownloadError(messageOf(cause));
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   if (loading) {
     return (
       <section className="page">
@@ -88,8 +111,13 @@ export default function TemplateDetailPage() {
   if (error !== null) {
     return (
       <section className="page">
-        <p className="error">{error}</p>
+        <p className="error" role="alert">
+          {error}
+        </p>
         <p>
+          <button type="button" className="secondary" onClick={() => setAttempt((n) => n + 1)}>
+            try again
+          </button>{" "}
           <Link to="/">Back to the catalogue</Link>
         </p>
       </section>
@@ -122,10 +150,26 @@ export default function TemplateDetailPage() {
           <span className="applylabel">Apply it with</span>
           <code className="applycommand">{applyCommand}</code>
         </div>
-        <button type="button" className="secondary" onClick={copyCommand}>
-          {copied ? "copied" : "copy"}
-        </button>
+        <div className="applyactions">
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => void downloadZip()}
+            disabled={downloading}
+          >
+            {downloading ? "downloading…" : "download zip"}
+          </button>
+          <button type="button" className="secondary" onClick={copyCommand}>
+            {copied ? "copied" : "copy"}
+          </button>
+        </div>
       </div>
+
+      {downloadError !== null ? (
+        <p className="error" role="alert">
+          {downloadError}
+        </p>
+      ) : null}
 
       <div className="detail">
         <aside className="detailside">
