@@ -27,6 +27,17 @@ func NewRepository(db *sqlx.DB, logger *logger.Config) *sqlRepository {
 const templateColumns = `t.id, t.user_id, t.name, t.slug, t.description, t.kind,
 	t.version, t.is_public, t.created_at, t.updated_at, u.email AS owner_email`
 
+// templateFileColumns is the read shape of a file of a template, and
+// templateVariableColumns the read shape of a variable.
+//
+// The columns are named, and not `*`: sqlx refuses to scan a column it cannot
+// place in the struct, so a query that reads `*` breaks the day a migration
+// adds a column — and it breaks at runtime, on a table nobody looks at until
+// a user does.
+const templateFileColumns = `id, template_id, path, content, is_executable`
+
+const templateVariableColumns = `id, template_id, var_key, prompt, default_value, required, sort_order`
+
 // ListTemplates returns the catalogue for a user: every public template and
 // the user's own, public or not. The filter is in the query, so a template
 // that is not visible to the caller is never read in the first place.
@@ -101,7 +112,7 @@ func (r *sqlRepository) GetTemplateFiles(templateID uuid.UUID) ([]TemplateFile, 
 
 	var files []TemplateFile
 
-	err := r.db.Select(&files, "SELECT * FROM template_files WHERE template_id=$1 ORDER BY path", templateID)
+	err := r.db.Select(&files, "SELECT "+templateFileColumns+" FROM template_files WHERE template_id=$1 ORDER BY path", templateID)
 	if err != nil {
 		r.logger.Error("get template files query", slog.Any("error", err))
 		return []TemplateFile{}, false
@@ -117,7 +128,7 @@ func (r *sqlRepository) GetTemplateVariables(templateID uuid.UUID) ([]TemplateVa
 
 	var variables []TemplateVariable
 
-	err := r.db.Select(&variables, "SELECT * FROM template_variables WHERE template_id=$1 ORDER BY sort_order, var_key", templateID)
+	err := r.db.Select(&variables, "SELECT "+templateVariableColumns+" FROM template_variables WHERE template_id=$1 ORDER BY sort_order, var_key", templateID)
 	if err != nil {
 		r.logger.Error("get template variables query", slog.Any("error", err))
 		return []TemplateVariable{}, false

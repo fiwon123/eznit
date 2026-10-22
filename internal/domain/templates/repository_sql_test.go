@@ -223,11 +223,11 @@ func TestCreateTemplateWritesTheFilesAndTheVariables(t *testing.T) {
 
 // failingBeginDriver is a driver whose transactions cannot be started.
 type failingBeginDriver struct {
-	recordingDriver
+	recorder *recordingDriver
 }
 
 func (d *failingBeginDriver) Open(name string) (driver.Conn, error) {
-	return &failingBeginConn{driver: &d.recordingDriver}, nil
+	return &failingBeginConn{driver: d.recorder}, nil
 }
 
 type failingBeginConn struct {
@@ -250,7 +250,7 @@ func (c *failingBeginConn) Begin() (driver.Tx, error) {
 func TestCreateTemplateFailsWithoutATransaction(t *testing.T) {
 	recorder := &recordingDriver{}
 	name := fmt.Sprintf("templates-failing-driver-%d", driverCounter.Add(1))
-	sql.Register(name, &failingBeginDriver{recordingDriver: *recorder})
+	sql.Register(name, &failingBeginDriver{recorder: recorder})
 
 	db, err := sqlx.Open(name, "not-a-real-database")
 	if err != nil {
