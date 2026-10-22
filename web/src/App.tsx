@@ -24,12 +24,16 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <Link className="brand" to="/">
-          eznit
+          <img src="/logo.svg" alt="eznit" className="brand-logo" />
         </Link>
         <nav className="topnav">
           <Link to="/">catalogue</Link>
+          <Link to="/files">files</Link>
           {token === null ? (
-            <Link to="/login">log in</Link>
+            <>
+              <Link to="/login">log in</Link>
+              <Link to="/signup">sign up</Link>
+            </>
           ) : (
             <button className="linkbutton" type="button" onClick={logOut}>
               log out

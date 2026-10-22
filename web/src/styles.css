@@ -81,14 +81,19 @@ a:hover {
 }
 
 .brand {
-  font-weight: 700;
-  font-size: 1.1rem;
-  letter-spacing: 0.02em;
-  color: var(--text);
+  display: flex;
+  align-items: center;
+  text-decoration: none;
 }
 
 .brand:hover {
   text-decoration: none;
+}
+
+.brand-logo {
+  height: 28px;
+  width: auto;
+  display: block;
 }
 
 .topnav {
