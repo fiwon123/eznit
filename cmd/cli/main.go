@@ -51,6 +51,8 @@ type CLI struct {
 	List     ListCmd     `cmd:"" help:"list files"`
 	Delete   DeleteCmd   `cmd:"" help:"delete file"`
 	Logout   LogoutCmd   `cmd:"" help:"logout user and remove credential"`
+
+	Template TemplateCmd `cmd:"" help:"work with templates"`
 }
 
 var globals Globals
