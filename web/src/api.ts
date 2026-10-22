@@ -83,3 +83,14 @@ export function listTemplates(kind: string): Promise<ListResponse> {
 export function getTemplate(id: string): Promise<TemplateDetail> {
   return request<TemplateDetail>(`/templates/${encodeURIComponent(id)}`);
 }
+
+export async function signup(email: string, password: string, name: string): Promise<void> {
+  const response = await fetch(`${API}/v1/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, name }),
+  });
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+}

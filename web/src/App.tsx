@@ -3,6 +3,7 @@ import { Link, Route, Routes } from "react-router-dom";
 import { clearToken, getToken, setToken } from "./api";
 import Catalogue from "./pages/Catalogue";
 import Login from "./pages/Login";
+import Signup from "./pages/Signup";
 import TemplateDetailPage from "./pages/TemplateDetail";
 
 export default function App() {
@@ -43,6 +44,7 @@ export default function App() {
           <Route path="/" element={<Catalogue />} />
           <Route path="/templates/:id" element={<TemplateDetailPage />} />
           <Route path="/login" element={<Login onAuthenticated={logIn} />} />
+          <Route path="/signup" element={<Signup onAuthenticated={logIn} />} />
           <Route
             path="*"
             element={<p className="empty">There is no such page. The catalogue is over here.</p>}
