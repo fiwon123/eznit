@@ -11,12 +11,12 @@ import (
 func main() {
 	port := "8765"
 	http.Handle("/", http.FileServer(http.Dir("web/dist")))
-	
+
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		openBrowser("http://localhost:" + port)
 	}()
-	
+
 	fmt.Printf("eznit GUI running at http://localhost:%s\n", port)
 	fmt.Println("Press Ctrl+C to quit")
 	http.ListenAndServe(":"+port, nil)
