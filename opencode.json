@@ -248,6 +248,49 @@
           "*": "allow"
         }
       }
+    },
+    "visual": {
+      "description": "Reviews the web UI for layout, accessibility, console errors and regressions",
+      "mode": "subagent",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "grep *": "allow",
+          "grep *.env": "deny",
+          "grep *.env.*": "deny",
+          "grep *.envrc": "deny",
+          "node *": "allow",
+          "npx *": "allow",
+          "make web_*": "allow",
+          "printenv*": "deny",
+          "env": "deny",
+          "env *": "deny",
+          "docker compose config*": "deny",
+          "docker-compose config*": "deny",
+          "docker * config*": "deny",
+          "docker * env": "deny",
+          "docker * env *": "deny",
+          "docker inspect*": "deny",
+          "*.env": "deny",
+          "*.envrc": "deny",
+          "* .env": "deny",
+          "* .envrc": "deny",
+          "*/.env": "deny",
+          "*/.envrc": "deny",
+          "* .env*": "deny",
+          "*/.env*": "deny",
+          "*/.envrc*": "deny",
+          "*.env.*": "deny",
+          "* .env.*": "deny",
+          "*/.env.*": "deny"
+        },
+        "skill": {
+          "*": "allow"
+        }
+      }
     }
   }
 }
