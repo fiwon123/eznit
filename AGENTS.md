@@ -29,6 +29,7 @@ download, update, delete — on a Compose stack a single developer can run.
 ```
 cmd/api/         API entrypoint: flags, logger, router, graceful shutdown
 cmd/cli/         CLI entrypoint and one file per command
+web/             React + TypeScript + Vite web UI; built to web/dist and served by the API
 internal/domain/ one package per resource (users, sessions, files):
                  handler -> service -> repository, plus dto.go
 internal/platform/
@@ -115,6 +116,9 @@ make check     # gofmt, vet, test, build — the local verification gate
 make run_api   # run the API against the configured database
 make run_cli   # run the CLI
 make build     # build both binaries into ./build
+make web_check # lint, format check, typecheck and build the web UI
+make web_build # build the web UI into web/dist
+make web_dev   # run the Vite dev server
 ```
 
 `make check` needs no database, no container and no secret file: it compiles
@@ -241,14 +245,14 @@ Agent definitions live in `opencode.json` and `.opencode/agents/`:
   `cmd/api/**`, `internal/**`, `db/**` and `pkg/**`; it does not touch
   `cmd/cli/**`.
 - **reviewer** (subagent): Reviews code for bugs, security, and regressions.
+- **visual** (subagent): Reviews the web UI for layout, accessibility,
+  console errors and regressions; can capture screenshots against the local
+  stack.
 
 Each agent's instructions live in exactly one place: the body of
 `.opencode/agents/<name>.md`. Model assignments, permissions, and mode live in
 `opencode.json`. Do not duplicate the prompt into `opencode.json` — two prompt
 sources for one agent drift apart, and nothing states which one wins.
-
-There is no `frontend` or `visual` agent: this project has no user interface
-beyond the CLI, and a CLI's output is verified by reading it.
 
 ## Skills
 

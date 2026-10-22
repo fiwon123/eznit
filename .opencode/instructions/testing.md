@@ -114,6 +114,8 @@ it wiping a real database.
 
 ### Visual checks
 
-This project has no user interface, so there is nothing to photograph. A visual
-audit is only relevant to a project that renders screens; if one is added later,
-add the `visual` subagent and the capture harness at the same time, not after.
+The web UI lives in `web/`. When a change affects the UI, use the `visual`
+subagent to review layouts, console errors and accessibility against the local
+stack (serve `web/dist` via the API or run the Vite dev server). Capture
+screenshots of the affected screens in both themes when possible. A page can
+look broken while all tests pass — a visual audit catches it.
