@@ -156,7 +156,7 @@ export default function Files() {
         <p className="empty">No files yet. Upload one above.</p>
       ) : null}
 
-      {files.length > 0 ? (
+      {token !== null && files.length > 0 ? (
         <div className="tablewrap">
           <table className="table">
             <thead>

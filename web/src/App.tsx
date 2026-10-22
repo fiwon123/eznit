@@ -46,7 +46,9 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Catalogue />} />
           <Route path="/templates/:id" element={<TemplateDetailPage />} />
-          <Route path="/files" element={<Files />} />
+          {/* Keyed by the session, so a log-out — or a log-in as someone else —
+              starts from an empty table instead of the last account's rows. */}
+          <Route path="/files" element={<Files key={token ?? "anon"} />} />
           <Route path="/login" element={<Login onAuthenticated={logIn} />} />
           <Route
             path="*"
