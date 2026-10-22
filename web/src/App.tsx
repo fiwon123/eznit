@@ -4,6 +4,7 @@ import { clearToken, getToken, setToken } from "./api";
 import Catalogue from "./pages/Catalogue";
 import Files from "./pages/Files";
 import Login from "./pages/Login";
+import Signup from "./pages/Signup";
 import TemplateDetailPage from "./pages/TemplateDetail";
 
 export default function App() {
@@ -30,7 +31,10 @@ export default function App() {
         <nav className="topnav">
           <Link to="/">catalogue</Link>
           {token === null ? (
-            <Link to="/login">log in</Link>
+            <>
+              <Link to="/login">log in</Link>
+              <Link to="/signup">sign up</Link>
+            </>
           ) : (
             <>
               <Link to="/files">files</Link>
@@ -50,6 +54,7 @@ export default function App() {
               starts from an empty table instead of the last account's rows. */}
           <Route path="/files" element={<Files key={token ?? "anon"} />} />
           <Route path="/login" element={<Login onAuthenticated={logIn} />} />
+          <Route path="/signup" element={<Signup onAuthenticated={logIn} />} />
           <Route
             path="*"
             element={<p className="empty">There is no such page. The catalogue is over here.</p>}

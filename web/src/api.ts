@@ -92,6 +92,19 @@ export function login(email: string, password: string): Promise<LoginResponse> {
   });
 }
 
+// signup creates the account. The API asks for the password twice — it refuses
+// a mismatch itself — and takes no name: the users table has none.
+export function signup(email: string, password: string, confirmPassword: string): Promise<void> {
+  return request<void>("/signup", {
+    method: "POST",
+    body: JSON.stringify({
+      email,
+      password,
+      confirm_password: confirmPassword,
+    }),
+  });
+}
+
 export function listTemplates(kind: string): Promise<ListResponse> {
   const query = kind === "" ? "" : `?kind=${encodeURIComponent(kind)}`;
   return request<ListResponse>(`/templates${query}`);
