@@ -335,6 +335,12 @@ select:focus {
   margin-bottom: 1.4rem;
 }
 
+@media (max-width: 560px) {
+  .applybox {
+    flex-wrap: wrap;
+  }
+}
+
 .applylabel {
   display: block;
   font-size: 0.75rem;
@@ -345,6 +351,19 @@ select:focus {
 
 .applycommand {
   font-size: 0.95rem;
+}
+
+/* The two actions of the apply box share a row and wrap together, so the box
+   stays one line on a wide screen and goes to two on a narrow one. */
+.applyactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+.applyactions button {
+  white-space: nowrap;
 }
 
 .detail {
