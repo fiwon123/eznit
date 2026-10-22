@@ -55,7 +55,7 @@ WINDOWS_SERVER_ZIP := $(BUILD_API)/$(APP_NAME)_$(SERVER_NAME)_$(VERSION)_windows
 
 ## Builds
 .PHONY: clean
-.PHONY: build build_cli build_api verify
+.PHONY: build build_cli build_api build_gui verify
 .PHONY: zip
 .PHONY: check
 
@@ -83,7 +83,15 @@ build_api: verify
 	chmod -R a+r $(BUILD_API)
 	chmod a+x $(LINUX_SERVER_BIN)
 
-zip: build_cli build_api
+build_gui: verify
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_DIR)/gui/eznit-gui.exe ./cmd/gui
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_DIR)/gui/eznit-gui ./cmd/gui
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_DIR)/gui/eznit-gui-darwin ./cmd/gui
+
+	chmod -R a+r $(BUILD_DIR)/gui
+	chmod a+x $(BUILD_DIR)/gui/eznit-gui
+
+zip: build_cli build_api build_gui
 	zip -j $(WINDOWS_ZIP) $(WINDOWS_BIN) $(SHORT_WINDOWS_BIN) $(WINDOWS_SCRIPT) README.md LICENSE
 	zip -r $(WINDOWS_SERVER_ZIP) $(LINUX_SERVER_BIN) $(MIGRATIONS) $(DOCKER_COMPOSE) $(SCRIPT_MIGRATION) $(SECRETS_EXAMPLE) $(ENV_EXAMPLE) README.md LICENSE
 
