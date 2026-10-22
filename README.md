@@ -1,7 +1,15 @@
+<div align="center">
+
 # eznit
 
 Self-hosted file storage. A Go API and a CLI client for uploading, listing and
 retrieving your own files, backed by PostgreSQL.
+
+[![License: MIT](https://img.shields.io/github/license/fiwon123/eznit)](LICENSE)
+[![Go version](https://img.shields.io/github/go-mod/go-version/fiwon123/eznit?logo=go&logoColor=white)](go.mod)
+[![CI (Go)](https://github.com/fiwon123/eznit/actions/workflows/ci.go.yml/badge.svg)](https://github.com/fiwon123/eznit/actions/workflows/ci.go.yml)
+
+</div>
 
 ## Table of contents
 
@@ -33,27 +41,42 @@ Two entry points:
 > **Pre-1.0 and unhardened.** Read [Security status](#security-status) before
 > exposing this anywhere but `localhost`.
 
-**Supported platforms:** Linux and macOS. Windows works through WSL2; the CLI
-and the API are pure Go, but the development flow below assumes a POSIX shell.
+**Supported platforms:** Linux, macOS and Windows. The CLI and the API are pure
+Go; the development flow below runs through the dev sandbox, so it behaves the
+same on all three — see [How to develop](#how-to-develop).
 
 ## How to use
 
 ### Run the stack
 
-Docker Compose brings up PostgreSQL, runs the migrations, and starts the API:
+Two local files come first — the configuration and the database secret. Both
+are gitignored, and `make setup` creates them from the committed examples:
 
 ```sh
-make docker_up_all
+make setup
 ```
 
 The database password comes from `secrets/db_password.txt`, which Compose
-mounts as a Docker secret and the API reads through `DB_PASSWORD_FILE`. Create
-it from the example before the first run:
+mounts as a Docker secret and the API reads through `DB_PASSWORD_FILE`. It is
+never an environment variable.
+
+Then bring up the database and run the migrations:
 
 ```sh
-cp secrets/db_password.txt.example secrets/db_password.txt
-chmod 600 secrets/db_password.txt
+make docker_up      # or: docker compose up db migrate
 ```
+
+The API runs from source, not from a container: `make run_api` on the host, or
+inside the dev sandbox (see [How to develop](#how-to-develop)). The host CLI
+talks to it on `http://localhost:4000`.
+
+> The `api` service in `docker-compose.yml` is kept as a commented block: it
+> runs the **prebuilt** binary from `./build`, which is the path a release
+> bundle takes. Uncomment it when that is what you want.
+>
+> In a **release bundle** the same file ships without the sandbox's image
+> source, so start the database with `docker compose up db migrate` — the
+> `dev` service is the development sandbox, and it is not part of the bundle.
 
 ### Build the CLI
 
@@ -68,11 +91,14 @@ make build        # both binaries into ./build
 | --- | --- |
 | `eznit signup` | Create an account |
 | `eznit login` | Start a session; the token is stored in `~/.eznit/config.json` (mode 0600) |
-| `eznit list` | List files |
+| `eznit list` | List the files uploaded in this instance (add `--me` for your own) |
 | `eznit upload` | Upload a file |
-| `eznit download` | Download a file by id |
+| `eznit download` | Download one of your own files by id |
 | `eznit delete` | Delete a file |
 | `eznit logout` | End the session |
+
+Every command except `signup` and `login` needs a session: the API requires
+the token, and the CLI sends the one `login` stored.
 
 ```sh
 eznit signup
@@ -89,14 +115,14 @@ as issues rather than left for you to discover:
 
 | Gap | Issue |
 | --- | --- |
-| `download` requires no token, and the CLI never sends one | [#4](https://github.com/fiwon123/eznit/issues/4) |
-| `list` returns every user's file metadata, unauthenticated | [#5](https://github.com/fiwon123/eznit/issues/5) |
-| The stored filename comes from the client | [#5](https://github.com/fiwon123/eznit/issues/5) |
+| The catalogue lists every user's file names to any user with a session | — |
 
 Also true today:
 
-- **There are no automated tests.** `make check` compiles and vets; it executes
-  nothing. Treat a green run as "it builds", not "it works".
+- **The coverage is partial.** The files domain, the CLI and the path helper
+  have tests; the users, sessions, middleware and platform packages have
+  none. `make check` compiles and vets everything. Treat a green run as
+  "it builds, and the tested packages passed" — not "it works".
 - Files are stored unencrypted on the server's disk.
 - There is no rate limiting on `signup` or `login`.
 - Passwords are hashed; session tokens are random and stored in the database
@@ -110,7 +136,8 @@ Also true today:
 `.env`, `.env.local` and `secrets/db_password.txt` must be mode `600` — they
 hold credentials, and the default umask makes them readable by every user on
 the machine. They are gitignored, so this cannot be fixed by a commit; set it
-on each checkout:
+on each checkout (`make setup` creates the first and the third with that mode
+already set):
 
 ```sh
 chmod 600 .env .env.local secrets/db_password.txt
@@ -129,6 +156,49 @@ the API and the CLI, it does not run them. That is deliberate — the gate has t
 work on a fresh clone. It fails loudly if the Go toolchain is missing rather
 than skipping, and it lists the packages with no test files, because `go test`
 prints `[no test files]` and still exits 0.
+
+### Dev sandbox
+
+The commands above need a Go toolchain on the host. The sandbox removes that
+requirement: it is a container with Go **1.24.1** — the version in `go.mod`,
+the same one CI uses — and the workspace is bind-mounted into it, so the files
+you edit are the same files.
+
+```sh
+make dev-up     # start the sandbox + PostgreSQL + the migrations
+make dev-shell  # a shell inside the sandbox
+make dev-down   # stop it (keeps the volumes)
+```
+
+The sandbox waits for the stack: compose starts PostgreSQL, waits for it to
+be healthy, runs the migrations, and only then starts the sandbox. A
+failed migration keeps the sandbox down rather than starting it against an
+unmigrated database.
+
+Everything also works without Make:
+
+```sh
+docker compose up                              # the sandbox and the stack
+python scripts/dev-up.py dev-up                # native Windows
+```
+
+| Platform | How to run the dev flow |
+| --- | --- |
+| Linux, macOS | `make dev-up`, or `docker compose up` |
+| WSL2 | `make dev-up`, or `docker compose up` (the host is Linux) |
+| Windows (native) | `python scripts/dev-up.py dev-up`, or `docker compose up` |
+
+The sandbox shares the Compose network with PostgreSQL, so the API started
+inside it (`make run_api`) reaches the database at `db:5432` with the stock
+`.env` — no `DB_HOST` override, and no password on the command line: the
+container reads the same file secret the API container reads.
+
+`make dev-opencode` runs the AI coding agent inside the sandbox, with the
+host's `~/.config/gh`, `~/.config/opencode` and `~/.gitconfig` mounted
+read-only. It needs a **Linux** opencode binary: on macOS and native Windows
+the target refuses with a clear message and the agent stays on the host (use
+WSL2, where the host binary *is* Linux). The container has no Docker socket —
+the agent inside it cannot manage containers, on purpose.
 
 ### Layout
 
@@ -175,6 +245,7 @@ connection string.
 
 The migration targets need a database connection. Copy `.env.example` to
 `.env`, fill it in, and try again. `make check` and `make build` do not need it.
+`make setup` creates the file for you.
 
 **`make check` passes, but nothing seems tested**
 
@@ -192,6 +263,47 @@ secret. If you are running the API by hand, set one of them.
 
 The file is mode `600` and owned by another user. See
 [Local secret files](#local-secret-files).
+
+**`set: pipefail: invalid option name` (or `bad interpreter`) in the sandbox**
+
+The scripts run through the bind mount, so bash parses your working tree's
+bytes. A checkout made before the `.gitattributes` rule was added keeps CRLF
+endings, and `git status` stays clean while it does. Re-check the files out
+with LF endings:
+
+```sh
+git rm --cached -r . >/dev/null && git reset --hard
+```
+
+**`docker compose up` fails on a missing secret**
+
+The database secret is a file secret, so Compose refuses to start without it.
+`make setup` creates it from the committed example.
+
+**`EACCES: permission denied, mkdir '/home/devuser/.cache/opencode'`, or `mkdir /go/pkg/mod/cache: permission denied` in the sandbox**
+
+The sandbox's caches are Docker volumes, and Docker creates a mount destination
+the image does not contain **as root** — while the container runs as your UID.
+The image now creates those directories itself, so a sandbox built from the
+current `Dockerfile` is fine.
+
+A sandbox created **before** that fix keeps its old, root-owned volumes:
+Docker does not re-initialise a volume that already exists. Recreate them
+once:
+
+```sh
+make dev-reset     # docker compose down --volumes
+make dev-up
+```
+
+`make dev-reset` also drops the `postgres-data` volume — that is why it is not
+called `reset` — so the migrations run again on the next `make dev-up`.
+
+**`bind: address already in use` on port 4000**
+
+The sandbox publishes 4000 so the host CLI can reach the API inside it. If the
+API runs on the host instead, publish a different host port:
+`HOST_PORT=4001 docker compose up`.
 
 ## License
 

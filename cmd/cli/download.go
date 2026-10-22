@@ -15,7 +15,7 @@ import (
 	"github.com/fiwon123/eznit/pkg/helper"
 )
 
-// Download Cmd is used to download any uploaded file by any user
+// Download Cmd is used to download a file the logged in user owns
 type DownloadCmd struct {
 }
 
@@ -23,6 +23,12 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 	fmt.Println("download")
 
 	fmt.Println()
+	token, err := getToken()
+	if err != nil {
+		g.logger.Warn("not logged in. ")
+		return nil
+	}
+
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("id file: ")
 	id, _ := reader.ReadString('\n')
@@ -42,18 +48,29 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 		g.logger.Warn("destination folder is empty, default download folder path will be used. ", slog.String("default", dest))
 	}
 
-	err := helper.CreatePathIfNotExists(dest)
+	err = helper.CreatePathIfNotExists(dest)
 	if err != nil {
 		g.logger.Warn("failed to create destination folder path. ", slog.String("error", err.Error()))
 		return nil
 	}
 
-	url := g.api.baseURL + "/v1/files/" + id + "/content"
+	return sendDownloadRequest(g.api.baseURL, id, dest, token, g)
+}
+
+// sendDownloadRequest asks the API for the file and writes it into the
+// destination folder. The route is behind the session guard, so the token
+// goes with the request: without it the server answers 401 and no bytes
+// are served.
+func sendDownloadRequest(baseURL string, id string, dest string, token string, g *Globals) error {
+
+	url := baseURL + "/v1/files/" + id + "/content"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		g.logger.Warn("failed to create new request. ", slog.String("error", err.Error()))
 		return nil
 	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -66,6 +83,9 @@ func (cmd *DownloadCmd) Run(g *Globals) error {
 
 	if resp.StatusCode != http.StatusOK {
 		g.logger.Warn("bad status ", slog.String("status", resp.Status))
+		if resp.StatusCode == http.StatusUnauthorized {
+			g.logger.Warn("the session token is missing or expired — run `eznit login` again")
+		}
 		return nil
 	}
 

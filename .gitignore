@@ -35,6 +35,13 @@ go.work.sum
 .opencode/memory/
 .opencode/progress.md
 
+# Dev sandbox marker files — per-checkout state, not source
+.dev/
+
+# Python bytecode from the sandbox launcher
+__pycache__/
+*.pyc
+
 # Editor/IDE
 # .idea/
 # .vscode/

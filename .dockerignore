@@ -1,0 +1,18 @@
+.git
+.opencode/memory
+node_modules
+__pycache__
+*.log
+*.pyc
+*.db
+dist
+build
+tmp
+*.egg-info
+# Local configuration and credentials never belong in an image layer. The
+# sandbox reads them at RUN time from the bind mount, not from the image.
+.env
+.env.*
+secrets/
+# Sandbox marker files are per-checkout state, not source.
+.dev/
