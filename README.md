@@ -344,6 +344,23 @@ make dev-shell  # a shell inside the sandbox
 make dev-down   # stop it (keeps the volumes)
 ```
 
+**`make dev-up` starts no HTTP service.** It brings up the sandbox, PostgreSQL
+and the migrations — not the `web` service and not the product `api` — so
+`http://localhost:5173` refuses the connection until you start a frontend
+yourself. `:4000` refuses too: the sandbox publishes the port, but the API is a
+process you start inside it.
+
+| What you want | Commands | Ports |
+| --- | --- | --- |
+| the product, in containers | `make up` | UI `:5173`, API `:4000` |
+| the dev loop, against the source | `make dev-up`, then `make run_api` (on the host, or inside `make dev-shell`), then `make web_dev` | API `:4000`, UI `:5173` |
+
+`make web_dev` proxies `/v1` to `localhost:4000`, so it needs `make run_api`:
+without it the page loads, but every request fails. The two entry points are
+alternatives — `make up` and `make dev-up` both publish `:4000`, so running
+them together fails with `bind: address already in use` (see
+[Troubleshooting](#troubleshooting)).
+
 The sandbox waits for the stack: compose starts PostgreSQL, waits for it to
 be healthy, runs the migrations, and only then starts the sandbox. A
 failed migration keeps the sandbox down rather than starting it against an
