@@ -28,10 +28,13 @@ so the two cannot offer different APIs.
 ```
 cmd/api/            API entrypoint: flags, logging, database, router, UI, shutdown
 cmd/cli/            CLI entrypoint: the version variable, then internal/cli
-internal/cli/       CLI commands, the API client and the token store
+internal/cli/       CLI commands, the API client, the local config/token store,
+                    and the git-host commands
 cmd/gui/            GUI entrypoint: the UI, the API (or a proxy), a browser
 internal/domain/    one package per resource — users, sessions, files, templates
                     handler.go -> service.go -> repository.go, plus dto.go
+internal/gitprovider/  git-host clients (GitHub today) behind one interface;
+                    holds no credential — the token is an argument
 internal/platform/  cross-domain infrastructure
                     api/         the /v1 router, built once for both binaries
                     middleware/  session guard (Authorization: Bearer <token>)
@@ -190,7 +193,27 @@ real file is gitignored; `secrets/db_password.txt.example` holds a placeholder.
 printed — the logger writes a token fingerprint, never a token.
 
 The CLI reads `CLI_API_HOST`, `CLI_API_PORT`, `CLI_DOWNLOADS` and `CLI_LOGS`,
-and stores its session in `~/.eznit/config.json` (mode `0600`).
+and stores its session in `~/.eznit/config.json` (mode `0600`). `EZNIT_CONFIG`
+points the config file elsewhere (a test or a profile), and the file keeps
+every key it holds: the session token and the git-host token are written
+separately and neither erases the other.
+
+A git-host credential is **the CLI's, not the server's**. `eznit repo auth`
+stores a GitHub personal access token under `github_token` in the same file;
+the eznit API has no route that reads it and never sees it. `eznit repo clone`
+asks the host for the repository (one `GET /repos/{owner}/{repo}`) and runs
+`git clone` itself, into `<root>/<provider>/<owner>/<name>` where `<root>` is
+`--dir`, `EZNIT_REPOS`, or `~/eznit`. The token reaches git through the child's
+environment — `GIT_CONFIG_COUNT=1`, `GIT_CONFIG_KEY_0=http.extraheader`,
+`GIT_CONFIG_VALUE_0=AUTHORIZATION: basic …` — never through `argv` and never
+through the URL, so it is absent from the process list, from the clone's
+`.git/config`, and from the CLI's logs. `GIT_TERMINAL_PROMPT=0` makes a
+credential failure an error instead of a prompt. `EZNIT_GITHUB_API` overrides
+the API address for GitHub Enterprise.
+
+The residual exposure is the child's environment, which the same user's
+processes can read (`/proc/<pid>/environ`). That is the cost of not putting
+the token in a file git owns, and it is stated rather than hidden.
 
 The GUI reads `GUI_API_URL` (proxy `/v1` to a running API instead of running
 one), `GUI_PORT` (`8765` by default) and `GUI_LOGS`, plus the API's database and
@@ -222,6 +245,7 @@ dispatch only. Feature pull requests are gated locally.
 | a query or a column read | `repository_sql.go`; name the columns, never `SELECT *` |
 | a table or a constraint | a new `db/migrations/NNNNNN_*.up.sql`/`.down.sql` pair |
 | a CLI command | `internal/cli/<command>.go`, wired in the `CLI` struct in `internal/cli/main.go` |
+| a git host | an implementation of `gitprovider.Provider`, plus a case in `providerFor` |
 | a page | `web/src/pages/`, routed in `web/src/App.tsx` |
 | shared plumbing | `pkg/` (no domain rules) or `internal/platform/` (infrastructure) |
 

@@ -1,11 +1,8 @@
 package cli
 
 import (
-	"encoding/json"
-	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 
 	"github.com/alecthomas/kong"
 	"github.com/fiwon123/eznit/pkg/logger"
@@ -54,6 +51,7 @@ type CLI struct {
 
 	Template TemplateCmd `cmd:"" help:"work with templates"`
 	Command  CommandCmd  `cmd:"" help:"keep the commands your templates pull in"`
+	Repo     RepoCmd     `cmd:"" help:"work with git hosts"`
 }
 
 var globals Globals
@@ -103,21 +101,8 @@ func Run(version string) {
 	ctx.Run(&globals)
 }
 
+// getToken is the session token the API accepts. It lives in the CLI's own
+// config file and is never sent anywhere but the configured API.
 func getToken() (string, error) {
-	home, _ := os.UserHomeDir()
-	tokenPath := filepath.Join(home, ".eznit", "config.json")
-	tokenRaw, err := os.ReadFile(tokenPath)
-	if err != nil {
-		return "", err
-	}
-
-	var tokenMap map[string]string
-	json.Unmarshal(tokenRaw, &tokenMap)
-
-	token, ok := tokenMap["token"]
-	if !ok {
-		return "", fmt.Errorf("not logged in: %v", err)
-	}
-
-	return token, nil
+	return configValue("token")
 }

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
@@ -94,15 +92,8 @@ func sendLoginRequest(baseURL string, request users.LoginRequest, g *Globals) (s
 	return envelope.Data.Token, true
 }
 
+// saveToken stores the session token next to whatever else the config file
+// holds. It replaces the token and only the token.
 func saveToken(token string) error {
-	home, _ := os.UserHomeDir()
-	configDir := filepath.Join(home, ".eznit")
-	configPath := filepath.Join(configDir, "config.json")
-
-	os.MkdirAll(configDir, 0700)
-
-	config := map[string]string{"token": token}
-	data, _ := json.MarshalIndent(config, "", "  ")
-
-	return os.WriteFile(configPath, data, 0600)
+	return setConfigValue("token", token)
 }
