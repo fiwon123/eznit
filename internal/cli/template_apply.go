@@ -116,6 +116,29 @@ func templateFilesOf(detail *templates.TemplateDetail) ([]templateFile, error) {
 		files = append(files, entry)
 	}
 
+	// A command a template pulls in is written at its target path, the same
+	// way a file is: the bytes come from the library through the detail.
+	for _, command := range detail.Commands {
+		entry := templateFile{
+			Path:         command.TargetPath,
+			Kind:         command.Kind,
+			Content:      command.Content,
+			IsExecutable: command.IsExecutable,
+		}
+
+		if command.Kind == templates.FileKindBinary {
+			bytes, err := base64.StdEncoding.DecodeString(command.ContentBase64)
+			if err != nil {
+				return nil, fmt.Errorf("the command %q is not valid base64: %w", command.TargetPath, err)
+			}
+
+			entry.Bytes = bytes
+			entry.ContentBase64 = command.ContentBase64
+		}
+
+		files = append(files, entry)
+	}
+
 	return files, nil
 }
 
@@ -282,8 +305,17 @@ func writeTemplateFiles(target string, files []templateFile, force bool) error {
 // template wants to know when the template is not going to be written.
 func checkTemplateFiles(target string, files []templateFile, force bool) error {
 	var existing []string
+	seen := make(map[string]bool, len(files))
 
 	for _, file := range files {
+		// Two entries at one path would write one over the other, and
+		// whichever came last would win silently. The server refuses it at
+		// publish; an older template on disk is caught here.
+		if seen[file.Path] {
+			return fmt.Errorf("the template writes %q twice", file.Path)
+		}
+		seen[file.Path] = true
+
 		path := filepath.Join(target, filepath.FromSlash(file.Path))
 
 		// The path comes from the server, and the server got it from

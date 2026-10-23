@@ -10,6 +10,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/fiwon123/eznit/internal/domain/commands"
 	"github.com/fiwon123/eznit/internal/domain/files"
 	"github.com/fiwon123/eznit/internal/domain/sessions"
 	"github.com/fiwon123/eznit/internal/domain/templates"
@@ -54,6 +55,11 @@ func NewRouter(cfg Config) *chi.Mux {
 	templateService := templates.NewService(templateRepo, cfg.UploadFolder, cfg.Logger)
 	templateHandler := templates.NewHandler(templateService, guard, cfg.Logger)
 	templateHandler.RegisterRoutes(r)
+
+	commandRepo := commands.NewRepository(cfg.DB, cfg.Logger)
+	commandService := commands.NewService(commandRepo, cfg.UploadFolder, cfg.Logger)
+	commandHandler := commands.NewHandler(commandService, guard, cfg.Logger)
+	commandHandler.RegisterRoutes(r)
 
 	return r
 }

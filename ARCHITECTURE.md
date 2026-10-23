@@ -113,6 +113,23 @@ The limits are enforced in the service, not only the client: 256 KiB per text
 file and 4 MiB of text per template, 10 MiB per binary file and 32 MiB per
 template counting both.
 
+A **command** is a file a user keeps once and pulls into templates — a linter
+wrapper, a release helper — and it uses the same two shapes. A text command
+keeps its content in its column; a binary one is written at:
+
+```
+<upload-root>/commands/<command-id>/<name>
+```
+
+and its row holds the path. A name is unique per user, not globally. The
+`template_commands` row says which command a template pulls in and where in
+the project it goes (`target_path`, unique per template); the command's bytes
+are read through the reference, so updating a command updates every template
+that pulls it in. A command a template references cannot be deleted while the
+reference exists: `ON DELETE RESTRICT` keeps a published template from quietly
+losing a file. A template may only reference commands of its own owner, and
+the service checks it before the reference is stored.
+
 ## Data model
 
 | Table | Holds |
@@ -124,6 +141,8 @@ template counting both.
 | `templates` | id, user_id, name, slug, description, kind, version, is_public |
 | `template_files` | template_id, path, kind (`text`/`binary`), size, content, storage_path, is_executable — unique per (template, path) |
 | `template_variables` | template_id, var_key, prompt, default_value, required, sort_order |
+| `commands` | id, user_id, name, kind (`text`/`binary`), content, size, storage_path, is_executable — the name is unique per user |
+| `template_commands` | template_id, command_id, target_path — the commands a template pulls in; `ON DELETE RESTRICT` on the command, `CASCADE` on the template |
 
 ### Migrations
 

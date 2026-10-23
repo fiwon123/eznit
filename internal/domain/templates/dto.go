@@ -81,12 +81,26 @@ type TemplateData struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// TemplateDetail is a template with everything inside it: the files and the
-// variables it declares.
+// TemplateCommandData is a command a template pulls in from its owner's
+// library, at the path it is written to.
+type TemplateCommandData struct {
+	CommandID     uuid.UUID `json:"command_id"`
+	TargetPath    string    `json:"target_path"`
+	Name          string    `json:"name"`
+	Kind          string    `json:"kind"`
+	Size          int64     `json:"size"`
+	Content       string    `json:"content,omitempty"`
+	ContentBase64 string    `json:"content_base64,omitempty"`
+	IsExecutable  bool      `json:"is_executable"`
+}
+
+// TemplateDetail is a template with everything inside it: the files, the
+// variables it declares and the commands it pulls in.
 type TemplateDetail struct {
 	TemplateData
 	Files     []TemplateFileData     `json:"files"`
 	Variables []TemplateVariableData `json:"variables"`
+	Commands  []TemplateCommandData  `json:"commands"`
 }
 
 // ListResponse is the catalogue.
@@ -109,6 +123,13 @@ type PublishFile struct {
 	IsExecutable  bool   `json:"is_executable"`
 }
 
+// PublishCommand is a reference to a command of the publisher's library, and
+// the path that command takes inside the project.
+type PublishCommand struct {
+	CommandID  uuid.UUID `json:"command_id"`
+	TargetPath string    `json:"target_path"`
+}
+
 // PublishVariable is a variable in a publish request.
 type PublishVariable struct {
 	Key          string `json:"key"`
@@ -128,5 +149,6 @@ type PublishRequest struct {
 	Kind        string            `json:"kind"`
 	IsPublic    bool              `json:"is_public"`
 	Files       []PublishFile     `json:"files"`
+	Commands    []PublishCommand  `json:"commands"`
 	Variables   []PublishVariable `json:"variables"`
 }

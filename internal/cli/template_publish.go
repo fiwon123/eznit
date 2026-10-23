@@ -62,8 +62,9 @@ var placeholderPattern = regexp.MustCompile(`\{\{([A-Z][A-Z0-9_]{0,63})\}\}`)
 
 // Template Publish Cmd publishes a folder as a template.
 type TemplatePublishCmd struct {
-	Folder string `arg:"" optional:"" help:"the folder to publish" default:"."`
-	Public bool   `help:"publish to the shared catalogue"`
+	Folder   string   `arg:"" optional:"" help:"the folder to publish" default:"."`
+	Public   bool     `help:"publish to the shared catalogue"`
+	Commands []string `help:"pull a command into the template as <id>=<path> (repeatable)" optional:""`
 }
 
 // templateFile is a file of a template on the client side: the path it takes
@@ -183,6 +184,19 @@ func (cmd *TemplatePublishCmd) Run(g *Globals) error {
 	}
 
 	request.Variables = variables
+
+	for _, spec := range cmd.Commands {
+		commandID, targetPath, ok := parseCommandSpec(spec)
+		if !ok {
+			g.logger.Warn("that is not a command reference. ", slog.String("reference", spec))
+			return nil
+		}
+
+		request.Commands = append(request.Commands, templates.PublishCommand{
+			CommandID:  commandID,
+			TargetPath: targetPath,
+		})
+	}
 
 	detail, ok := sendPublishRequest(g.api.baseURL, request, token, g)
 	if !ok {

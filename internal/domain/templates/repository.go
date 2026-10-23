@@ -60,6 +60,24 @@ type TemplateFile struct {
 	Bytes []byte `db:"-"`
 }
 
+// TemplateCommand is a reference from a template to a command of its owner's
+// library, with the command resolved for reading: the archive and the detail
+// need the bytes, and a second query per reference would be one per file.
+type TemplateCommand struct {
+	TemplateID uuid.UUID `db:"template_id"`
+	CommandID  uuid.UUID `db:"command_id"`
+	TargetPath string    `db:"target_path"`
+	// OwnerID is the user the command belongs to. A template may only
+	// reference commands of its own owner.
+	OwnerID      uuid.UUID `db:"owner_id"`
+	Name         string    `db:"name"`
+	Kind         string    `db:"kind"`
+	Content      string    `db:"content"`
+	Size         int64     `db:"size"`
+	StoragePath  string    `db:"storage_path"`
+	IsExecutable bool      `db:"is_executable"`
+}
+
 // TemplateVariable Model
 type TemplateVariable struct {
 	ID           uuid.UUID `db:"id"`
@@ -82,12 +100,20 @@ type Repository interface {
 	GetTemplate(id uuid.UUID) (*Template, bool)
 	GetTemplateFiles(templateID uuid.UUID) ([]TemplateFile, bool)
 	GetTemplateVariables(templateID uuid.UUID) ([]TemplateVariable, bool)
-	// CreateTemplate stores a template with its files and variables in one
-	// transaction: a template without its files is not a template.
-	CreateTemplate(template Template, files []TemplateFile, variables []TemplateVariable) bool
-	// UpdateTemplate replaces a template with the given files and variables,
-	// in one transaction.
-	UpdateTemplate(template Template, files []TemplateFile, variables []TemplateVariable) bool
+	// GetTemplateCommands returns the commands a template pulls in, with
+	// each command's content.
+	GetTemplateCommands(templateID uuid.UUID) ([]TemplateCommand, bool)
+	// OwnedCommandIDs returns which of the ids belong to the user. A
+	// template may only reference commands its owner owns, and this is the
+	// check the service runs before it stores a reference.
+	OwnedCommandIDs(userID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]bool, bool)
+	// CreateTemplate stores a template with its files, variables and command
+	// references in one transaction: a template without its files is not a
+	// template.
+	CreateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) bool
+	// UpdateTemplate replaces a template with the given files, variables and
+	// command references, in one transaction.
+	UpdateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) bool
 	DeleteTemplate(id uuid.UUID, userID uuid.UUID) bool
 	IsOwner(id uuid.UUID, userID uuid.UUID) bool
 	SlugExists(slug string) bool

@@ -53,6 +53,7 @@ type CLI struct {
 	Logout   LogoutCmd   `cmd:"" help:"logout user and remove credential"`
 
 	Template TemplateCmd `cmd:"" help:"work with templates"`
+	Command  CommandCmd  `cmd:"" help:"keep the commands your templates pull in"`
 }
 
 var globals Globals

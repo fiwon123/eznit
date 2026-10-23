@@ -32,6 +32,7 @@ func TestTheReadQueriesMatchTheStructs(t *testing.T) {
 		{"a template", readQuery(templateColumns, "templates"), Template{}},
 		{"a file of a template", readQuery(templateFileColumns, "template_files"), TemplateFile{}},
 		{"a variable of a template", readQuery(templateVariableColumns, "template_variables"), TemplateVariable{}},
+		{"a command a template pulls in", readQuery(templateCommandColumns, "template_commands"), TemplateCommand{}},
 	}
 
 	for _, tt := range tests {
@@ -66,6 +67,8 @@ func TestTheReadQueriesNameColumnsThatExist(t *testing.T) {
 	}{
 		{"a file of a template", "template_files", templateFileColumns, nil},
 		{"a variable of a template", "template_variables", templateVariableColumns, nil},
+		{"a command reference", "template_commands", templateCommandRefColumns, nil},
+		{"the command a reference points at", "commands", templateCommandCommandColumns, []string{"owner_id"}},
 		{
 			"a template",
 			"templates",
