@@ -16,6 +16,7 @@ import (
 	"github.com/fiwon123/eznit/internal/domain/templates"
 	"github.com/fiwon123/eznit/internal/domain/users"
 	"github.com/fiwon123/eznit/internal/platform/middleware"
+	"github.com/fiwon123/eznit/internal/platform/openapi"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/go-chi/chi/v5"
@@ -35,6 +36,10 @@ func NewRouter(cfg Config) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Get("/v1/healthcheck", healthcheck)
+
+	// The contract and the UI over it. Public on purpose: a client author
+	// reads them before they have a token.
+	openapi.Mount(r)
 
 	sessionsRepo := sessions.NewRepository(cfg.DB, cfg.Logger)
 	sessionsService := sessions.NewService(sessionsRepo, cfg.Logger)
