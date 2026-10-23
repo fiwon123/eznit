@@ -406,6 +406,8 @@ help: ## List the available targets
 	@printf '\n  \033[36m%-30s\033[0m %s\n' "docker compose up" "run the product with no host prerequisites (any OS)"
 	@printf '  \033[36m%-30s\033[0m %s\n' "docker compose up dev db migrate" "run the dev sandbox without Make"
 	@printf '  \033[36m%-30s\033[0m %s\n' "scripts/dev-up.py" "native Windows: python scripts/dev-up.py dev-up"
+	@printf '\n  %s\n' "dev-up starts no frontend and no API: the UI on :5173 comes from make up"
+	@printf '  %s\n' "(the product) or make web_dev (dev loop, needs make run_api). Both use :4000."
 
 # --- One-time local setup ---------------------------------------------------
 # Creates the two local files the stack needs, from the committed examples:
@@ -486,7 +488,12 @@ opencode-upgrade: ## Upgrade host opencode and refresh the dev sandbox
 # HOST_UID/HOST_GID need no explicit export here: docker-compose.yml defaults
 # them, and the exported values above supply the host's real identity when make
 # is running on the host. Only the GitHub token is resolved at up-time.
-dev-up: preflight ## Start the dev sandbox and the local stack (foreground; Ctrl+C stops it)
+dev-up: preflight ## Start the sandbox + db + migrations — no UI and no API process (see make up)
+	@printf '\n  dev-up starts the sandbox, PostgreSQL and the migrations — no HTTP listener.\n'
+	@printf '  http://localhost:5173 is not started here. Use one of:\n'
+	@printf '    %-28s %s\n' "make up" "the product: UI :5173, API :4000"
+	@printf '    %-28s %s\n' "make web_dev + make run_api" "the dev loop: Vite :5173, API :4000"
+	@printf '\n'
 	@GH_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) GITHUB_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) $(COMPOSE_UP) up --build $(DEV_SERVICES)
 
 dev-down: ## Stop the dev sandbox and the local stack (keeps volumes)
