@@ -2,7 +2,11 @@ package templates
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fiwon123/eznit/pkg/logger"
@@ -14,12 +18,24 @@ import (
 func newTestService(t *testing.T, repo Repository) *service {
 	t.Helper()
 
+	service, _ := newTestServiceWithRoot(t, repo)
+
+	return service
+}
+
+// newTestServiceWithRoot also returns the upload root the binary files of a
+// template are written under, so a test can look at what landed on disk.
+func newTestServiceWithRoot(t *testing.T, repo Repository) (*service, string) {
+	t.Helper()
+
+	root := t.TempDir()
+
 	log, err := logger.NewConsole(t.TempDir(), false, true)
 	if err != nil {
 		t.Fatalf("failed to create the test logger: %v", err)
 	}
 
-	return NewService(repo, log)
+	return NewService(repo, root, log), root
 }
 
 // contextFor returns a context with the user the guard would have set.
@@ -237,7 +253,7 @@ func TestPublishTemplateRefusesAFileThatIsTooBig(t *testing.T) {
 	svc := newTestService(t, repo)
 
 	request := validRequest()
-	request.Files = []PublishFile{{Path: "big.md", Content: string(make([]byte, maxFileBytes+1))}}
+	request.Files = []PublishFile{{Path: "big.md", Content: string(make([]byte, maxTextFileBytes+1))}}
 
 	_, appError := svc.PublishTemplate(contextFor(owner), request)
 	if appError == nil {
@@ -610,4 +626,330 @@ func TestSlugify(t *testing.T) {
 			}
 		})
 	}
+}
+
+// publishBinary publishes a template holding one binary file and returns the
+// service, the root it writes to, the owner and the detail.
+func publishBinary(t *testing.T, content []byte) (*service, string, uuid.UUID, *TemplateDetail) {
+	t.Helper()
+
+	repo := newFakeRepository()
+	svc, root := newTestServiceWithRoot(t, repo)
+	owner := uuid.New()
+
+	request := validRequest()
+	request.Files = []PublishFile{{
+		Path:          "assets/logo.png",
+		Kind:          FileKindBinary,
+		ContentBase64: base64.StdEncoding.EncodeToString(content),
+	}}
+
+	detail, appError := svc.PublishTemplate(contextFor(owner), request)
+	if appError != nil {
+		t.Fatalf("expected the template to be published, got error %v", appError)
+	}
+
+	return svc, root, owner, detail
+}
+
+// A binary file is stored on disk, and the row points at it instead of
+// carrying its bytes in a TEXT column.
+func TestPublishTemplateStoresABinaryFileOnDisk(t *testing.T) {
+	content := []byte{0x89, 'P', 'N', 'G', 0x00, 0xff}
+
+	svc, root, owner, detail := publishBinary(t, content)
+
+	if len(detail.Files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(detail.Files))
+	}
+
+	file := detail.Files[0]
+	if file.Kind != FileKindBinary {
+		t.Errorf("expected kind %q, got %q", FileKindBinary, file.Kind)
+	}
+
+	if file.Size != int64(len(content)) {
+		t.Errorf("expected size %d, got %d", len(content), file.Size)
+	}
+
+	if file.Content != "" {
+		t.Errorf("expected no text content for a binary file, got %q", file.Content)
+	}
+
+	if file.ContentBase64 != base64.StdEncoding.EncodeToString(content) {
+		t.Errorf("expected the detail to carry the bytes as base64, got %q", file.ContentBase64)
+	}
+
+	// The detail's base64 is what a client writes; the disk is what the
+	// service reads back from.
+	files, _ := svc.TemplateFiles(contextFor(owner), detail.ID)
+	if len(files) != 1 {
+		t.Fatalf("expected 1 stored file, got %d", len(files))
+	}
+
+	stored := files[0]
+	want := "templates/" + detail.ID.String() + "/" + stored.ID.String() + "/logo.png"
+	if stored.StoragePath != want {
+		t.Errorf("expected storage path %q, got %q", want, stored.StoragePath)
+	}
+
+	absolute := filepath.Join(root, filepath.FromSlash(stored.StoragePath))
+	got, err := os.ReadFile(absolute)
+	if err != nil {
+		t.Fatalf("expected the bytes on disk at %q: %v", absolute, err)
+	}
+
+	if string(got) != string(content) {
+		t.Errorf("expected the bytes on disk to be %v, got %v", content, got)
+	}
+}
+
+// A binary file may be bigger than the text cap: it is an image, not
+// configuration.
+func TestPublishTemplateAllowsABinaryFileOverTheTextCap(t *testing.T) {
+	content := make([]byte, maxTextFileBytes+1)
+
+	if _, _, _, detail := publishBinary(t, content); detail.Files[0].Size != int64(len(content)) {
+		t.Errorf("expected the binary file to be stored, got size %d", detail.Files[0].Size)
+	}
+}
+
+// A binary file without its bytes is refused: the row would point at nothing.
+func TestPublishTemplateRefusesABinaryFileWithoutContent(t *testing.T) {
+	repo := newFakeRepository()
+	svc := newTestService(t, repo)
+
+	request := validRequest()
+	request.Files = []PublishFile{{Path: "logo.png", Kind: FileKindBinary}}
+
+	_, appError := svc.PublishTemplate(contextFor(uuid.New()), request)
+	if appError == nil {
+		t.Fatal("expected a binary file without content to be refused")
+	}
+
+	if appError.StatusCode() != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, appError.StatusCode())
+	}
+}
+
+// Content that is not base64 is refused rather than written as bytes.
+func TestPublishTemplateRefusesInvalidBase64(t *testing.T) {
+	repo := newFakeRepository()
+	svc := newTestService(t, repo)
+
+	request := validRequest()
+	request.Files = []PublishFile{{Path: "logo.png", Kind: FileKindBinary, ContentBase64: "not base64!"}}
+
+	_, appError := svc.PublishTemplate(contextFor(uuid.New()), request)
+	if appError == nil {
+		t.Fatal("expected invalid base64 to be refused")
+	}
+}
+
+// A binary file carries content_base64 and no content; a text file the other
+// way around. Mixing them is a client bug, and refusing it keeps the row and
+// the disk from disagreeing.
+func TestPublishTemplateRefusesTheWrongBodyForTheKind(t *testing.T) {
+	tests := []struct {
+		name string
+		file PublishFile
+	}{
+		{"binary with content", PublishFile{Path: "logo.png", Kind: FileKindBinary, Content: "bytes?"}},
+		{"text with base64", PublishFile{Path: "notes.md", Kind: FileKindText, ContentBase64: base64.StdEncoding.EncodeToString([]byte("bytes"))}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := newFakeRepository()
+			svc := newTestService(t, repo)
+
+			request := validRequest()
+			request.Files = []PublishFile{tt.file}
+
+			if _, appError := svc.PublishTemplate(contextFor(uuid.New()), request); appError == nil {
+				t.Fatalf("expected %s to be refused", tt.name)
+			}
+		})
+	}
+}
+
+// An unknown kind is refused: the schema only knows two.
+func TestPublishTemplateRefusesAnUnknownFileKind(t *testing.T) {
+	repo := newFakeRepository()
+	svc := newTestService(t, repo)
+
+	request := validRequest()
+	request.Files = []PublishFile{{Path: "file.bin", Kind: "executable", Content: "x"}}
+
+	_, appError := svc.PublishTemplate(contextFor(uuid.New()), request)
+	if appError == nil {
+		t.Fatal("expected an unknown kind to be refused")
+	}
+}
+
+// A binary file over its own cap is refused before it is decoded.
+func TestPublishTemplateRefusesABinaryFileThatIsTooBig(t *testing.T) {
+	repo := newFakeRepository()
+	svc := newTestService(t, repo)
+
+	// The encoded length alone is over the cap, so nothing is decoded.
+	request := validRequest()
+	request.Files = []PublishFile{{
+		Path:          "huge.bin",
+		Kind:          FileKindBinary,
+		ContentBase64: strings.Repeat("A", maxBinaryFileBytes*4/3+8),
+	}}
+
+	_, appError := svc.PublishTemplate(contextFor(uuid.New()), request)
+	if appError == nil {
+		t.Fatal("expected the file to be refused")
+	}
+}
+
+// An update replaces the files, and the bytes of the version it replaced are
+// removed: nothing points at them any more.
+func TestUpdateTemplateRemovesTheBytesItReplaced(t *testing.T) {
+	svc, root, owner, detail := publishBinary(t, []byte("first"))
+
+	oldPath := filepath.Join(root, filepath.FromSlash(templateStoragePathOf(t, svc, owner, detail)))
+	if _, err := os.Stat(oldPath); err != nil {
+		t.Fatalf("expected the first version on disk: %v", err)
+	}
+
+	request := validRequest()
+	request.Files = []PublishFile{{
+		Path:          "assets/new.png",
+		Kind:          FileKindBinary,
+		ContentBase64: base64.StdEncoding.EncodeToString([]byte("second")),
+	}}
+
+	updated, appError := svc.UpdateTemplate(contextFor(owner), detail.ID, request)
+	if appError != nil {
+		t.Fatalf("expected the update to go through, got error %v", appError)
+	}
+
+	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
+		t.Errorf("expected the bytes of the replaced version to be removed, stat error: %v", err)
+	}
+
+	newPath := filepath.Join(root, filepath.FromSlash(templateStoragePathOf(t, svc, owner, updated)))
+	got, err := os.ReadFile(newPath)
+	if err != nil {
+		t.Fatalf("expected the new version on disk at %q: %v", newPath, err)
+	}
+
+	if string(got) != "second" {
+		t.Errorf("expected the new bytes, got %q", got)
+	}
+}
+
+// Deleting a template removes its bytes with its rows.
+func TestDeleteTemplateRemovesTheBytes(t *testing.T) {
+	svc, root, owner, detail := publishBinary(t, []byte("bytes"))
+
+	directory := filepath.Join(root, "templates", detail.ID.String())
+	if _, err := os.Stat(directory); err != nil {
+		t.Fatalf("expected the template folder on disk: %v", err)
+	}
+
+	if _, appError := svc.DeleteTemplate(contextFor(owner), detail.ID); appError != nil {
+		t.Fatalf("expected the delete to go through, got error %v", appError)
+	}
+
+	if _, err := os.Stat(directory); !os.IsNotExist(err) {
+		t.Errorf("expected the template folder to be removed, stat error: %v", err)
+	}
+}
+
+// A publish the repository refuses leaves no bytes behind: the rows that
+// would point at them were never written.
+func TestPublishTemplateRemovesTheBytesWhenTheRepositoryFails(t *testing.T) {
+	repo := newFakeRepository()
+	repo.createFails = true
+
+	svc, root := newTestServiceWithRoot(t, repo)
+
+	request := validRequest()
+	request.Files = []PublishFile{{
+		Path:          "logo.png",
+		Kind:          FileKindBinary,
+		ContentBase64: base64.StdEncoding.EncodeToString([]byte("bytes")),
+	}}
+
+	if _, appError := svc.PublishTemplate(contextFor(uuid.New()), request); appError == nil {
+		t.Fatal("expected the publish to fail")
+	}
+
+	templates, err := os.ReadDir(filepath.Join(root, "templates"))
+	if err == nil && len(templates) != 0 {
+		t.Errorf("expected no template folder after a failed publish, found %d", len(templates))
+	}
+}
+
+// The archive carries the bytes of a binary file, not its row.
+func TestTemplateArchiveCarriesBinaryBytes(t *testing.T) {
+	content := []byte{0x00, 0x01, 0xfe, 0xff}
+	svc, _, owner, detail := publishBinary(t, content)
+
+	entries, appError := svc.TemplateArchive(contextFor(owner), detail.ID)
+	if appError != nil {
+		t.Fatalf("expected the archive to be built, got error %v", appError)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+
+	if string(entries[0].Content) != string(content) {
+		t.Errorf("expected the binary bytes in the archive, got %v", entries[0].Content)
+	}
+}
+
+// One file of a template reads back as it was written, text or binary.
+func TestTemplateFileContentReadsAFile(t *testing.T) {
+	svc, _, owner, detail := publishBinary(t, []byte("binary bytes"))
+
+	file, content, appError := svc.TemplateFileContent(contextFor(owner), detail.ID, detail.Files[0].ID)
+	if appError != nil {
+		t.Fatalf("expected the file to be read, got error %v", appError)
+	}
+
+	if file.Path != "assets/logo.png" {
+		t.Errorf("expected the file path, got %q", file.Path)
+	}
+
+	if string(content) != "binary bytes" {
+		t.Errorf("expected the bytes, got %q", content)
+	}
+
+	if _, _, appError := svc.TemplateFileContent(contextFor(owner), detail.ID, uuid.New()); appError == nil {
+		t.Error("expected an unknown file to be refused")
+	}
+}
+
+// A binary file of another user's private template is not found.
+func TestTemplateFileContentRefusesAnotherUsersPrivateTemplate(t *testing.T) {
+	svc, _, _, detail := publishBinary(t, []byte("bytes"))
+
+	_, _, appError := svc.TemplateFileContent(contextFor(uuid.New()), detail.ID, detail.Files[0].ID)
+	if appError == nil {
+		t.Fatal("expected another user's private template to be refused")
+	}
+
+	if appError.StatusCode() != http.StatusNotFound {
+		t.Errorf("expected status %d, got %d", http.StatusNotFound, appError.StatusCode())
+	}
+}
+
+// templateStoragePathOf returns the storage path of the only file of a
+// detail, for a test that needs to look at the disk.
+func templateStoragePathOf(t *testing.T, svc *service, owner uuid.UUID, detail *TemplateDetail) string {
+	t.Helper()
+
+	files, appError := svc.TemplateFiles(contextFor(owner), detail.ID)
+	if appError != nil || len(files) != 1 {
+		t.Fatalf("expected one stored file, got %d (error %v)", len(files), appError)
+	}
+
+	return files[0].StoragePath
 }

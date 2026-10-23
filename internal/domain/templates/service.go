@@ -2,8 +2,13 @@ package templates
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -18,13 +23,18 @@ import (
 type service struct {
 	db     Repository
 	logger *logger.Config
+	// uploadFolder is the root the binary files of a template are written
+	// under, the same root the files domain stores uploads in. A text-only
+	// template never writes to it.
+	uploadFolder string
 }
 
 // Return a new templates service
-func NewService(db Repository, logger *logger.Config) *service {
+func NewService(db Repository, uploadFolder string, logger *logger.Config) *service {
 	return &service{
-		db:     db,
-		logger: logger,
+		db:           db,
+		uploadFolder: uploadFolder,
+		logger:       logger,
 	}
 }
 
@@ -34,13 +44,18 @@ func NewService(db Repository, logger *logger.Config) *service {
 // whatever the client sends.
 const (
 	maxFilesPerTemplate = 200
-	maxFileBytes        = 256 * 1024
-	maxTemplateBytes    = 4 * 1024 * 1024
-	maxVariables        = 50
-	maxNameLength       = 200
-	maxDescription      = 1000
-	maxPromptLength     = 500
-	listLimit           = 100
+	// A text file is configuration and small; a binary file is an image or a
+	// compiled helper, and is allowed to be bigger. The template as a whole is
+	// capped once, counting both.
+	maxTextFileBytes       = 256 * 1024
+	maxBinaryFileBytes     = 10 * 1024 * 1024
+	maxTextTemplateBytes   = 4 * 1024 * 1024
+	maxBinaryTemplateBytes = 32 * 1024 * 1024
+	maxVariables           = 50
+	maxNameLength          = 200
+	maxDescription         = 1000
+	maxPromptLength        = 500
+	listLimit              = 100
 )
 
 // slugPattern is the shape of a slug: lowercase letters, digits and dashes.
@@ -173,12 +188,25 @@ func (s *service) detail(template *Template) (*TemplateDetail, *errors.AppError)
 
 	fileData := make([]TemplateFileData, 0, len(files))
 	for _, file := range files {
-		fileData = append(fileData, TemplateFileData{
+		data := TemplateFileData{
 			ID:           file.ID,
 			Path:         file.Path,
+			Kind:         file.Kind,
+			Size:         file.Size,
 			Content:      file.Content,
 			IsExecutable: file.IsExecutable,
-		})
+		}
+
+		if file.Kind == FileKindBinary {
+			bytes, err := s.readStoredFile(file)
+			if err != nil {
+				s.logger.Error("failed to read a binary template file", slog.Any("error", err))
+				return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get template files")
+			}
+			data.ContentBase64 = base64.StdEncoding.EncodeToString(bytes)
+		}
+
+		fileData = append(fileData, data)
 	}
 
 	variableData := make([]TemplateVariableData, 0, len(variables))
@@ -231,7 +259,13 @@ func (s *service) PublishTemplate(ctx context.Context, request PublishRequest) (
 	template.UserID = userID
 	template.Version = 1
 
+	if appError := s.writeBinaryFiles(files); appError != nil {
+		return nil, appError
+	}
+
 	if !s.db.CreateTemplate(template, files, variables) {
+		// The rows were not written, so nothing points at the bytes.
+		s.removeTemplateStorage(template.ID)
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to publish template")
 	}
 
@@ -269,9 +303,26 @@ func (s *service) UpdateTemplate(ctx context.Context, id uuid.UUID, request Publ
 	template.UserID = userID
 	template.Version = existing.Version + 1
 
-	if !s.db.UpdateTemplate(template, files, variables) {
+	// The rows of the version being replaced, so their bytes can go once the
+	// new version is stored.
+	replaced, ok := s.db.GetTemplateFiles(id)
+	if !ok {
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to update template")
 	}
+
+	if appError := s.writeBinaryFiles(files); appError != nil {
+		return nil, appError
+	}
+
+	if !s.db.UpdateTemplate(template, files, variables) {
+		// The new rows were not written: the bytes they would have pointed
+		// at are unreferenced.
+		s.removeStoredFiles(files)
+		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to update template")
+	}
+
+	// The old rows are gone; their bytes are not.
+	s.removeStoredFiles(replaced)
 
 	stored, ok := s.db.GetTemplate(id)
 	if !ok {
@@ -295,19 +346,25 @@ func (s *service) DeleteTemplate(ctx context.Context, id uuid.UUID) (string, *er
 		return "", errors.NewAppError(http.StatusNotFound, "template not found")
 	}
 
+	// The files and the variables went with the row (the schema cascades);
+	// the binary bytes are on disk and have to go too.
+	s.removeTemplateStorage(id)
+
 	return "template deleted!", nil
 }
 
-// TemplateFiles returns the files of a template the caller may see, for the
-// archive download.
-func (s *service) TemplateFiles(ctx context.Context, id uuid.UUID) ([]TemplateFile, *errors.AppError) {
+// visibleFiles returns the files of a template the caller may see.
+//
+// A private template that is not the caller's is reported as not found: the
+// fact that it exists is not theirs to learn.
+func (s *service) visibleFiles(ctx context.Context, id uuid.UUID) ([]TemplateFile, *errors.AppError) {
 	userID, ok := userIDFromContext(ctx)
 	if !ok {
 		s.logger.Warn("no user in the request context")
 		return nil, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
 	}
 
-	s.logger.Debug("TemplateFiles", slog.String("id", id.String()))
+	s.logger.Debug("visibleFiles", slog.String("id", id.String()))
 
 	template, ok := s.db.GetTemplate(id)
 	if !ok {
@@ -324,6 +381,168 @@ func (s *service) TemplateFiles(ctx context.Context, id uuid.UUID) ([]TemplateFi
 	}
 
 	return files, nil
+}
+
+// TemplateFiles returns the files of a template the caller may see, for the
+// archive download.
+func (s *service) TemplateFiles(ctx context.Context, id uuid.UUID) ([]TemplateFile, *errors.AppError) {
+	return s.visibleFiles(ctx, id)
+}
+
+// TemplateFileContent returns one file of a template and its bytes: the column
+// for a text file, the disk for a binary one.
+func (s *service) TemplateFileContent(ctx context.Context, templateID uuid.UUID, fileID uuid.UUID) (*TemplateFile, []byte, *errors.AppError) {
+	files, appError := s.visibleFiles(ctx, templateID)
+	if appError != nil {
+		return nil, nil, appError
+	}
+
+	for _, file := range files {
+		if file.ID != fileID {
+			continue
+		}
+
+		bytes, err := s.contentOf(file)
+		if err != nil {
+			s.logger.Error("failed to read a template file", slog.Any("error", err))
+			return nil, nil, errors.NewAppError(http.StatusInternalServerError, "failed to read the file")
+		}
+
+		return &file, bytes, nil
+	}
+
+	return nil, nil, errors.NewAppError(http.StatusNotFound, "file not found")
+}
+
+// ArchiveEntry is one file of a template with its bytes, for the archive.
+type ArchiveEntry struct {
+	Path         string
+	IsExecutable bool
+	Content      []byte
+}
+
+// TemplateArchive returns every file of a template with its bytes, read from
+// the column or from the disk.
+func (s *service) TemplateArchive(ctx context.Context, id uuid.UUID) ([]ArchiveEntry, *errors.AppError) {
+	files, appError := s.visibleFiles(ctx, id)
+	if appError != nil {
+		return nil, appError
+	}
+
+	entries := make([]ArchiveEntry, 0, len(files))
+	for _, file := range files {
+		bytes, err := s.contentOf(file)
+		if err != nil {
+			s.logger.Error("failed to read a template file for the archive", slog.Any("error", err))
+			return nil, errors.NewAppError(http.StatusInternalServerError, "failed to build the archive")
+		}
+
+		entries = append(entries, ArchiveEntry{
+			Path:         file.Path,
+			IsExecutable: file.IsExecutable,
+			Content:      bytes,
+		})
+	}
+
+	return entries, nil
+}
+
+// templateStorageDir is where every binary file of a template lives.
+func (s *service) templateStorageDir(templateID uuid.UUID) string {
+	return filepath.Join(s.uploadFolder, "templates", templateID.String())
+}
+
+// storagePathOf is where a binary file lives, relative to the upload root.
+//
+// The separator is a forward slash, always: the value travels in a database
+// row and is read on machines that are not this one, and a backslash is not a
+// path separator there. The file's own directory is its id, so two files with
+// the same name in different folders cannot collide.
+func storagePathOf(templateID, fileID uuid.UUID, filePath string) string {
+	return path.Join("templates", templateID.String(), fileID.String(), path.Base(filePath))
+}
+
+// absoluteStoragePath is the location a row points at, on this machine.
+func (s *service) absoluteStoragePath(storagePath string) string {
+	return filepath.Join(s.uploadFolder, filepath.FromSlash(storagePath))
+}
+
+// writeBinaryFiles writes the bytes of the binary files of a template.
+//
+// It runs before the database is touched; the caller removes what it wrote if
+// the database write fails, so a failed publish leaves no unreferenced bytes
+// behind.
+func (s *service) writeBinaryFiles(files []TemplateFile) *errors.AppError {
+	for _, file := range files {
+		if file.Kind != FileKindBinary {
+			continue
+		}
+
+		absolute := s.absoluteStoragePath(file.StoragePath)
+		if !helper.PathIsInside(s.uploadFolder, absolute) {
+			s.logger.Error("the file would be stored outside the upload folder", slog.String("path", absolute))
+			s.removeStoredFiles(files)
+			return errors.NewAppError(http.StatusInternalServerError, "failed to store the template")
+		}
+
+		if err := helper.CreatePathIfNotExists(filepath.Dir(absolute)); err != nil {
+			s.logger.Error("failed to create the template storage folder", slog.Any("error", err))
+			s.removeStoredFiles(files)
+			return errors.NewAppError(http.StatusInternalServerError, "failed to store the template")
+		}
+
+		if err := os.WriteFile(absolute, file.Bytes, 0o600); err != nil {
+			s.logger.Error("failed to write a binary template file", slog.Any("error", err))
+			s.removeStoredFiles(files)
+			return errors.NewAppError(http.StatusInternalServerError, "failed to store the template")
+		}
+	}
+
+	return nil
+}
+
+// removeTemplateStorage removes every byte a template wrote.
+func (s *service) removeTemplateStorage(templateID uuid.UUID) {
+	if err := os.RemoveAll(s.templateStorageDir(templateID)); err != nil {
+		// The rows are already gone; an orphaned directory is a leak, not a
+		// failure the caller can act on. It is logged and the operation
+		// stands.
+		s.logger.Warn("failed to remove the template storage", slog.Any("error", err))
+	}
+}
+
+// removeStoredFiles removes the bytes of the given rows from disk.
+func (s *service) removeStoredFiles(files []TemplateFile) {
+	for _, file := range files {
+		if file.StoragePath == "" {
+			continue
+		}
+
+		directory := filepath.Dir(s.absoluteStoragePath(file.StoragePath))
+		if err := os.RemoveAll(directory); err != nil {
+			s.logger.Warn("failed to remove a template file from disk", slog.Any("error", err))
+		}
+	}
+}
+
+// readStoredFile reads the bytes of a binary file.
+func (s *service) readStoredFile(file TemplateFile) ([]byte, error) {
+	absolute := s.absoluteStoragePath(file.StoragePath)
+	if !helper.PathIsInside(s.uploadFolder, absolute) {
+		return nil, fmt.Errorf("the storage path %q is outside the upload folder", file.StoragePath)
+	}
+
+	return os.ReadFile(absolute)
+}
+
+// contentOf returns the bytes of a file: the column for a text file, the disk
+// for a binary one.
+func (s *service) contentOf(file TemplateFile) ([]byte, error) {
+	if file.Kind != FileKindBinary {
+		return []byte(file.Content), nil
+	}
+
+	return s.readStoredFile(file)
 }
 
 // validate turns a publish request into the rows to store, or explains why
@@ -410,12 +629,16 @@ func (s *service) validate(request PublishRequest, currentID uuid.UUID) (Templat
 // buildFiles turns the files of a request into rows, refusing the paths that
 // cannot be written safely and the contents that are too big.
 //
+// A text file carries its content inline. A binary file carries it in
+// content_base64 and its bytes are written to disk by writeBinaryFiles: the
+// row holds the location, not the bytes.
+//
 // Every row carries the id of the template it belongs to: the table has a
 // foreign key on it, and the row without one is refused by the database.
 func (s *service) buildFiles(requestFiles []PublishFile, templateID uuid.UUID) ([]TemplateFile, *errors.AppError) {
 	files := make([]TemplateFile, 0, len(requestFiles))
 	seen := make(map[string]bool, len(requestFiles))
-	total := 0
+	textTotal, total := 0, 0
 
 	for _, requestFile := range requestFiles {
 		path, ok := helper.SafeRelPath(strings.TrimSpace(requestFile.Path))
@@ -429,13 +652,13 @@ func (s *service) buildFiles(requestFiles []PublishFile, templateID uuid.UUID) (
 		}
 		seen[path] = true
 
-		if len(requestFile.Content) > maxFileBytes {
-			return nil, errors.NewAppError(http.StatusBadRequest, "file too big in the template")
+		kind := strings.TrimSpace(requestFile.Kind)
+		if kind == "" {
+			kind = FileKindText
 		}
-		total += len(requestFile.Content)
 
-		if total > maxTemplateBytes {
-			return nil, errors.NewAppError(http.StatusBadRequest, "template too big")
+		if !IsFileKind(kind) {
+			return nil, errors.NewAppError(http.StatusBadRequest, "invalid file kind in the template")
 		}
 
 		fileID, err := uuid.NewV7()
@@ -444,16 +667,85 @@ func (s *service) buildFiles(requestFiles []PublishFile, templateID uuid.UUID) (
 			return nil, errors.NewAppError(http.StatusInternalServerError, "failed to publish template")
 		}
 
-		files = append(files, TemplateFile{
+		file := TemplateFile{
 			ID:           fileID,
 			TemplateID:   templateID,
 			Path:         path,
-			Content:      requestFile.Content,
+			Kind:         kind,
 			IsExecutable: requestFile.IsExecutable,
-		})
+		}
+
+		if kind == FileKindBinary {
+			if requestFile.Content != "" {
+				return nil, errors.NewAppError(http.StatusBadRequest, "a binary file carries content_base64, not content")
+			}
+
+			bytes, appError := s.decodeBinaryFile(requestFile.ContentBase64)
+			if appError != nil {
+				return nil, appError
+			}
+
+			file.Size = int64(len(bytes))
+			file.Bytes = bytes
+			file.StoragePath = storagePathOf(templateID, fileID, path)
+			total += len(bytes)
+
+			if total > maxBinaryTemplateBytes {
+				return nil, errors.NewAppError(http.StatusBadRequest, "template too big")
+			}
+		} else {
+			if requestFile.ContentBase64 != "" {
+				return nil, errors.NewAppError(http.StatusBadRequest, "a text file carries content, not content_base64")
+			}
+
+			if len(requestFile.Content) > maxTextFileBytes {
+				return nil, errors.NewAppError(http.StatusBadRequest, "file too big in the template")
+			}
+
+			file.Content = requestFile.Content
+			file.Size = int64(len(requestFile.Content))
+
+			textTotal += len(requestFile.Content)
+			total += len(requestFile.Content)
+
+			if textTotal > maxTextTemplateBytes {
+				return nil, errors.NewAppError(http.StatusBadRequest, "template too big")
+			}
+
+			if total > maxBinaryTemplateBytes {
+				return nil, errors.NewAppError(http.StatusBadRequest, "template too big")
+			}
+		}
+
+		files = append(files, file)
 	}
 
 	return files, nil
+}
+
+// decodeBinaryFile turns the base64 body of a binary file into bytes, and
+// refuses one that is too big before decoding it.
+func (s *service) decodeBinaryFile(encoded string) ([]byte, *errors.AppError) {
+	if encoded == "" {
+		return nil, errors.NewAppError(http.StatusBadRequest, "a binary file needs content_base64")
+	}
+
+	// base64 is four characters for every three bytes; checking the encoded
+	// length first keeps a huge body from being decoded only to be refused.
+	if int64(len(encoded)) > int64(maxBinaryFileBytes)*4/3+4 {
+		return nil, errors.NewAppError(http.StatusBadRequest, "file too big in the template")
+	}
+
+	bytes, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, errors.NewAppError(http.StatusBadRequest, "invalid base64 content in the template")
+	}
+
+	if len(bytes) > maxBinaryFileBytes {
+		return nil, errors.NewAppError(http.StatusBadRequest, "file too big in the template")
+	}
+
+	return bytes, nil
 }
 
 // buildVariables turns the variables of a request into rows.

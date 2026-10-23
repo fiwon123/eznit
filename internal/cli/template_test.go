@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -186,26 +187,69 @@ func TestCollectTemplateFilesSkipsTheNoiseFolders(t *testing.T) {
 	}
 }
 
-// A template holds text: the contents live in a text column, and a byte that
-// is not text does not survive the trip. The file is named, so the author
-// knows the folder holds more than the template does.
-func TestCollectTemplateFilesSkipsTheFilesThatAreNotText(t *testing.T) {
+// A binary file is not left out: its bytes travel as base64 and the server
+// writes them to disk. A text column could not hold them.
+func TestCollectTemplateFilesSendsTheBinaryFilesAsBase64(t *testing.T) {
 	root := t.TempDir()
 
+	content := []byte("the bytes\x00and the rest")
+
 	writeTestFile(t, filepath.Join(root, "AGENTS.md"), "the project")
-	writeTestFile(t, filepath.Join(root, "logo.png"), "the bytes\x00and the rest")
+	writeTestFile(t, filepath.Join(root, "logo.png"), string(content))
 
 	files, skipped, err := collectTemplateFiles(root)
 	if err != nil {
 		t.Fatalf("expected the walk to succeed, got error %v", err)
 	}
 
-	if len(files) != 1 {
-		t.Fatalf("expected only the text file, got %v", templateFilePaths(files))
+	if len(skipped) != 0 {
+		t.Errorf("expected nothing to be skipped, got %v", skipped)
 	}
 
-	if len(skipped) != 1 || skipped[0] != "logo.png" {
-		t.Errorf("expected the binary file to be named, got %v", skipped)
+	if len(files) != 2 {
+		t.Fatalf("expected both files, got %v", templateFilePaths(files))
+	}
+
+	byPath := map[string]templateFile{}
+	for _, file := range files {
+		byPath[file.Path] = file
+	}
+
+	binary, ok := byPath["logo.png"]
+	if !ok {
+		t.Fatalf("expected the binary file, got %v", templateFilePaths(files))
+	}
+
+	if binary.Kind != templates.FileKindBinary {
+		t.Errorf("expected kind %q, got %q", templates.FileKindBinary, binary.Kind)
+	}
+
+	if binary.Content != "" {
+		t.Errorf("expected no text content for a binary file, got %q", binary.Content)
+	}
+
+	if binary.ContentBase64 != base64.StdEncoding.EncodeToString(content) {
+		t.Errorf("expected the bytes as base64, got %q", binary.ContentBase64)
+	}
+
+	if text := byPath["AGENTS.md"]; text.Kind != templates.FileKindText || text.Content != "the project" {
+		t.Errorf("expected the text file to travel as text, got %+v", text)
+	}
+}
+
+// A byte that is not valid UTF-8 is not text either, even without a NUL.
+func TestCollectTemplateFilesTreatsInvalidUTF8AsBinary(t *testing.T) {
+	root := t.TempDir()
+
+	writeTestFile(t, filepath.Join(root, "latin1.txt"), "caf\xe9")
+
+	files, _, err := collectTemplateFiles(root)
+	if err != nil {
+		t.Fatalf("expected the walk to succeed, got error %v", err)
+	}
+
+	if len(files) != 1 || files[0].Kind != templates.FileKindBinary {
+		t.Fatalf("expected the file to be sent as binary, got %+v", files)
 	}
 }
 
@@ -643,4 +687,89 @@ func templateFilePaths(files []templateFile) []string {
 	}
 
 	return paths
+}
+
+// A binary file is decoded from the base64 the API sends, once, before
+// anything is written.
+func TestTemplateFilesOfDecodesBinaryContent(t *testing.T) {
+	content := []byte{0x00, 0x01, 0xfe, 0xff}
+
+	detail := &templates.TemplateDetail{
+		Files: []templates.TemplateFileData{{
+			Path:          "assets/logo.bin",
+			Kind:          templates.FileKindBinary,
+			Size:          int64(len(content)),
+			ContentBase64: base64.StdEncoding.EncodeToString(content),
+		}},
+	}
+
+	files, err := templateFilesOf(detail)
+	if err != nil {
+		t.Fatalf("expected the files to be decoded, got error %v", err)
+	}
+
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(files))
+	}
+
+	if string(files[0].Bytes) != string(content) {
+		t.Errorf("expected the bytes %v, got %v", content, files[0].Bytes)
+	}
+}
+
+// A binary file the API sent without valid base64 is an error, not a file
+// full of rubbish on disk.
+func TestTemplateFilesOfRefusesInvalidBase64(t *testing.T) {
+	detail := &templates.TemplateDetail{
+		Files: []templates.TemplateFileData{{
+			Path:          "assets/logo.bin",
+			Kind:          templates.FileKindBinary,
+			ContentBase64: "not base64!",
+		}},
+	}
+
+	if _, err := templateFilesOf(detail); err == nil {
+		t.Fatal("expected invalid base64 to be refused")
+	}
+}
+
+// A binary file is written with its bytes, and it keeps the executable flag.
+func TestWriteTemplateFilesWritesBinaryBytes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the executable flag means nothing on windows")
+	}
+
+	target := t.TempDir()
+	content := []byte{0x7f, 'E', 'L', 'F', 0x00, 0x01}
+
+	files := []templateFile{{
+		Path:         "bin/tool",
+		Kind:         templates.FileKindBinary,
+		Bytes:        content,
+		IsExecutable: true,
+	}}
+
+	if err := writeTemplateFiles(target, files, false); err != nil {
+		t.Fatalf("expected the file to be written, got error %v", err)
+	}
+
+	path := filepath.Join(target, "bin", "tool")
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read the file: %v", err)
+	}
+
+	if string(got) != string(content) {
+		t.Errorf("expected the bytes %v, got %v", content, got)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("failed to stat the file: %v", err)
+	}
+
+	if info.Mode().Perm()&0100 == 0 {
+		t.Errorf("expected the file to be executable, got mode %v", info.Mode())
+	}
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { downloadTemplateArchive, getTemplate, messageOf } from "../api";
+import { downloadTemplateArchive, downloadTemplateFile, getTemplate, messageOf } from "../api";
 import FileTree, { buildTree } from "../components/FileTree";
 import type { TemplateDetail, TemplateFileData } from "../types";
 
@@ -19,6 +19,7 @@ export default function TemplateDetailPage() {
   const [copied, setCopied] = useState<boolean>(false);
   const [downloading, setDownloading] = useState<boolean>(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
 
   // reload is the retry: a refusal — an expired session, a network hiccup —
   // must not leave the reader stuck on an error with only a full page load to
@@ -82,6 +83,22 @@ export default function TemplateDetailPage() {
 
   function select(file: TemplateFileData): void {
     setSelectedPath(file.path);
+  }
+
+  async function downloadFile(file: TemplateFileData): Promise<void> {
+    if (template === null) {
+      return;
+    }
+
+    setDownloadingFile(file.id);
+    try {
+      await downloadTemplateFile(template.id, file);
+      setDownloadError(null);
+    } catch (cause: unknown) {
+      setDownloadError(messageOf(cause));
+    } finally {
+      setDownloadingFile(null);
+    }
   }
 
   async function downloadZip(): Promise<void> {
@@ -184,12 +201,34 @@ export default function TemplateDetailPage() {
             <>
               <div className="filehead">
                 <h2 className="sidehead">{selected.path}</h2>
-                <span className="badge">{selected.content.length} characters</span>
+                {selected.kind === "binary" ? (
+                  <>
+                    <span className="badge">{selected.size ?? 0} bytes</span>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => void downloadFile(selected)}
+                      disabled={downloadingFile === selected.id}
+                    >
+                      {downloadingFile === selected.id ? "downloading…" : "download"}
+                    </button>
+                  </>
+                ) : (
+                  <span className="badge">{(selected.content ?? "").length} characters</span>
+                )}
                 {selected.is_executable ? <span className="badge">executable</span> : null}
               </div>
-              <pre className="filecontent">
-                <code>{selected.content === "" ? "(the file is empty)" : selected.content}</code>
-              </pre>
+              {selected.kind === "binary" ? (
+                <p className="empty">A binary file: the bytes are downloaded, not shown.</p>
+              ) : (
+                <pre className="filecontent">
+                  <code>
+                    {selected.content === undefined || selected.content === ""
+                      ? "(the file is empty)"
+                      : selected.content}
+                  </code>
+                </pre>
+              )}
             </>
           )}
         </div>

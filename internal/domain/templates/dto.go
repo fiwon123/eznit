@@ -41,11 +41,18 @@ func IsKind(kind string) bool {
 
 // TemplateFileData is one file of a template, with the path it takes inside
 // the project it is applied to.
+//
+// A text file carries Content. A binary file carries ContentBase64 and no
+// Content, so a client can write it without a second request; Size is what it
+// weighed when it was published.
 type TemplateFileData struct {
-	ID           uuid.UUID `json:"id"`
-	Path         string    `json:"path"`
-	Content      string    `json:"content"`
-	IsExecutable bool      `json:"is_executable"`
+	ID            uuid.UUID `json:"id"`
+	Path          string    `json:"path"`
+	Kind          string    `json:"kind"`
+	Size          int64     `json:"size"`
+	Content       string    `json:"content,omitempty"`
+	ContentBase64 string    `json:"content_base64,omitempty"`
+	IsExecutable  bool      `json:"is_executable"`
 }
 
 // TemplateVariableData is one question a template asks when it is applied.
@@ -89,10 +96,17 @@ type ListResponse struct {
 }
 
 // PublishFile is a file in a publish request.
+//
+// A text file sends Content. A binary file sends ContentBase64 — the request
+// is JSON, and arbitrary bytes do not survive it — and the server writes the
+// decoded bytes to disk. Kind defaults to "text", so a client that predates
+// binary files keeps working.
 type PublishFile struct {
-	Path         string `json:"path"`
-	Content      string `json:"content"`
-	IsExecutable bool   `json:"is_executable"`
+	Path          string `json:"path"`
+	Kind          string `json:"kind"`
+	Content       string `json:"content"`
+	ContentBase64 string `json:"content_base64"`
+	IsExecutable  bool   `json:"is_executable"`
 }
 
 // PublishVariable is a variable in a publish request.

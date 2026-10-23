@@ -42,7 +42,7 @@ const templateColumns = `t.id, t.user_id, t.name, t.slug, t.description, t.kind,
 // place in the struct, so a query that reads `*` breaks the day a migration
 // adds a column — and it breaks at runtime, on a table nobody looks at until
 // a user does.
-const templateFileColumns = `id, template_id, path, content, is_executable`
+const templateFileColumns = `id, template_id, path, content, kind, size, storage_path, is_executable`
 
 const templateVariableColumns = `id, template_id, var_key, prompt, default_value, required, sort_order`
 
@@ -250,8 +250,8 @@ func insertTemplateFiles(tx *sqlx.Tx, files []TemplateFile) error {
 		return nil
 	}
 
-	query := `INSERT INTO template_files (id, template_id, path, content, is_executable)
-		VALUES (:id, :template_id, :path, :content, :is_executable)`
+	query := `INSERT INTO template_files (id, template_id, path, content, kind, size, storage_path, is_executable)
+		VALUES (:id, :template_id, :path, :content, :kind, :size, :storage_path, :is_executable)`
 
 	_, err := tx.NamedExec(query, files)
 

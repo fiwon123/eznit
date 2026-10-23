@@ -1,4 +1,4 @@
-import type { Envelope, FileData, ListResponse, LoginResponse, TemplateDetail } from "./types";
+import type { Envelope, FileData, ListResponse, LoginResponse, TemplateDetail, TemplateFileData } from "./types";
 
 const TOKEN_KEY = "eznit.token";
 
@@ -143,6 +143,19 @@ export async function downloadTemplateArchive(template: TemplateDetail): Promise
   });
 
   await saveDownload(response, `${archiveNameOf(template)}.zip`);
+}
+
+// downloadTemplateFile fetches one file of a template. The detail page uses it
+// for a binary file: the bytes are not inline, and a plain link would not
+// carry the token the guard wants.
+export async function downloadTemplateFile(templateID: string, file: TemplateFileData): Promise<void> {
+  const response = await fetch(
+    `/v1/templates/${encodeURIComponent(templateID)}/files/${encodeURIComponent(file.id)}/content`,
+    { headers: authHeaders() },
+  );
+
+  const parts = file.path.split("/");
+  await saveDownload(response, parts[parts.length - 1] ?? file.path);
 }
 
 // archiveNameOf is the name the zip is saved under: the template's slug when it

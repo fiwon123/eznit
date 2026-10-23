@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
@@ -39,10 +40,16 @@ func (cmd *TemplateApplyCmd) Run(g *Globals) error {
 		target = "."
 	}
 
-	// The files are checked before the questions are asked: a user is not
-	// asked what a template wants to know when the template is not going to
-	// be written.
-	if err := checkTemplateFiles(target, templateFilesOf(detail), cmd.Force); err != nil {
+	// The files are decoded and checked before the questions are asked: a
+	// user is not asked what a template wants to know when the template is
+	// not going to be written.
+	files, err := templateFilesOf(detail)
+	if err != nil {
+		g.logger.Warn("the template was not applied. ", slog.String("error", err.Error()))
+		return nil
+	}
+
+	if err := checkTemplateFiles(target, files, cmd.Force); err != nil {
 		g.logger.Warn("the template was not applied. ", slog.String("error", err.Error()))
 		return nil
 	}
@@ -54,14 +61,11 @@ func (cmd *TemplateApplyCmd) Run(g *Globals) error {
 		return nil
 	}
 
-	files := make([]templateFile, 0, len(detail.Files))
-
-	for _, file := range detail.Files {
-		files = append(files, templateFile{
-			Path:         file.Path,
-			Content:      substitute(file.Content, values),
-			IsExecutable: file.IsExecutable,
-		})
+	// A binary file has no placeholders: its bytes are what they are.
+	for i := range files {
+		if files[i].Kind != templates.FileKindBinary {
+			files[i].Content = substitute(files[i].Content, values)
+		}
 	}
 
 	// A placeholder the template does not declare is left alone: it may be
@@ -84,18 +88,35 @@ func (cmd *TemplateApplyCmd) Run(g *Globals) error {
 
 // templateFilesOf turns the files of a template into the files the client
 // writes: the same paths, and the contents as they came.
-func templateFilesOf(detail *templates.TemplateDetail) []templateFile {
+//
+// A binary file arrives as base64 and is decoded here, once, before anything
+// is written: a body that does not decode is a failure, not a file full of
+// rubbish on disk.
+func templateFilesOf(detail *templates.TemplateDetail) ([]templateFile, error) {
 	files := make([]templateFile, 0, len(detail.Files))
 
 	for _, file := range detail.Files {
-		files = append(files, templateFile{
+		entry := templateFile{
 			Path:         file.Path,
+			Kind:         file.Kind,
 			Content:      file.Content,
 			IsExecutable: file.IsExecutable,
-		})
+		}
+
+		if file.Kind == templates.FileKindBinary {
+			bytes, err := base64.StdEncoding.DecodeString(file.ContentBase64)
+			if err != nil {
+				return nil, fmt.Errorf("the file %q is not valid base64: %w", file.Path, err)
+			}
+
+			entry.Bytes = bytes
+			entry.ContentBase64 = file.ContentBase64
+		}
+
+		files = append(files, entry)
 	}
 
-	return files
+	return files, nil
 }
 
 // template finds the template to apply: the one the user named, or the one
@@ -234,7 +255,12 @@ func writeTemplateFiles(target string, files []templateFile, force bool) error {
 			mode = 0755
 		}
 
-		if err := os.WriteFile(path, []byte(file.Content), mode); err != nil {
+		content := []byte(file.Content)
+		if file.Kind == templates.FileKindBinary {
+			content = file.Bytes
+		}
+
+		if err := os.WriteFile(path, content, mode); err != nil {
 			return err
 		}
 

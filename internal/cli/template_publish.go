@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -14,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/fiwon123/eznit/internal/domain/templates"
 	"github.com/fiwon123/eznit/pkg/helper"
@@ -24,10 +26,16 @@ import (
 // them too, so a file that the server would refuse is refused here first,
 // with the name of the file in the message.
 const (
-	maxTemplateFileBytes    = 256 * 1024
-	maxTemplateTotalBytes   = 4 * 1024 * 1024
-	maxTemplateFiles        = 200
-	maxTemplateVariableName = 64
+	// The text limits and the binary limits are separate: a text file is
+	// configuration and small, a binary file is an image or a compiled
+	// helper and is allowed to be bigger. The template as a whole is capped
+	// once, counting both.
+	maxTemplateFileBytes        = 256 * 1024
+	maxTemplateTotalBytes       = 4 * 1024 * 1024
+	maxTemplateBinaryBytes      = 10 * 1024 * 1024
+	maxTemplateBinaryTotalBytes = 32 * 1024 * 1024
+	maxTemplateFiles            = 200
+	maxTemplateVariableName     = 64
 )
 
 // skipFolders are the folders a template never carries: the version control
@@ -61,8 +69,14 @@ type TemplatePublishCmd struct {
 // templateFile is a file of a template on the client side: the path it takes
 // inside the project, and its content.
 type templateFile struct {
-	Path         string
-	Content      string
+	Path string
+	// Kind is FileKindText or FileKindBinary. An empty Kind is text, so a
+	// starter template and an old API response read the same.
+	Kind          string
+	Content       string
+	ContentBase64 string
+	// Bytes is the decoded content of a binary file, for writing it.
+	Bytes        []byte
 	IsExecutable bool
 }
 
@@ -102,7 +116,7 @@ func (cmd *TemplatePublishCmd) Run(g *Globals) error {
 	}
 
 	for _, name := range skipped {
-		fmt.Printf("skipped %s (not a text file, or too big)\n", name)
+		fmt.Printf("skipped %s (a symlink, or bigger than a template allows)\n", name)
 	}
 
 	fmt.Println()
@@ -160,9 +174,11 @@ func (cmd *TemplatePublishCmd) Run(g *Globals) error {
 
 	for _, file := range files {
 		request.Files = append(request.Files, templates.PublishFile{
-			Path:         file.Path,
-			Content:      file.Content,
-			IsExecutable: file.IsExecutable,
+			Path:          file.Path,
+			Kind:          file.Kind,
+			Content:       file.Content,
+			ContentBase64: file.ContentBase64,
+			IsExecutable:  file.IsExecutable,
 		})
 	}
 
@@ -191,6 +207,7 @@ func collectTemplateFiles(root string) ([]templateFile, []string, error) {
 	var skipped []string
 
 	total := 0
+	textTotal := 0
 
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -233,7 +250,9 @@ func collectTemplateFiles(root string) ([]templateFile, []string, error) {
 			return err
 		}
 
-		if info.Size() > maxTemplateFileBytes {
+		// Nothing in a template is bigger than the binary cap, so a file
+		// over it is refused before it is read into memory.
+		if info.Size() > maxTemplateBinaryBytes {
 			skipped = append(skipped, relative)
 			return nil
 		}
@@ -243,20 +262,45 @@ func collectTemplateFiles(root string) ([]templateFile, []string, error) {
 			return err
 		}
 
-		// A template holds text: the contents live in a text column,
-		// and a byte that is not text does not survive the trip.
+		// A binary file travels as base64 and its bytes are written to
+		// disk by the server; a text file travels as it is. A file with
+		// a NUL byte or a byte that is not valid UTF-8 is binary: a text
+		// column would refuse it, and the trip would mangle it.
 		if isBinary(content) {
+			total += len(content)
+			if total > maxTemplateBinaryTotalBytes {
+				return fmt.Errorf("the folder holds more than %d bytes", maxTemplateBinaryTotalBytes)
+			}
+
+			files = append(files, templateFile{
+				Path:          safe,
+				Kind:          templates.FileKindBinary,
+				ContentBase64: base64.StdEncoding.EncodeToString(content),
+				Bytes:         content,
+				IsExecutable:  isExecutable(info.Mode()),
+			})
+
+			return nil
+		}
+
+		if len(content) > maxTemplateFileBytes {
 			skipped = append(skipped, relative)
 			return nil
 		}
 
 		total += len(content)
-		if total > maxTemplateTotalBytes {
+		if total > maxTemplateBinaryTotalBytes {
+			return fmt.Errorf("the folder holds more than %d bytes", maxTemplateBinaryTotalBytes)
+		}
+
+		textTotal += len(content)
+		if textTotal > maxTemplateTotalBytes {
 			return fmt.Errorf("the folder holds more than %d bytes of text", maxTemplateTotalBytes)
 		}
 
 		files = append(files, templateFile{
 			Path:         safe,
+			Kind:         templates.FileKindText,
 			Content:      string(content),
 			IsExecutable: isExecutable(info.Mode()),
 		})
@@ -277,10 +321,10 @@ func collectTemplateFiles(root string) ([]templateFile, []string, error) {
 	return files, skipped, nil
 }
 
-// isBinary reports whether a content holds a byte that is not text. A NUL
-// byte is the sign: it is the one byte no text file holds.
+// isBinary reports whether a content is not text: it holds a NUL byte, or a
+// byte that is not valid UTF-8. Either one is refused by a text column.
 func isBinary(content []byte) bool {
-	return bytes.IndexByte(content, 0) != -1
+	return bytes.IndexByte(content, 0) != -1 || !utf8.Valid(content)
 }
 
 // isExecutable reports whether a file mode says the file is executable.
