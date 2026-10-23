@@ -29,25 +29,9 @@ func NewRepository(db *sqlx.DB, logger *logger.Config) *sqlRepository {
 	}
 }
 
-// Get a list of files, newest first and bounded: the list is a catalogue of
-// every upload, so it must not read the whole table on every call.
-func (r *sqlRepository) GetFiles(limit int) ([]File, bool) {
-	r.logger.Debug("getting files")
-
-	var files []File
-
-	err := r.db.Select(&files, "SELECT "+fileColumns+" FROM files ORDER BY created_at DESC LIMIT $1", limit)
-	if err != nil {
-		r.logger.Error("get files query", slog.Any("error", err))
-		return []File{}, false
-	}
-
-	r.logger.Debug("files has been found")
-
-	return files, true
-}
-
-// Get a list of files data for user by user id
+// Get a list of files data for user by user id. The read is filtered by the
+// owner in the query: a file belongs to the user who uploaded it, so no
+// caller lists another user's rows in the first place.
 func (r *sqlRepository) GetFilesForUser(userID uuid.UUID) ([]File, bool) {
 	r.logger.Debug("getting files for user: ", slog.String("userID", userID.String()))
 

@@ -118,7 +118,7 @@ it (see [Web UI](#web-ui)). `make check` does not — the Go gate stays Node-fre
 | --- | --- |
 | `eznit signup` | Create an account |
 | `eznit login` | Start a session; the token is stored in `~/.eznit/config.json` (mode 0600) |
-| `eznit list` | List the files uploaded in this instance (add `--me` for your own) |
+| `eznit list` | List your own files (`--me` is an alias for the same list) |
 | `eznit upload` | Upload a file |
 | `eznit download` | Download one of your own files by id |
 | `eznit delete` | Delete a file |
@@ -278,14 +278,7 @@ GUI_API_URL=http://localhost:4000 ./build/eznit-gui
 
 ## Security status
 
-This is a self-hosted tool, and it is not hardened. The known gaps are tracked
-as issues rather than left for you to discover:
-
-| Gap | Issue |
-| --- | --- |
-| The catalogue lists every user's file names to any user with a session | — |
-
-Also true today:
+This is a self-hosted tool, and it is not hardened. What is true today:
 
 - **The coverage is partial.** The files domain, the CLI and the path helper
   have tests; the users, sessions, middleware and platform packages have

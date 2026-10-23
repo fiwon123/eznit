@@ -188,9 +188,8 @@ export function fileNameOf(file: FileData): string {
   return file.ext === "" ? file.name : `${file.name}.${file.ext}`;
 }
 
-// listFiles is the caller's own uploads. The instance-wide catalogue route
-// exists too, but its owner scoping is a tracked gap, and this page does not
-// lean on it.
+// listFiles is the caller's own uploads. `/files` answers the same list, and
+// `/files/me` is the alias that names them explicitly.
 export function listFiles(): Promise<ListResponse<FileData>> {
   return request<ListResponse<FileData>>("/files/me");
 }

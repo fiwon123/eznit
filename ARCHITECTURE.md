@@ -281,6 +281,3 @@ tracked, not forgotten:
   are compiled and vetted, not exercised. `internal/domain/sessions` has a
   schema test (its reads match its struct and the migrations), not a
   behaviour test.
-- **The file catalogue is not owner-scoped.** `GET /v1/files` returns every
-  upload in the instance to any logged-in caller; `GET /v1/files/me` is the
-  scoped one. See "Security status" in [README.md](README.md#security-status).

@@ -21,7 +21,6 @@ type File struct {
 
 // Files repository interface
 type Repository interface {
-	GetFiles(limit int) ([]File, bool)
 	GetFilesForUser(userID uuid.UUID) ([]File, bool)
 	GetFile(id uuid.UUID) (*File, bool)
 	GetFileForUser(id uuid.UUID, userID uuid.UUID) (*File, bool)

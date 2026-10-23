@@ -15,8 +15,8 @@ import (
 )
 
 // recordingDriver records the queries the repository sends to the database.
-// The list is bounded in SQL, and a test that never reaches the database
-// cannot tell a bounded query from an unbounded one — so this one does.
+// A test that never reaches the database cannot tell a query that filters by
+// the owner from one that reads every row — so this one does.
 type recordingDriver struct {
 	mu      sync.Mutex
 	queries []string
@@ -112,12 +112,13 @@ func recordingRepository(t *testing.T) (*sqlRepository, *recordingDriver) {
 	return NewRepository(db, log), recorder
 }
 
-// The query that reaches the database is bounded: the list is a catalogue
-// of every upload, and an unbounded read is what made the route expensive.
-func TestGetFilesSendsABoundedQuery(t *testing.T) {
+// The list filters by the owner in SQL: a file belongs to the user who
+// uploaded it, so the query names the column instead of reading every row and
+// filtering in Go.
+func TestGetFilesForUserSendsTheOwnerFilter(t *testing.T) {
 	repo, recorder := recordingRepository(t)
 
-	if _, ok := repo.GetFiles(100); !ok {
+	if _, ok := repo.GetFilesForUser(uuid.New()); !ok {
 		t.Fatal("expected the query to succeed")
 	}
 
@@ -126,9 +127,8 @@ func TestGetFilesSendsABoundedQuery(t *testing.T) {
 		t.Fatal("expected a query to reach the database")
 	}
 
-	upper := strings.ToUpper(query)
-	if !strings.Contains(upper, "LIMIT") && !strings.Contains(upper, "FETCH FIRST") {
-		t.Errorf("expected the query to be bounded, got %q", query)
+	if !strings.Contains(strings.ToLower(query), "where user_id") {
+		t.Errorf("expected the query to filter by user_id, got %q", query)
 	}
 }
 
