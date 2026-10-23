@@ -10,6 +10,7 @@ that drive it, see [README.md](README.md).
 | Piece | Entry point | What it is | Listens |
 | --- | --- | --- | --- |
 | API | `cmd/api` | The HTTP API, and the web UI in front of it | `:4000` |
+| Web tier | `web/Dockerfile` + `web/nginx.conf` | The built UI behind nginx, proxying `/v1` to the API (compose only) | `:5173` |
 | CLI | `cmd/cli` → `internal/cli` | `kong` command line client, one file per command | — |
 | GUI | `cmd/gui` | Opens a browser on the bundled UI, with the API in-process or proxied | `:8765` |
 | Web UI | `web/src` | React + TypeScript + Vite, built to `web/dist` | — |
@@ -17,6 +18,12 @@ that drive it, see [README.md](README.md).
 The API and the GUI both carry the built UI inside the binary (`web/embed.go`);
 the API also serves a `web/dist` folder when one exists. That is why one origin
 serves both the pages and `/v1`, and why the API needs no CORS headers.
+
+The compose stack splits that in two: the `web` service serves the same built
+UI on `:5173` and proxies `/v1` to the `api` service, so the browser still sees
+one origin and still needs no CORS. The `api` service sets `API_SERVE_WEB=false`
+so `:4000` stays the API only; the released binary keeps the embedded UI and
+needs neither the proxy nor the second port.
 
 The API's router is built by `internal/platform/api`, and both binaries use it:
 the API serves it directly, and the GUI either mounts it on its own listener
@@ -46,11 +53,13 @@ pkg/                shared code with no project rules in it
                     logger/   zap through log/slog, rotating files (lumberjack)
                     types/    Envelope[T], the response wrapper
 web/                the React UI; embed.go embeds the build into the binaries
+                    Dockerfile   the web tier image (Node builds, nginx serves)
+                    nginx.conf   SPA fallback and the /v1 proxy
 db/migrations/      golang-migrate SQL, one .up/.down pair per change
 scripts/            migrations runner, dev sandbox helpers, path setup
 Dockerfile          the dev sandbox image (Go 1.27.3, gh, zip)
 Dockerfile.api      the application image: Node builds the UI, Go embeds it
-docker-compose.yml  the product (db, migrate, api) and the dev sandbox (profile: dev)
+docker-compose.yml  the product (db, migrate, api, web) and the dev sandbox (profile: dev)
 ```
 
 `internal/` is where the project rules live; `pkg/` is reusable and knows
@@ -255,9 +264,10 @@ dispatch only. Feature pull requests are gated locally.
 These are the places where the code does not match the shape above. They are
 tracked, not forgotten:
 
-- **`API_PORT` is not read by the API.** The API listens on `:4000`, hardcoded;
-  the variable only sets the host port the `api` service in `docker-compose.yml`
-  publishes, so two stacks can run side by side.
+- **`API_PORT` is read by the API but only changes the bind port.** It defaults
+  to `4000` (what the CLI, the GUI and the docs expect), and the compose file
+  also uses it for the published host port. It is not a way to move the service
+  behind a proxy without changing the proxy target.
 - **Several packages have no tests.** `internal/domain/users`,
   `internal/platform/middleware`, `pkg/errors`, `pkg/logger` and `pkg/types`
   are compiled and vetted, not exercised. `internal/domain/sessions` has a

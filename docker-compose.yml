@@ -2,10 +2,10 @@
 #
 # Two entry points, one stack:
 #
-#   docker compose up   the product: PostgreSQL, the migrations, and the API
-#                       serving the web UI on http://localhost:4000. The API
-#                       image is built from Dockerfile.api, so it carries the
-#                       UI and needs no host toolchain.
+#   docker compose up   the product: PostgreSQL, the migrations, the API on
+#                       :4000, and the web UI served by nginx on :5173. The
+#                       UI proxies /v1 to the API (one origin), so the API
+#                       keeps its session and download flows unchanged.
 #
 #   make dev-up         the developer loop: PostgreSQL, the migrations, and the
 #                       sandbox where `make run_api`, `make check` and
@@ -175,13 +175,28 @@ services:
       db:
         condition: service_healthy
 
+  web:
+    # The frontend. It builds its own image from web/Dockerfile (Node builds
+    # the UI, nginx serves it), and proxies /v1 to the API — so the browser sees
+    # one origin on 5173. Set API_SERVE_WEB=false on the API when using this
+    # service so :4000 stays the API only.
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "${WEB_PORT:-5173}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
   api:
     # The application. It builds its own image, so `docker compose up` needs
     # Docker and nothing else -- no Go, no Node, no prebuilt binary.
     #
-    # The web UI is embedded at build time (Dockerfile.api), which is why there
-    # is no `web/dist` mount here: the image serves a UI that cannot go stale
-    # against the binary.
+    # When the `web` service fronts it, API_SERVE_WEB=false keeps the API on
+    # :4000 with no UI attached (the single origin is the web tier). The
+    # released binary still serves the embedded UI by default.
     build:
       context: .
       dockerfile: Dockerfile.api
@@ -205,6 +220,8 @@ services:
       DB_PASSWORD_FILE: /run/secrets/db_password
       API_UPLOADS: /data/uploads
       API_LOGS: /data/logs
+      # The web tier proxies /v1, so the API does not need to serve the UI.
+      API_SERVE_WEB: "false"
     secrets:
       - db_password
     volumes:
@@ -213,6 +230,15 @@ services:
       - api-data:/data
     # Come back after a Docker restart, and after a crash, without a rebuild.
     restart: unless-stopped
+    healthcheck:
+      # /v1/healthcheck answers without touching the database, so this says
+      # "the process answers", not "the database is up". It is what makes
+      # `docker compose ps` distinguish "starting" from "serving".
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:4000/v1/healthcheck || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     depends_on:
       db:
         condition: service_healthy

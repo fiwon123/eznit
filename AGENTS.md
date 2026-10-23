@@ -124,12 +124,13 @@ make build     # build both binaries into ./build
 make web_check # lint, format check, typecheck and build the web UI
 make web_build # build the web UI into web/dist
 make web_dev   # run the Vite dev server
-make up        # build + run the product: db, migrations, API and web UI on :4000
+make up        # build + run the product: API :4000, web UI :5173, db, migrations
 ```
 
 The quickest way to see the product needs no host toolchain beyond Docker:
-`make setup && make up` builds the API image (`Dockerfile.api`) with the web UI
-embedded, runs the migrations once and serves http://localhost:4000.
+`make setup && make up` builds the web image (`web/Dockerfile`) and the API
+image (`Dockerfile.api`), runs the migrations once, and serves the UI on
+http://localhost:5173 with the API behind it on http://localhost:4000.
 
 `make check` needs no database, no container and no secret file: it compiles
 the API and the CLI, it does not run them. It fails loudly if the Go toolchain
@@ -245,7 +246,8 @@ can set them for you.
 
 `make docker_up` runs the migrations against the local database; it does not
 seed anything. (`make docker_up_all` starts the dev sandbox and the stack,
-excluding the product API — the two both publish port 4000.) The first `signup`
+excluding the product API — the two both publish port 4000, and the product UI
+on 5173 collides with `make web_dev`.) The first `signup`
 through the CLI or the API creates the first user. There is no admin account
 and no way to promote one from the CLI yet.
 

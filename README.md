@@ -69,15 +69,26 @@ Then one command brings up the product:
 make up             # or: docker compose up
 ```
 
-That does four things, in order:
+That does five things, in order:
 
-1. builds the API image from `Dockerfile.api` — Node builds the web UI and Go
-   embeds it in the binary, so the image carries the UI and needs no host
-   toolchain;
+1. builds two images: `web/Dockerfile` (Node builds the UI, nginx serves it) and
+   `Dockerfile.api` (Node builds the UI, Go embeds it in the binary);
 2. starts PostgreSQL and waits until it is healthy;
 3. runs the `migrate` service once (`migrate up` is idempotent);
-4. starts the API, which serves the UI and `/v1` on
-   `http://localhost:4000`.
+4. starts the API on `http://localhost:4000` — API only, because the compose
+   service sets `API_SERVE_WEB=false`;
+5. starts the web UI on `http://localhost:5173`. It proxies `/v1/*` to the API,
+   so the browser still talks to one origin and the API needs no CORS headers.
+
+| Role | Where | Port |
+| --- | --- | --- |
+| Frontend (the app) | `web` service, nginx | **5173** |
+| Backend (the API) | `api` service | **4000** |
+| Database | `db` service | 5432 |
+
+`http://localhost:4000` still serves the UI inside the *released binary* (it
+embeds it); the compose stack keeps the two tiers apart so each port means one
+service.
 
 Uploaded bytes live on the `api-data` volume, so they survive
 `docker compose down` (use `docker compose down -v` to remove them too).
@@ -207,14 +218,13 @@ the committed placeholder — counts as "no UI": the API serves the API only.
 | `make web_dev` | Run the Vite dev server on `http://localhost:5173`; `/v1` is proxied to `http://localhost:4000` |
 | `make web_build` | Build the static assets into `web/dist` |
 | `make web_check` | Lint, format check, typecheck and build the web UI (fails on any error) |
-| `make up` | Build and run the product stack; the UI is served on `:4000` |
+| `make up` | Build and run the product stack: UI on `:5173`, API on `:4000` |
 
-The quickest way to see it needs no Node on the host — the image builds the UI
-and embeds it:
+The quickest way to see it needs no Node on the host — the images build the UI:
 
 ```sh
 make setup
-make up                 # http://localhost:4000
+make up                 # UI http://localhost:5173 — API http://localhost:4000
 ```
 
 For the development loop, with hot reload:
@@ -493,14 +503,16 @@ make dev-up
 database and the uploaded files — which is why it is not called `reset`. The
 migrations run again on the next `make dev-up`.
 
-**`bind: address already in use` on port 4000**
+**`bind: address already in use` on port 4000 or 5173**
 
 The product API and the sandbox both publish 4000 so the host CLI can reach
 them, and they are alternatives — do not run `make up` and `make dev-up` at the
-same time. When something else holds the port, move one of them:
+same time. The `web` container and `make web_dev` both use 5173 for the same
+reason: run one at a time. When something else holds a port, move one of them:
 
 ```sh
 API_PORT=4001 docker compose up                # the product API
+WEB_PORT=5174 docker compose up                # the product UI
 HOST_PORT=4001 docker compose up dev db migrate   # the sandbox
 ```
 

@@ -175,8 +175,8 @@ unexport
 
 .PHONY: docker_up docker_down docker_up_all docker_down_v up
 
-up: ## Build and run the product: db, migrations, API + web UI on http://localhost:4000
-	docker compose up --build db migrate api
+up: ## Build and run the product: API :4000, web UI :5173, db, migrations
+	docker compose up --build db migrate api web
 
 docker_up:
 	docker compose up db migrate

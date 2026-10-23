@@ -1,9 +1,11 @@
 name: CI (Image)
 
-# Checks the two files that make `docker compose up` the product:
+# Checks the files that make `docker compose up` the product:
 #
 #   - Dockerfile.api builds (Node builds the UI, Go embeds it, the runtime
-#     layer assembles); and
+#     layer assembles);
+#   - web/Dockerfile builds the frontend image and its nginx config passes
+#     `nginx -t`; and
 #   - docker-compose.yml parses and merges, with the `dev` profile included.
 #
 # It runs on release pull requests (`dev` -> `main`) and manual dispatch, like
@@ -40,6 +42,15 @@ jobs:
 
       - name: Build the application image
         run: docker build --file Dockerfile.api --tag eznit-api:ci .
+
+      - name: Build the web image
+        run: docker build --file web/Dockerfile --tag eznit-web:ci web
+
+      # Syntax only: the config is checked outside the Compose network, so the
+      # `api` upstream is faked with a host entry. This proves nginx accepts
+      # the file, not that the proxy wiring works.
+      - name: Check the nginx configuration
+        run: docker run --rm --add-host api:127.0.0.1 eznit-web:ci nginx -t
 
       # `config` renders the merged file, so a broken service definition or an
       # interpolation error fails here instead of at the first `up`. The
