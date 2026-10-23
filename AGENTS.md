@@ -28,7 +28,7 @@ download, update, delete — on a Compose stack a single developer can run.
 
 ```
 cmd/api/         API entrypoint: flags, logger, router, graceful shutdown
-cmd/cli/         CLI entrypoint and one file per command
+cmd/cli/         CLI entrypoint (version + main); commands in internal/cli
 web/             React + TypeScript + Vite web UI; built to web/dist and served by the API
 internal/domain/ one package per resource (users, sessions, files):
                  handler -> service -> repository, plus dto.go
@@ -247,7 +247,7 @@ Agent definitions live in `opencode.json` and `.opencode/agents/`:
 - **plan** (primary): Analysis and planning without making changes.
 - **backend** (subagent): Backend work — Go, SQL, migrations. Its edit scope is
   `cmd/api/**`, `internal/**`, `db/**` and `pkg/**`; it does not touch
-  `cmd/cli/**`.
+  `internal/cli/**` or `cmd/cli/**`.
 - **reviewer** (subagent): Reviews code for bugs, security, and regressions.
 - **visual** (subagent): Reviews the web UI for layout, accessibility,
   console errors and regressions; can capture screenshots against the local

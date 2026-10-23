@@ -33,7 +33,7 @@ empty field here means a placeholder somewhere else.
 
 ```
 cmd/api/         API entrypoint: flags, logger, router, graceful shutdown
-cmd/cli/         CLI entrypoint and one file per command
+cmd/cli/         CLI entrypoint; commands live in internal/cli
 web/             React + TypeScript + Vite web UI; built to web/dist and served by the API
 internal/domain/ One package per resource: users, sessions, files
                  Each has handler -> service -> repository, plus dto.go

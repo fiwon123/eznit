@@ -10,7 +10,7 @@ that drive it, see [README.md](README.md).
 | Piece | Entry point | What it is | Listens |
 | --- | --- | --- | --- |
 | API | `cmd/api` | The HTTP API, and the web UI in front of it | `:4000` |
-| CLI | `cmd/cli` | `kong` command line client, one file per command | — |
+| CLI | `cmd/cli` → `internal/cli` | `kong` command line client, one file per command | — |
 | GUI | `cmd/gui` | Opens a browser on the bundled UI, with the API in-process or proxied | `:8765` |
 | Web UI | `web/src` | React + TypeScript + Vite, built to `web/dist` | — |
 
@@ -27,7 +27,8 @@ so the two cannot offer different APIs.
 
 ```
 cmd/api/            API entrypoint: flags, logging, database, router, UI, shutdown
-cmd/cli/            CLI entrypoint and one file per command
+cmd/cli/            CLI entrypoint: the version variable, then internal/cli
+internal/cli/       CLI commands, the API client and the token store
 cmd/gui/            GUI entrypoint: the UI, the API (or a proxy), a browser
 internal/domain/    one package per resource — users, sessions, files, templates
                     handler.go -> service.go -> repository.go, plus dto.go
@@ -182,7 +183,7 @@ dispatch only. Feature pull requests are gated locally.
 | a rule ("only the owner may…") | the same package's `service.go`, with a test |
 | a query or a column read | `repository_sql.go`; name the columns, never `SELECT *` |
 | a table or a constraint | a new `db/migrations/NNNNNN_*.up.sql`/`.down.sql` pair |
-| a CLI command | `cmd/cli/<command>.go`, wired in the `CLI` struct in `main.go` |
+| a CLI command | `internal/cli/<command>.go`, wired in the `CLI` struct in `internal/cli/main.go` |
 | a page | `web/src/pages/`, routed in `web/src/App.tsx` |
 | shared plumbing | `pkg/` (no domain rules) or `internal/platform/` (infrastructure) |
 
@@ -191,8 +192,6 @@ dispatch only. Feature pull requests are gated locally.
 These are the places where the code does not match the shape above. They are
 tracked, not forgotten:
 
-- **`cmd/cli` is not thin.** It holds the command logic rather than calling into
-  `internal/cli`; the move is #64.
 - **`API_PORT` is not read.** The API listens on `:4000`, hardcoded; the
   variable exists in `.env.example` and matters only to the commented `api`
   service in `docker-compose.yml`.
