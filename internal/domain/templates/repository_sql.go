@@ -46,6 +46,18 @@ const templateFileColumns = `id, template_id, path, content, kind, size, storage
 
 const templateVariableColumns = `id, template_id, var_key, prompt, default_value, required, sort_order`
 
+// templateCommandColumns is the read shape of a command reference: the
+// reference itself, and the command it points at resolved in the same query.
+// commands/schema_test.go checks the second half against the commands table.
+const templateCommandRefColumns = `tc.template_id, tc.command_id, tc.target_path`
+
+// The second half of the read: the command a reference points at. It names the
+// owner as owner_id, which is the column the struct holds.
+const templateCommandCommandColumns = `c.user_id AS owner_id, c.name, c.kind,
+	c.content, c.size, c.storage_path, c.is_executable`
+
+const templateCommandColumns = templateCommandRefColumns + ", " + templateCommandCommandColumns
+
 // ListTemplates returns the catalogue for a user: every public template and
 // the user's own, public or not. The filter is in the query, so a template
 // that is not visible to the caller is never read in the first place.
@@ -154,11 +166,54 @@ func (r *sqlRepository) GetTemplateVariables(templateID uuid.UUID) ([]TemplateVa
 	return variables, true
 }
 
-// CreateTemplate stores the template, its files and its variables in one
-// transaction. A template whose files did not make it is a broken template,
-// and a half-written one is worse: the transaction is what keeps the three
-// in step.
-func (r *sqlRepository) CreateTemplate(template Template, files []TemplateFile, variables []TemplateVariable) bool {
+// GetTemplateCommands returns the commands a template pulls in.
+func (r *sqlRepository) GetTemplateCommands(templateID uuid.UUID) ([]TemplateCommand, bool) {
+	var commands []TemplateCommand
+
+	query := "SELECT " + templateCommandColumns +
+		" FROM template_commands tc JOIN commands c ON c.id = tc.command_id" +
+		" WHERE tc.template_id=$1 ORDER BY tc.target_path"
+
+	if err := r.db.Select(&commands, query, templateID); err != nil {
+		r.logger.Error("get template commands query", slog.Any("error", err))
+		return []TemplateCommand{}, false
+	}
+
+	return commands, true
+}
+
+// OwnedCommandIDs returns which of the ids belong to the user.
+func (r *sqlRepository) OwnedCommandIDs(userID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]bool, bool) {
+	owned := map[uuid.UUID]bool{}
+
+	if len(ids) == 0 {
+		return owned, true
+	}
+
+	query, args, err := sqlx.In("SELECT id FROM commands WHERE user_id = ? AND id IN (?)", userID, ids)
+	if err != nil {
+		r.logger.Error("owned commands query", slog.Any("error", err))
+		return nil, false
+	}
+
+	var found []uuid.UUID
+	if err := r.db.Select(&found, r.db.Rebind(query), args...); err != nil {
+		r.logger.Error("owned commands select", slog.Any("error", err))
+		return nil, false
+	}
+
+	for _, id := range found {
+		owned[id] = true
+	}
+
+	return owned, true
+}
+
+// CreateTemplate stores the template, its files, its variables and its command
+// references in one transaction. A template whose files did not make it is a
+// broken template, and a half-written one is worse: the transaction is what
+// keeps them in step.
+func (r *sqlRepository) CreateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) bool {
 	r.logger.Debug("creating template", slog.String("id", template.ID.String()))
 
 	tx, err := r.db.Beginx()
@@ -186,6 +241,11 @@ func (r *sqlRepository) CreateTemplate(template Template, files []TemplateFile, 
 		return false
 	}
 
+	if err := insertTemplateCommands(tx, commands); err != nil {
+		r.logger.Error("insert into template_commands", slog.Any("error", err))
+		return false
+	}
+
 	if err := tx.Commit(); err != nil {
 		r.logger.Error("commit template transaction", slog.Any("error", err))
 		return false
@@ -194,9 +254,9 @@ func (r *sqlRepository) CreateTemplate(template Template, files []TemplateFile, 
 	return true
 }
 
-// UpdateTemplate replaces a template with the given files and variables, in
-// one transaction: the old files and variables go, the new ones come.
-func (r *sqlRepository) UpdateTemplate(template Template, files []TemplateFile, variables []TemplateVariable) bool {
+// UpdateTemplate replaces a template with the given files, variables and
+// command references, in one transaction: the old ones go, the new ones come.
+func (r *sqlRepository) UpdateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) bool {
 	r.logger.Debug("updating template", slog.String("id", template.ID.String()))
 
 	tx, err := r.db.Beginx()
@@ -226,6 +286,11 @@ func (r *sqlRepository) UpdateTemplate(template Template, files []TemplateFile, 
 		return false
 	}
 
+	if _, err := tx.Exec("DELETE FROM template_commands WHERE template_id=$1", template.ID); err != nil {
+		r.logger.Error("delete template commands", slog.Any("error", err))
+		return false
+	}
+
 	if err := insertTemplateFiles(tx, files); err != nil {
 		r.logger.Error("insert into template_files", slog.Any("error", err))
 		return false
@@ -236,12 +301,31 @@ func (r *sqlRepository) UpdateTemplate(template Template, files []TemplateFile, 
 		return false
 	}
 
+	if err := insertTemplateCommands(tx, commands); err != nil {
+		r.logger.Error("insert into template_commands", slog.Any("error", err))
+		return false
+	}
+
 	if err := tx.Commit(); err != nil {
 		r.logger.Error("commit template transaction", slog.Any("error", err))
 		return false
 	}
 
 	return true
+}
+
+// insertTemplateCommands writes the command references of a template.
+func insertTemplateCommands(tx *sqlx.Tx, commands []TemplateCommand) error {
+	if len(commands) == 0 {
+		return nil
+	}
+
+	query := `INSERT INTO template_commands (template_id, command_id, target_path)
+		VALUES (:template_id, :command_id, :target_path)`
+
+	_, err := tx.NamedExec(query, commands)
+
+	return err
 }
 
 // insertTemplateFiles writes the files of a template.

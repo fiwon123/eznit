@@ -953,3 +953,271 @@ func templateStoragePathOf(t *testing.T, svc *service, owner uuid.UUID, detail *
 
 	return files[0].StoragePath
 }
+
+// seedCommand puts a command in the repository's library, as if the user had
+// created it, and returns it.
+func seedCommand(repo *fakeRepository, owner uuid.UUID, name string, kind string) TemplateCommand {
+	command := TemplateCommand{
+		CommandID:    uuid.New(),
+		OwnerID:      owner,
+		Name:         name,
+		Kind:         kind,
+		Content:      "#!/bin/sh\n" + name,
+		Size:         int64(len("#!/bin/sh\n" + name)),
+		IsExecutable: true,
+	}
+
+	repo.addCommand(command)
+
+	return command
+}
+
+// A template pulls a command in at a path, and the detail resolves the command
+// from the owner's library.
+func TestPublishTemplateStoresACommandReference(t *testing.T) {
+	owner := uuid.New()
+	repo := newFakeRepository()
+	command := seedCommand(repo, owner, "fmt", FileKindText)
+
+	svc := newTestService(t, repo)
+
+	request := validRequest()
+	request.Commands = []PublishCommand{{CommandID: command.CommandID, TargetPath: "scripts/fmt.sh"}}
+
+	detail, appError := svc.PublishTemplate(contextFor(owner), request)
+	if appError != nil {
+		t.Fatalf("expected the template to be published, got error %v", appError)
+	}
+
+	if len(detail.Commands) != 1 {
+		t.Fatalf("expected 1 command, got %d", len(detail.Commands))
+	}
+
+	pulled := detail.Commands[0]
+	if pulled.TargetPath != "scripts/fmt.sh" {
+		t.Errorf("expected the target path, got %q", pulled.TargetPath)
+	}
+
+	if pulled.CommandID != command.CommandID || pulled.Name != "fmt" {
+		t.Errorf("expected the resolved command, got %+v", pulled)
+	}
+
+	if pulled.Content != command.Content || !pulled.IsExecutable {
+		t.Errorf("expected the command content and its flag, got %+v", pulled)
+	}
+}
+
+// A command of somebody else's library is refused as unknown: whether it
+// exists is not the publisher's to learn.
+func TestPublishTemplateRefusesAnUnknownCommand(t *testing.T) {
+	owner := uuid.New()
+
+	// A command of another user, referenced by its real id.
+	repo := newFakeRepository()
+	stranger := seedCommand(repo, uuid.New(), "theirs", FileKindText)
+
+	tests := []struct {
+		name    string
+		command uuid.UUID
+	}{
+		{"a command that does not exist", uuid.New()},
+		{"a command of another user", stranger.CommandID},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newTestService(t, repo)
+
+			request := validRequest()
+			request.Commands = []PublishCommand{{CommandID: tt.command, TargetPath: "scripts/fmt.sh"}}
+
+			_, appError := svc.PublishTemplate(contextFor(owner), request)
+			if appError == nil {
+				t.Fatal("expected the command to be refused")
+			}
+
+			if appError.StatusCode() != http.StatusBadRequest {
+				t.Errorf("expected status %d, got %d", http.StatusBadRequest, appError.StatusCode())
+			}
+		})
+	}
+}
+
+// A template cannot put two things at one path: a command aimed where a file
+// already lands, or two commands aimed at one path, would overwrite at apply
+// time.
+func TestPublishTemplateRefusesACollidingCommandPath(t *testing.T) {
+	owner := uuid.New()
+
+	tests := []struct {
+		name     string
+		commands func(first TemplateCommand, second TemplateCommand) []PublishCommand
+	}{
+		{"a command on a file path", func(first TemplateCommand, _ TemplateCommand) []PublishCommand {
+			return []PublishCommand{{CommandID: first.CommandID, TargetPath: "AGENTS.md"}}
+		}},
+		{"two commands on one path", func(first TemplateCommand, second TemplateCommand) []PublishCommand {
+			return []PublishCommand{
+				{CommandID: first.CommandID, TargetPath: "scripts/run.sh"},
+				{CommandID: second.CommandID, TargetPath: "scripts/run.sh"},
+			}
+		}},
+		{"a command outside the project", func(first TemplateCommand, _ TemplateCommand) []PublishCommand {
+			return []PublishCommand{{CommandID: first.CommandID, TargetPath: "../outside.sh"}}
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := newFakeRepository()
+			first := seedCommand(repo, owner, "one", FileKindText)
+			second := seedCommand(repo, owner, "two", FileKindText)
+
+			svc := newTestService(t, repo)
+
+			request := validRequest()
+			request.Commands = tt.commands(first, second)
+
+			if _, appError := svc.PublishTemplate(contextFor(owner), request); appError == nil {
+				t.Fatalf("expected %s to be refused", tt.name)
+			}
+		})
+	}
+}
+
+// The archive carries the commands at their target paths, text and binary.
+func TestTemplateArchiveCarriesTheCommands(t *testing.T) {
+	owner := uuid.New()
+	repo := newFakeRepository()
+	text := seedCommand(repo, owner, "fmt", FileKindText)
+
+	binaryContent := []byte{0x7f, 'E', 'L', 'F', 0x00}
+	binary := TemplateCommand{
+		CommandID:    uuid.New(),
+		OwnerID:      owner,
+		Name:         "tool",
+		Kind:         FileKindBinary,
+		Size:         int64(len(binaryContent)),
+		StoragePath:  "commands/" + uuid.New().String() + "/tool",
+		IsExecutable: true,
+	}
+	repo.addCommand(binary)
+
+	svc, root := newTestServiceWithRoot(t, repo)
+
+	absolute := filepath.Join(root, filepath.FromSlash(binary.StoragePath))
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
+		t.Fatalf("failed to create the command folder: %v", err)
+	}
+	if err := os.WriteFile(absolute, binaryContent, 0o600); err != nil {
+		t.Fatalf("failed to write the command bytes: %v", err)
+	}
+
+	request := validRequest()
+	request.Files = []PublishFile{{Path: "AGENTS.md", Content: "# hello"}}
+	request.Commands = []PublishCommand{
+		{CommandID: text.CommandID, TargetPath: "scripts/fmt.sh"},
+		{CommandID: binary.CommandID, TargetPath: "bin/tool"},
+	}
+
+	detail, appError := svc.PublishTemplate(contextFor(owner), request)
+	if appError != nil {
+		t.Fatalf("expected the template to be published, got error %v", appError)
+	}
+
+	entries, appError := svc.TemplateArchive(contextFor(owner), detail.ID)
+	if appError != nil {
+		t.Fatalf("expected the archive to be built, got error %v", appError)
+	}
+
+	byPath := map[string][]byte{}
+	for _, entry := range entries {
+		byPath[entry.Path] = entry.Content
+	}
+
+	if string(byPath["scripts/fmt.sh"]) != text.Content {
+		t.Errorf("expected the text command at its target path, got %q", byPath["scripts/fmt.sh"])
+	}
+
+	if string(byPath["bin/tool"]) != string(binaryContent) {
+		t.Errorf("expected the binary command bytes at its target path, got %v", byPath["bin/tool"])
+	}
+}
+
+// The detail of a binary command carries its bytes, read from the disk the
+// command's own row points at.
+func TestTemplateDetailCarriesABinaryCommand(t *testing.T) {
+	owner := uuid.New()
+	repo := newFakeRepository()
+
+	content := []byte{0x00, 0x01, 0xfe, 0xff}
+	command := TemplateCommand{
+		CommandID:    uuid.New(),
+		OwnerID:      owner,
+		Name:         "tool",
+		Kind:         FileKindBinary,
+		Size:         int64(len(content)),
+		StoragePath:  "commands/" + uuid.New().String() + "/tool",
+		IsExecutable: true,
+	}
+	repo.addCommand(command)
+
+	svc, root := newTestServiceWithRoot(t, repo)
+
+	absolute := filepath.Join(root, filepath.FromSlash(command.StoragePath))
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
+		t.Fatalf("failed to create the command folder: %v", err)
+	}
+	if err := os.WriteFile(absolute, content, 0o600); err != nil {
+		t.Fatalf("failed to write the command bytes: %v", err)
+	}
+
+	request := validRequest()
+	request.Commands = []PublishCommand{{CommandID: command.CommandID, TargetPath: "bin/tool"}}
+
+	detail, appError := svc.PublishTemplate(contextFor(owner), request)
+	if appError != nil {
+		t.Fatalf("expected the template to be published, got error %v", appError)
+	}
+
+	if len(detail.Commands) != 1 {
+		t.Fatalf("expected 1 command, got %d", len(detail.Commands))
+	}
+
+	if detail.Commands[0].Kind != FileKindBinary {
+		t.Errorf("expected kind %q, got %q", FileKindBinary, detail.Commands[0].Kind)
+	}
+
+	if detail.Commands[0].ContentBase64 != base64.StdEncoding.EncodeToString(content) {
+		t.Errorf("expected the bytes as base64, got %q", detail.Commands[0].ContentBase64)
+	}
+}
+
+// An update replaces the references with the ones it carries: the ones the
+// old version had are gone.
+func TestUpdateTemplateReplacesTheCommands(t *testing.T) {
+	owner := uuid.New()
+	repo := newFakeRepository()
+	command := seedCommand(repo, owner, "fmt", FileKindText)
+
+	svc := newTestService(t, repo)
+
+	request := validRequest()
+	request.Commands = []PublishCommand{{CommandID: command.CommandID, TargetPath: "scripts/fmt.sh"}}
+
+	detail, appError := svc.PublishTemplate(contextFor(owner), request)
+	if appError != nil {
+		t.Fatalf("expected the template to be published, got error %v", appError)
+	}
+
+	request.Commands = nil
+
+	updated, appError := svc.UpdateTemplate(contextFor(owner), detail.ID, request)
+	if appError != nil {
+		t.Fatalf("expected the update to go through, got error %v", appError)
+	}
+
+	if len(updated.Commands) != 0 {
+		t.Errorf("expected no commands after the update, got %+v", updated.Commands)
+	}
+}

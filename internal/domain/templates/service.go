@@ -52,6 +52,7 @@ const (
 	maxTextTemplateBytes   = 4 * 1024 * 1024
 	maxBinaryTemplateBytes = 32 * 1024 * 1024
 	maxVariables           = 50
+	maxCommandsPerTemplate = 50
 	maxNameLength          = 200
 	maxDescription         = 1000
 	maxPromptLength        = 500
@@ -186,6 +187,11 @@ func (s *service) detail(template *Template) (*TemplateDetail, *errors.AppError)
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get template variables")
 	}
 
+	commands, ok := s.db.GetTemplateCommands(template.ID)
+	if !ok {
+		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get template commands")
+	}
+
 	fileData := make([]TemplateFileData, 0, len(files))
 	for _, file := range files {
 		data := TemplateFileData{
@@ -207,6 +213,30 @@ func (s *service) detail(template *Template) (*TemplateDetail, *errors.AppError)
 		}
 
 		fileData = append(fileData, data)
+	}
+
+	commandData := make([]TemplateCommandData, 0, len(commands))
+	for _, command := range commands {
+		data := TemplateCommandData{
+			CommandID:    command.CommandID,
+			TargetPath:   command.TargetPath,
+			Name:         command.Name,
+			Kind:         command.Kind,
+			Size:         command.Size,
+			Content:      command.Content,
+			IsExecutable: command.IsExecutable,
+		}
+
+		if command.Kind == FileKindBinary {
+			bytes, err := s.contentOfCommand(command)
+			if err != nil {
+				s.logger.Error("failed to read a binary template command", slog.Any("error", err))
+				return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get template commands")
+			}
+			data.ContentBase64 = base64.StdEncoding.EncodeToString(bytes)
+		}
+
+		commandData = append(commandData, data)
 	}
 
 	variableData := make([]TemplateVariableData, 0, len(variables))
@@ -238,6 +268,7 @@ func (s *service) detail(template *Template) (*TemplateDetail, *errors.AppError)
 		},
 		Files:     fileData,
 		Variables: variableData,
+		Commands:  commandData,
 	}, nil
 }
 
@@ -251,7 +282,7 @@ func (s *service) PublishTemplate(ctx context.Context, request PublishRequest) (
 
 	s.logger.Debug("PublishTemplate", slog.String("userID", userID.String()))
 
-	template, files, variables, appError := s.validate(request, uuid.Nil)
+	template, files, variables, commands, appError := s.validate(request, userID, uuid.Nil)
 	if appError != nil {
 		return nil, appError
 	}
@@ -263,7 +294,7 @@ func (s *service) PublishTemplate(ctx context.Context, request PublishRequest) (
 		return nil, appError
 	}
 
-	if !s.db.CreateTemplate(template, files, variables) {
+	if !s.db.CreateTemplate(template, files, variables, commands) {
 		// The rows were not written, so nothing points at the bytes.
 		s.removeTemplateStorage(template.ID)
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to publish template")
@@ -295,7 +326,7 @@ func (s *service) UpdateTemplate(ctx context.Context, id uuid.UUID, request Publ
 		return nil, errors.NewAppError(http.StatusNotFound, "template not found")
 	}
 
-	template, files, variables, appError := s.validate(request, id)
+	template, files, variables, commands, appError := s.validate(request, userID, id)
 	if appError != nil {
 		return nil, appError
 	}
@@ -314,7 +345,7 @@ func (s *service) UpdateTemplate(ctx context.Context, id uuid.UUID, request Publ
 		return nil, appError
 	}
 
-	if !s.db.UpdateTemplate(template, files, variables) {
+	if !s.db.UpdateTemplate(template, files, variables, commands) {
 		// The new rows were not written: the bytes they would have pointed
 		// at are unreferenced.
 		s.removeStoredFiles(files)
@@ -444,6 +475,25 @@ func (s *service) TemplateArchive(ctx context.Context, id uuid.UUID) ([]ArchiveE
 		})
 	}
 
+	commands, appError := s.visibleCommands(ctx, id)
+	if appError != nil {
+		return nil, appError
+	}
+
+	for _, command := range commands {
+		bytes, err := s.contentOfCommand(command)
+		if err != nil {
+			s.logger.Error("failed to read a template command for the archive", slog.Any("error", err))
+			return nil, errors.NewAppError(http.StatusInternalServerError, "failed to build the archive")
+		}
+
+		entries = append(entries, ArchiveEntry{
+			Path:         command.TargetPath,
+			IsExecutable: command.IsExecutable,
+			Content:      bytes,
+		})
+	}
+
 	return entries, nil
 }
 
@@ -545,24 +595,126 @@ func (s *service) contentOf(file TemplateFile) ([]byte, error) {
 	return s.readStoredFile(file)
 }
 
+// contentOfCommand is contentOf for a command a template pulls in: a text
+// command holds its content, a binary one lives under the upload root.
+func (s *service) contentOfCommand(command TemplateCommand) ([]byte, error) {
+	if command.Kind != FileKindBinary {
+		return []byte(command.Content), nil
+	}
+
+	absolute := s.absoluteStoragePath(command.StoragePath)
+	if !helper.PathIsInside(s.uploadFolder, absolute) {
+		return nil, os.ErrNotExist
+	}
+
+	return os.ReadFile(absolute)
+}
+
+// visibleCommands returns the commands of a template the caller may see.
+func (s *service) visibleCommands(ctx context.Context, id uuid.UUID) ([]TemplateCommand, *errors.AppError) {
+	userID, ok := userIDFromContext(ctx)
+	if !ok {
+		s.logger.Warn("no user in the request context")
+		return nil, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
+	}
+
+	template, ok := s.db.GetTemplate(id)
+	if !ok {
+		return nil, errors.NewAppError(http.StatusNotFound, "template not found")
+	}
+
+	if !template.IsPublic && template.UserID != userID {
+		return nil, errors.NewAppError(http.StatusNotFound, "template not found")
+	}
+
+	commands, ok := s.db.GetTemplateCommands(id)
+	if !ok {
+		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get template commands")
+	}
+
+	return commands, nil
+}
+
+// buildCommands turns the command references of a request into rows.
+//
+// A reference is an id from the caller's own library and the path it takes in
+// the project. The library is per user, so a reference to a command of
+// somebody else is refused as unknown rather than forbidden: whether it
+// exists is not the caller's to learn.
+func (s *service) buildCommands(requestCommands []PublishCommand, userID uuid.UUID, templateID uuid.UUID) ([]TemplateCommand, *errors.AppError) {
+	if len(requestCommands) > maxCommandsPerTemplate {
+		return nil, errors.NewAppError(http.StatusBadRequest, "too many commands in the template")
+	}
+
+	commands := make([]TemplateCommand, 0, len(requestCommands))
+	seenPaths := make(map[string]bool, len(requestCommands))
+	seenIDs := make(map[uuid.UUID]bool, len(requestCommands))
+	ids := make([]uuid.UUID, 0, len(requestCommands))
+
+	for _, requestCommand := range requestCommands {
+		targetPath, ok := helper.SafeRelPath(strings.TrimSpace(requestCommand.TargetPath))
+		if !ok {
+			return nil, errors.NewAppError(http.StatusBadRequest, "a command path in the template cannot be written safely")
+		}
+
+		if seenPaths[targetPath] {
+			return nil, errors.NewAppError(http.StatusBadRequest, "duplicate command path in the template: "+targetPath)
+		}
+		seenPaths[targetPath] = true
+
+		if requestCommand.CommandID == uuid.Nil {
+			return nil, errors.NewAppError(http.StatusBadRequest, "a command reference needs a command id")
+		}
+
+		if seenIDs[requestCommand.CommandID] {
+			return nil, errors.NewAppError(http.StatusBadRequest, "a command is referenced twice in the template")
+		}
+		seenIDs[requestCommand.CommandID] = true
+		ids = append(ids, requestCommand.CommandID)
+
+		commands = append(commands, TemplateCommand{
+			TemplateID: templateID,
+			CommandID:  requestCommand.CommandID,
+			TargetPath: targetPath,
+		})
+	}
+
+	if len(ids) == 0 {
+		return commands, nil
+	}
+
+	owned, ok := s.db.OwnedCommandIDs(userID, ids)
+	if !ok {
+		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to validate the template commands")
+	}
+
+	for _, id := range ids {
+		if !owned[id] {
+			return nil, errors.NewAppError(http.StatusBadRequest, "unknown command in the template")
+		}
+	}
+
+	return commands, nil
+}
+
 // validate turns a publish request into the rows to store, or explains why
 // it cannot.
 //
 // currentID is the template being updated, and uuid.Nil for a new one: the
 // slug of a template is its own, so an update may keep it.
-func (s *service) validate(request PublishRequest, currentID uuid.UUID) (Template, []TemplateFile, []TemplateVariable, *errors.AppError) {
+func (s *service) validate(request PublishRequest, userID uuid.UUID, currentID uuid.UUID) (Template, []TemplateFile, []TemplateVariable, []TemplateCommand, *errors.AppError) {
 	name := strings.TrimSpace(request.Name)
 	if name == "" {
-		return Template{}, nil, nil, errors.NewAppError(http.StatusBadRequest, "template name is required")
+		return Template{}, nil, nil, nil, errors.NewAppError(http.StatusBadRequest, "template name is required")
 	}
 
 	if len(name) > maxNameLength {
-		return Template{}, nil, nil, errors.NewAppError(http.StatusBadRequest, "template name is too long")
+		return Template{}, nil, nil, nil, errors.NewAppError(http.StatusBadRequest, "template name is too long")
 	}
 
 	description := strings.TrimSpace(request.Description)
 	if len(description) > maxDescription {
-		return Template{}, nil, nil, errors.NewAppError(http.StatusBadRequest, "template description is too long")
+		return Template{}, nil, nil, nil, errors.NewAppError(http.StatusBadRequest, "template description is too long")
 	}
 
 	kind := strings.TrimSpace(request.Kind)
@@ -571,19 +723,19 @@ func (s *service) validate(request PublishRequest, currentID uuid.UUID) (Templat
 	}
 
 	if !IsKind(kind) {
-		return Template{}, nil, nil, errors.NewAppError(http.StatusBadRequest, "invalid template kind")
+		return Template{}, nil, nil, nil, errors.NewAppError(http.StatusBadRequest, "invalid template kind")
 	}
 
 	if len(request.Files) == 0 {
-		return Template{}, nil, nil, errors.NewAppError(http.StatusBadRequest, "a template needs at least one file")
+		return Template{}, nil, nil, nil, errors.NewAppError(http.StatusBadRequest, "a template needs at least one file")
 	}
 
 	if len(request.Files) > maxFilesPerTemplate {
-		return Template{}, nil, nil, errors.NewAppError(http.StatusBadRequest, "too many files in the template")
+		return Template{}, nil, nil, nil, errors.NewAppError(http.StatusBadRequest, "too many files in the template")
 	}
 
 	if len(request.Variables) > maxVariables {
-		return Template{}, nil, nil, errors.NewAppError(http.StatusBadRequest, "too many variables in the template")
+		return Template{}, nil, nil, nil, errors.NewAppError(http.StatusBadRequest, "too many variables in the template")
 	}
 
 	templateID := currentID
@@ -591,7 +743,7 @@ func (s *service) validate(request PublishRequest, currentID uuid.UUID) (Templat
 		id, err := uuid.NewV7()
 		if err != nil {
 			s.logger.Error("failed to generate the template id", slog.Any("error", err))
-			return Template{}, nil, nil, errors.NewAppError(http.StatusInternalServerError, "failed to publish template")
+			return Template{}, nil, nil, nil, errors.NewAppError(http.StatusInternalServerError, "failed to publish template")
 		}
 		templateID = id
 	}
@@ -601,17 +753,36 @@ func (s *service) validate(request PublishRequest, currentID uuid.UUID) (Templat
 	// refused by the database.
 	files, appError := s.buildFiles(request.Files, templateID)
 	if appError != nil {
-		return Template{}, nil, nil, appError
+		return Template{}, nil, nil, nil, appError
 	}
 
 	variables, appError := s.buildVariables(request.Variables, templateID)
 	if appError != nil {
-		return Template{}, nil, nil, appError
+		return Template{}, nil, nil, nil, appError
+	}
+
+	commands, appError := s.buildCommands(request.Commands, userID, templateID)
+	if appError != nil {
+		return Template{}, nil, nil, nil, appError
+	}
+
+	// A template cannot put two things at one path: a command target that
+	// a file already takes, or two commands aimed at the same path, would
+	// write one over the other at apply time.
+	filePaths := make(map[string]bool, len(files))
+	for _, file := range files {
+		filePaths[file.Path] = true
+	}
+
+	for _, command := range commands {
+		if filePaths[command.TargetPath] {
+			return Template{}, nil, nil, nil, errors.NewAppError(http.StatusBadRequest, "a command target path is also a file path: "+command.TargetPath)
+		}
 	}
 
 	slug, appError := s.resolveSlug(request.Slug, name, currentID, templateID)
 	if appError != nil {
-		return Template{}, nil, nil, appError
+		return Template{}, nil, nil, nil, appError
 	}
 
 	template := Template{
@@ -623,7 +794,7 @@ func (s *service) validate(request PublishRequest, currentID uuid.UUID) (Templat
 		IsPublic:    request.IsPublic,
 	}
 
-	return template, files, variables, nil
+	return template, files, variables, commands, nil
 }
 
 // buildFiles turns the files of a request into rows, refusing the paths that

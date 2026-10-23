@@ -121,11 +121,15 @@ that can be published and applied to another project:
 
 | Command | What it does |
 | --- | --- |
-| `eznit template publish <folder>` | Publish a folder as a template |
+| `eznit template publish <folder>` | Publish a folder as a template; `--command <id>=<path>` pulls a command in |
 | `eznit template list` | The catalogue: the public templates and your own |
 | `eznit template show <id>` | One template, its files and the variables it asks for |
 | `eznit template apply <id>` | Write a template into the current folder |
 | `eznit template init` | Write a starter template to publish |
+| `eznit command add <file>` | Keep a script in your command library (`--replace` updates it) |
+| `eznit command list` | List your command library |
+| `eznit command show <name>` | Show one command |
+| `eznit command remove <name>` | Remove a command; a command a template pulls in is refused |
 
 A template holds text files and binary files. Text travels as it is; a binary
 file — an image, a compiled helper, anything with a byte that is not valid
@@ -133,6 +137,17 @@ UTF-8 — is sent as base64 and stored on disk by the server, under the upload
 root. The CLI detects the kind per file, keeps the executable bit, and reports
 the files it left out. Limits: 256 KiB per text file and 4 MiB of text per
 template, 10 MiB per binary file and 32 MiB per template counting both.
+
+A **command** is a file kept once in your library and pulled into templates by
+id, so one copy is updated once:
+
+```sh
+eznit command add scripts/fmt.sh --name fmt
+eznit template publish . --command <command-id>=scripts/fmt.sh
+```
+
+`eznit template apply` writes the command at its target path. A command that a
+template pulls in cannot be removed until the template stops referencing it.
 
 ## Web UI
 

@@ -195,6 +195,7 @@ func TestCreateTemplateWritesTheFilesAndTheVariables(t *testing.T) {
 		Template{ID: templateID, Name: "mine", Slug: "mine", Kind: KindGeneric},
 		[]TemplateFile{{ID: uuid.New(), TemplateID: templateID, Path: "AGENTS.md", Content: "x"}},
 		[]TemplateVariable{{ID: uuid.New(), TemplateID: templateID, Key: "PROJECT_NAME"}},
+		nil,
 	)
 
 	if !ok {
@@ -268,6 +269,7 @@ func TestCreateTemplateFailsWithoutATransaction(t *testing.T) {
 	if repo.CreateTemplate(
 		Template{ID: uuid.New(), Name: "mine", Slug: "mine", Kind: KindGeneric},
 		[]TemplateFile{{ID: uuid.New(), Path: "AGENTS.md", Content: "x"}},
+		nil,
 		nil,
 	) {
 		t.Fatal("expected the write to fail without a transaction")

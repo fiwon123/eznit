@@ -162,6 +162,18 @@ func printTemplate(detail *templates.TemplateDetail) {
 		fmt.Printf("  %s %s\n", marker, file.Path)
 	}
 
+	if len(detail.Commands) > 0 {
+		fmt.Println()
+		fmt.Printf("commands (%d):\n", len(detail.Commands))
+		for _, command := range detail.Commands {
+			marker := " "
+			if command.IsExecutable {
+				marker = "*"
+			}
+			fmt.Printf("  %s %s <- %s (%s)\n", marker, command.TargetPath, command.Name, command.CommandID)
+		}
+	}
+
 	if len(detail.Variables) > 0 {
 		fmt.Println()
 		fmt.Println("variables:")

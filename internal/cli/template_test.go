@@ -773,3 +773,66 @@ func TestWriteTemplateFilesWritesBinaryBytes(t *testing.T) {
 		t.Errorf("expected the file to be executable, got mode %v", info.Mode())
 	}
 }
+
+// A command a template pulls in is written like a file, at its target path.
+func TestTemplateFilesOfIncludesTheCommands(t *testing.T) {
+	content := []byte{0x7f, 'E', 'L', 'F', 0x00}
+
+	detail := &templates.TemplateDetail{
+		Files: []templates.TemplateFileData{{Path: "AGENTS.md", Kind: templates.FileKindText, Content: "# hi"}},
+		Commands: []templates.TemplateCommandData{
+			{
+				CommandID:    uuid.New(),
+				TargetPath:   "scripts/fmt.sh",
+				Name:         "fmt",
+				Kind:         templates.FileKindText,
+				Content:      "#!/bin/sh\ngofmt -w .",
+				IsExecutable: true,
+			},
+			{
+				CommandID:     uuid.New(),
+				TargetPath:    "bin/tool",
+				Name:          "tool",
+				Kind:          templates.FileKindBinary,
+				Size:          int64(len(content)),
+				ContentBase64: base64.StdEncoding.EncodeToString(content),
+				IsExecutable:  true,
+			},
+		},
+	}
+
+	files, err := templateFilesOf(detail)
+	if err != nil {
+		t.Fatalf("expected the files to be decoded, got error %v", err)
+	}
+
+	if len(files) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(files))
+	}
+
+	byPath := map[string]templateFile{}
+	for _, file := range files {
+		byPath[file.Path] = file
+	}
+
+	if command := byPath["scripts/fmt.sh"]; command.Content != "#!/bin/sh\ngofmt -w ." || !command.IsExecutable {
+		t.Errorf("expected the text command at its target path, got %+v", command)
+	}
+
+	if command := byPath["bin/tool"]; string(command.Bytes) != string(content) {
+		t.Errorf("expected the binary command bytes, got %v", command.Bytes)
+	}
+}
+
+// Two entries at one path would write one over the other, so the template is
+// refused before anything is written.
+func TestCheckTemplateFilesRefusesADuplicatePath(t *testing.T) {
+	files := []templateFile{
+		{Path: "scripts/run.sh", Content: "one"},
+		{Path: "scripts/run.sh", Content: "two"},
+	}
+
+	if err := checkTemplateFiles(t.TempDir(), files, false); err == nil {
+		t.Fatal("expected the duplicate path to be refused")
+	}
+}
