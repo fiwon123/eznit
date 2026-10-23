@@ -8,7 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/joho/godotenv v1.5.1
-	github.com/lib/pq v1.11.1
+	github.com/lib/pq v1.12.3
 	go.uber.org/zap v1.26.0
 	go.uber.org/zap/exp v0.3.0
 	golang.org/x/crypto v0.58.0
