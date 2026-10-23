@@ -1,10 +1,14 @@
 package templates
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -72,6 +76,16 @@ func (r *fakeSessionsRepository) GetUserIDByToken(token string) (uuid.UUID, bool
 func newTestRouter(t *testing.T, repo Repository, userID uuid.UUID) *chi.Mux {
 	t.Helper()
 
+	router, _ := newTestRouterWithRoot(t, repo, userID)
+
+	return router
+}
+
+// newTestRouterWithRoot also returns the upload root, so a test can put the
+// bytes of a binary file where the service reads them from.
+func newTestRouterWithRoot(t *testing.T, repo Repository, userID uuid.UUID) (*chi.Mux, string) {
+	t.Helper()
+
 	log, err := logger.NewConsole(t.TempDir(), false, true)
 	if err != nil {
 		t.Fatalf("failed to create the test logger: %v", err)
@@ -84,13 +98,42 @@ func newTestRouter(t *testing.T, repo Repository, userID uuid.UUID) *chi.Mux {
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
 
+	root := t.TempDir()
+
 	guard := middleware.NewGuard(sessions.NewService(newFakeSessionsRepository(session), log), log)
-	handler := NewHandler(NewService(repo, log), guard, log)
+	handler := NewHandler(NewService(repo, root, log), guard, log)
 
 	router := chi.NewRouter()
 	handler.RegisterRoutes(router)
 
-	return router
+	return router, root
+}
+
+// storeBinaryFile writes the bytes of a binary file under the upload root and
+// returns the row that points at them.
+func storeBinaryFile(t *testing.T, root string, templateID uuid.UUID, fileID uuid.UUID, path string, content []byte) TemplateFile {
+	t.Helper()
+
+	storagePath := "templates/" + templateID.String() + "/" + fileID.String() + "/" + filepath.Base(path)
+	absolute := filepath.Join(root, filepath.FromSlash(storagePath))
+
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
+		t.Fatalf("failed to create the storage folder: %v", err)
+	}
+
+	if err := os.WriteFile(absolute, content, 0o600); err != nil {
+		t.Fatalf("failed to write the test file: %v", err)
+	}
+
+	return TemplateFile{
+		ID:           fileID,
+		TemplateID:   templateID,
+		Path:         path,
+		Kind:         FileKindBinary,
+		Size:         int64(len(content)),
+		StoragePath:  storagePath,
+		IsExecutable: false,
+	}
 }
 
 // The catalogue lists the templates a user may use, so it is not public:
@@ -289,5 +332,109 @@ func TestArchiveDownloadServesAZip(t *testing.T) {
 
 	if !strings.Contains(rec.Body.String(), "AGENTS.md") {
 		t.Errorf("expected the file name in the archive, got %q", rec.Body.String())
+	}
+}
+
+// One file of a template is served with its bytes: a binary file comes from
+// the disk, and the response is typed after the extension.
+func TestTemplateFileContentServesABinaryFile(t *testing.T) {
+	owner := uuid.New()
+	templateID := uuid.New()
+	fileID := uuid.New()
+	content := []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}
+
+	repo := newFakeRepository(Template{ID: templateID, UserID: owner, Name: "shared", Slug: "shared", Kind: KindGeneric, IsPublic: true})
+	router, root := newTestRouterWithRoot(t, repo, owner)
+	repo.files[templateID] = []TemplateFile{storeBinaryFile(t, root, templateID, fileID, "assets/logo.png", content)}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/templates/"+templateID.String()+"/files/"+fileID.String()+"/content", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	if contentType := rec.Header().Get("Content-Type"); contentType != "image/png" {
+		t.Errorf("expected the content type %q, got %q", "image/png", contentType)
+	}
+
+	if disposition := rec.Header().Get("Content-Disposition"); !strings.Contains(disposition, "logo.png") {
+		t.Errorf("expected the file name in the disposition, got %q", disposition)
+	}
+
+	if !bytes.Equal(rec.Body.Bytes(), content) {
+		t.Errorf("expected the bytes %v, got %v", content, rec.Body.Bytes())
+	}
+}
+
+// A binary file of another user's private template is not found, not
+// forbidden: its existence is not theirs to learn.
+func TestTemplateFileContentHidesAnotherUsersPrivateTemplate(t *testing.T) {
+	owner := uuid.New()
+	stranger := uuid.New()
+	templateID := uuid.New()
+	fileID := uuid.New()
+
+	repo := newFakeRepository(Template{ID: templateID, UserID: owner, Name: "mine", Slug: "mine", Kind: KindGeneric})
+	router, root := newTestRouterWithRoot(t, repo, stranger)
+	repo.files[templateID] = []TemplateFile{storeBinaryFile(t, root, templateID, fileID, "secret.bin", []byte("secret"))}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/templates/"+templateID.String()+"/files/"+fileID.String()+"/content", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected status %d, got %d", http.StatusNotFound, rec.Code)
+	}
+}
+
+// The archive carries the bytes of a binary file, not an empty entry.
+func TestArchiveDownloadCarriesBinaryBytes(t *testing.T) {
+	owner := uuid.New()
+	templateID := uuid.New()
+	fileID := uuid.New()
+	content := []byte{0x00, 0x01, 0xfe, 0xff}
+
+	repo := newFakeRepository(Template{ID: templateID, UserID: owner, Name: "shared", Slug: "shared", Kind: KindGeneric, IsPublic: true})
+	router, root := newTestRouterWithRoot(t, repo, owner)
+	repo.files[templateID] = []TemplateFile{
+		{ID: uuid.New(), TemplateID: templateID, Path: "AGENTS.md", Kind: FileKindText, Content: "# hello"},
+		storeBinaryFile(t, root, templateID, fileID, "assets/logo.bin", content),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/templates/"+templateID.String()+"/archive", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	archive, err := zip.NewReader(bytes.NewReader(rec.Body.Bytes()), int64(rec.Body.Len()))
+	if err != nil {
+		t.Fatalf("failed to read the archive: %v", err)
+	}
+
+	if len(archive.File) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(archive.File))
+	}
+
+	entry, err := archive.Open("assets/logo.bin")
+	if err != nil {
+		t.Fatalf("expected the binary file in the archive: %v", err)
+	}
+	defer entry.Close()
+
+	got, err := io.ReadAll(entry)
+	if err != nil {
+		t.Fatalf("failed to read the entry: %v", err)
+	}
+
+	if !bytes.Equal(got, content) {
+		t.Errorf("expected the bytes %v, got %v", content, got)
 	}
 }

@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"log/slog"
+	"mime"
 	"net/http"
+	"path"
 
 	"github.com/fiwon123/eznit/internal/platform/middleware"
 	"github.com/fiwon123/eznit/pkg/errors"
@@ -52,6 +54,9 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 			r.Put("/{id}", h.updateTemplateHandler)
 			r.Delete("/{id}", h.deleteTemplateHandler)
 			r.Get("/{id}/archive", h.downloadArchiveHandler)
+			// One file of a template, for a binary file the detail does not
+			// carry inline anywhere but in a publish-shaped response.
+			r.Get("/{id}/files/{fileID}/content", h.downloadTemplateFileHandler)
 		})
 	})
 }
@@ -183,7 +188,7 @@ func (h *Handler) downloadArchiveHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	files, appError := h.service.TemplateFiles(r.Context(), id)
+	files, appError := h.service.TemplateArchive(r.Context(), id)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
@@ -205,7 +210,7 @@ func (h *Handler) downloadArchiveHandler(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
-		if _, err := entry.Write([]byte(file.Content)); err != nil {
+		if _, err := entry.Write(file.Content); err != nil {
 			h.logger.Error("failed to write a file to the archive", slog.Any("error", err))
 			helper.SendErrorJson(w, http.StatusInternalServerError, "failed to build the archive")
 			return
@@ -224,6 +229,43 @@ func (h *Handler) downloadArchiveHandler(w http.ResponseWriter, r *http.Request)
 
 	if _, err := w.Write(buffer.Bytes()); err != nil {
 		h.logger.Error("failed to send the archive", slog.Any("error", err))
+	}
+}
+
+// downloadTemplateFileHandler sends one file of a template as it is stored:
+// the column for a text file, the bytes on disk for a binary one.
+func (h *Handler) downloadTemplateFileHandler(w http.ResponseWriter, r *http.Request) {
+	h.logger.Debug("downloadTemplateFileHandler")
+
+	id, appError := extractTemplateID(r)
+	if appError != nil {
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
+		return
+	}
+
+	fileID, err := uuid.Parse(r.PathValue("fileID"))
+	if err != nil {
+		helper.SendErrorJson(w, http.StatusBadRequest, "invalid file id")
+		return
+	}
+
+	file, content, appError := h.service.TemplateFileContent(r.Context(), id, fileID)
+	if appError != nil {
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
+		return
+	}
+
+	contentType := mime.TypeByExtension(path.Ext(file.Path))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": path.Base(file.Path)}))
+	w.WriteHeader(http.StatusOK)
+
+	if _, err := w.Write(content); err != nil {
+		h.logger.Error("failed to send a template file", slog.Any("error", err))
 	}
 }
 

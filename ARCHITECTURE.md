@@ -91,8 +91,27 @@ to it, and `files_history` keeps a row for each version written. A superseded
 version's bytes stay on disk because that row points at them; deleting the
 file removes the whole directory.
 
-Template contents are the exception: they live in `TEXT` columns in PostgreSQL,
-not on disk.
+A text file of a template lives in its `content` column: templates are
+configuration, small and searchable. A **binary** file does not — a `TEXT`
+column refuses a byte that is not UTF-8, and the driver would mangle it — so it
+is written under the same upload root:
+
+```
+<upload-root>/templates/<template-id>/<file-id>/<filename>
+```
+
+The `template_files` row holds `kind = 'binary'`, the size and `storage_path`
+(the location relative to the upload root, with forward slashes so a row reads
+the same on every machine), and its `content` is empty. A `CHECK` constraint
+keeps the two shapes apart. Publishing sends a binary file as
+`content_base64`; the service decodes it and writes it before the rows, and
+removes the bytes again if the write fails, so a template is never half
+stored. An update removes the bytes of the version it replaced, and deleting a
+template removes its directory.
+
+The limits are enforced in the service, not only the client: 256 KiB per text
+file and 4 MiB of text per template, 10 MiB per binary file and 32 MiB per
+template counting both.
 
 ## Data model
 
@@ -103,7 +122,7 @@ not on disk.
 | `files_history` | file_id, path, version — one row per stored version: upload writes the first, an update adds the next, and earlier rows are never rewritten |
 | `sessions` | token (primary key), user_id, is_active, created_at, expires_at |
 | `templates` | id, user_id, name, slug, description, kind, version, is_public |
-| `template_files` | template_id, path, content, is_executable — unique per (template, path) |
+| `template_files` | template_id, path, kind (`text`/`binary`), size, content, storage_path, is_executable — unique per (template, path) |
 | `template_variables` | template_id, var_key, prompt, default_value, required, sort_order |
 
 ### Migrations

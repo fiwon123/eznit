@@ -25,13 +25,39 @@ type Template struct {
 	UpdatedAt time.Time `db:"updated_at"`
 }
 
+// The kinds of content a file of a template holds.
+const (
+	// FileKindText is a file whose bytes live in the `content` column.
+	FileKindText = "text"
+	// FileKindBinary is a file whose bytes live on disk, at StoragePath.
+	FileKindBinary = "binary"
+)
+
+// IsFileKind reports whether kind is one the service accepts.
+func IsFileKind(kind string) bool {
+	return kind == FileKindText || kind == FileKindBinary
+}
+
 // TemplateFile Model
 type TemplateFile struct {
-	ID           uuid.UUID `db:"id"`
-	TemplateID   uuid.UUID `db:"template_id"`
-	Path         string    `db:"path"`
-	Content      string    `db:"content"`
-	IsExecutable bool      `db:"is_executable"`
+	ID         uuid.UUID `db:"id"`
+	TemplateID uuid.UUID `db:"template_id"`
+	Path       string    `db:"path"`
+	Content    string    `db:"content"`
+	Kind       string    `db:"kind"`
+	// Size is what the file weighed when it was published. It is stored rather
+	// than computed so a listing can show it without reading every binary
+	// file back from disk.
+	Size int64 `db:"size"`
+	// StoragePath is where a binary file lives, relative to the upload root,
+	// with forward slashes: `templates/<template-id>/<file-id>/<name>`. It is
+	// empty for a text file.
+	StoragePath  string `db:"storage_path"`
+	IsExecutable bool   `db:"is_executable"`
+	// Bytes carries the decoded content of a binary file from the validation
+	// to the write. It is not a column: the database holds the path, not the
+	// bytes.
+	Bytes []byte `db:"-"`
 }
 
 // TemplateVariable Model

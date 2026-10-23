@@ -51,7 +51,7 @@ func NewRouter(cfg Config) *chi.Mux {
 	fileHandler.RegisterRoutes(r)
 
 	templateRepo := templates.NewRepository(cfg.DB, cfg.Logger)
-	templateService := templates.NewService(templateRepo, cfg.Logger)
+	templateService := templates.NewService(templateRepo, cfg.UploadFolder, cfg.Logger)
 	templateHandler := templates.NewHandler(templateService, guard, cfg.Logger)
 	templateHandler.RegisterRoutes(r)
 

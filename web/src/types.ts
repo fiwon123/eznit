@@ -18,10 +18,16 @@ export interface TemplateData {
   updated_at: string;
 }
 
+// A file of a template. A text file carries content; a binary file carries
+// its size and no content — the bytes live on the server and are fetched from
+// the file's own route.
 export interface TemplateFileData {
   id: string;
   path: string;
-  content: string;
+  kind?: string;
+  size?: number;
+  content?: string;
+  content_base64?: string;
   is_executable: boolean;
 }
 

@@ -37,6 +37,17 @@ ALTER TABLE other_things ADD COLUMN ignored BOOLEAN;
 ALTER TABLE things ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
 `)
 
+	// One ALTER TABLE can add several columns, and a constraint that is not a
+	// column must not be read as one.
+	writeFile(t, filepath.Join(dir, "000004_add_things_more.up.sql"), `
+ALTER TABLE things
+    ADD COLUMN blurb  TEXT   NOT NULL DEFAULT '',
+    ADD COLUMN weight BIGINT NOT NULL DEFAULT 0;
+
+ALTER TABLE things
+    ADD CONSTRAINT things_weight_positive CHECK (weight >= 0);
+`)
+
 	// A down migration must not be read.
 	writeFile(t, filepath.Join(dir, "000002_add_things_size.down.sql"), `
 ALTER TABLE things DROP COLUMN size;
@@ -47,7 +58,7 @@ ALTER TABLE things DROP COLUMN size;
 		t.Fatalf("TableColumns() error = %v", err)
 	}
 
-	got, want := strings.Join(columns, ","), "archived,created_at,id,kind,name,owner_id,size"
+	got, want := strings.Join(columns, ","), "archived,blurb,created_at,id,kind,name,owner_id,size,weight"
 	if got != want {
 		t.Errorf("TableColumns() = %q, want %q", got, want)
 	}

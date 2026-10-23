@@ -13,6 +13,11 @@ type fakeRepository struct {
 	files      map[uuid.UUID][]TemplateFile
 	variables  map[uuid.UUID][]TemplateVariable
 	createdIDs []uuid.UUID
+	// createFails and updateFails make the write fail, for the tests that
+	// check what the service does with the bytes when the rows are not
+	// written.
+	createFails bool
+	updateFails bool
 }
 
 // newFakeRepository returns a repository holding the given templates.
@@ -76,6 +81,10 @@ func (r *fakeRepository) GetTemplateVariables(templateID uuid.UUID) ([]TemplateV
 }
 
 func (r *fakeRepository) CreateTemplate(template Template, files []TemplateFile, variables []TemplateVariable) bool {
+	if r.createFails {
+		return false
+	}
+
 	r.templates[template.ID] = template
 	r.files[template.ID] = files
 	r.variables[template.ID] = variables
@@ -85,6 +94,10 @@ func (r *fakeRepository) CreateTemplate(template Template, files []TemplateFile,
 }
 
 func (r *fakeRepository) UpdateTemplate(template Template, files []TemplateFile, variables []TemplateVariable) bool {
+	if r.updateFails {
+		return false
+	}
+
 	r.templates[template.ID] = template
 	r.files[template.ID] = files
 	r.variables[template.ID] = variables

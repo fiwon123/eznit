@@ -62,12 +62,18 @@ func TableColumns(dir, table string) ([]string, error) {
 			}
 		}
 
-		for _, match := range addColumnPattern.FindAllStringSubmatch(body, -1) {
+		// One ALTER TABLE can add several columns in one statement, so the
+		// statement is matched as a whole and the ADD COLUMNs inside it are
+		// read one by one.
+		for _, match := range alterTablePattern.FindAllStringSubmatch(body, -1) {
 			if !strings.EqualFold(match[1], table) {
 				continue
 			}
-			found = true
-			columns[match[2]] = true
+
+			for _, add := range addColumnPattern.FindAllStringSubmatch(match[2], -1) {
+				found = true
+				columns[add[1]] = true
+			}
 		}
 	}
 
@@ -239,9 +245,12 @@ var (
 	// createTablePattern finds a CREATE TABLE block in a migration.
 	createTablePattern = regexp.MustCompile(`(?is)CREATE TABLE\s+(\w+)\s*\((.*?)\n\);`)
 
-	// addColumnPattern finds an added column: the migration files wrap the
-	// statement over two lines, so this matches across them.
-	addColumnPattern = regexp.MustCompile(`(?is)ALTER TABLE\s+(\w+)\s+ADD COLUMN\s+(?:IF NOT EXISTS\s+)?(\w+)`)
+	// alterTablePattern finds a whole ALTER TABLE statement: the body can add
+	// several columns, and it can wrap over several lines.
+	alterTablePattern = regexp.MustCompile(`(?is)ALTER TABLE\s+(\w+)\s+(.*?);`)
+
+	// addColumnPattern finds one added column inside an ALTER TABLE body.
+	addColumnPattern = regexp.MustCompile(`(?is)ADD COLUMN\s+(?:IF NOT EXISTS\s+)?(\w+)`)
 
 	// selectStarPattern finds a query that reads every column.
 	selectStarPattern = regexp.MustCompile(`(?i)SELECT\s+\*`)
