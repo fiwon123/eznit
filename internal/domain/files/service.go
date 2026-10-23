@@ -356,6 +356,15 @@ func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *m
 		return "", errors.NewAppError(http.StatusInternalServerError, "update file failed")
 	}
 
+	// The new version gets its own history row; the rows of the versions
+	// before it are left alone. An update is a new version, not a rewrite of
+	// the old one (#65).
+	ok = s.db.StorageFileHistory(updateFile)
+	if !ok {
+		s.logger.Error("can't store the file history")
+		return "", errors.NewAppError(http.StatusInternalServerError, "update file failed")
+	}
+
 	ok = s.db.UpdateFile(updateFile)
 	if !ok {
 		return "", errors.NewAppError(http.StatusInternalServerError, "update file failed")

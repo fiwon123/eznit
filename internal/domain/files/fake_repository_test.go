@@ -10,6 +10,9 @@ import (
 type fakeRepository struct {
 	files  map[uuid.UUID]File
 	stored []File
+	// history holds the rows StorageFileHistory was asked for, so a test can
+	// assert an update adds a version instead of rewriting the ones before it.
+	history []File
 	// lastLimit is the limit the last GetFiles call was made with, so a
 	// test can assert the route asked for a bounded list.
 	lastLimit int
@@ -72,6 +75,7 @@ func (r *fakeRepository) StorageFile(file File) bool {
 }
 
 func (r *fakeRepository) StorageFileHistory(file File) bool {
+	r.history = append(r.history, file)
 	return true
 }
 

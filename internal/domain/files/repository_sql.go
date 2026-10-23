@@ -187,6 +187,10 @@ func (r sqlRepository) DeleteFileHistoryForUser(id uuid.UUID, userID uuid.UUID) 
 	return true
 }
 
+// UpdateFile moves the index row to the new version. The history is not
+// touched here: the versions before this one keep their rows, and the new one
+// gets its own (StorageFileHistory), so `files_history` stays the record of
+// where each version was written (#65).
 func (r *sqlRepository) UpdateFile(file File) bool {
 
 	r.logger.Debug("updating file: ", slog.Any("file", file))
@@ -195,12 +199,6 @@ func (r *sqlRepository) UpdateFile(file File) bool {
 	_, err := r.db.NamedExec(exec, file)
 	if err != nil {
 		r.logger.Error("update file table files", slog.Any("error", err))
-		return false
-	}
-
-	_, err = r.db.NamedExec("UPDATE files_history SET path=:path, version=:version WHERE file_id=:id", file)
-	if err != nil {
-		r.logger.Error("update file table files_history", slog.Any("error", err))
 		return false
 	}
 
