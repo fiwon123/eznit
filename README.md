@@ -14,6 +14,7 @@ retrieving your own files, backed by PostgreSQL.
 ## Table of contents
 
 - [About](#about)
+- [Architecture](ARCHITECTURE.md)
 - [How to use](#how-to-use)
   - [Run the stack](#run-the-stack)
   - [Build the CLI](#build-the-cli)
@@ -248,18 +249,22 @@ the agent inside it cannot manage containers, on purpose.
 ### Layout
 
 ```
-cmd/api/         API entrypoint
-cmd/cli/         CLI entrypoint, one file per command
-internal/domain/ one package per resource: users, sessions, files
+cmd/             the three entrypoints: api, cli, gui
+internal/domain/ one package per resource: users, sessions, files, templates
                  handler -> service -> repository, plus dto.go
 internal/platform/
-                 middleware (session guard), sql (connection)
+                 middleware (session guard), sql (connection), webui (SPA handler)
 pkg/             logger, errors, http/json helpers, path helpers, types
 db/migrations/   golang-migrate SQL, one up/down pair per change
+web/             React + TypeScript UI; embeds into the api/gui binaries
 ```
 
 The layering is strict: a handler decodes and writes, a service holds the
 rules, a repository is the only place that speaks SQL.
+
+[ARCHITECTURE.md](ARCHITECTURE.md) is the full map: the request path, the data
+model, where file bytes live, how the UI reaches the browser, and where a
+change belongs.
 
 ### Migrations
 

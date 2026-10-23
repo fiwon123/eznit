@@ -51,10 +51,10 @@ that returns an HTTP status, is a layering break.
 
 ## Data model
 
-- `users` — id, email, password (hashed), name, timestamps
+- `users` — id, email, password (hashed), timestamps
 - `files` — id, user_id, name, ext, content_type, path, version
-- `files_history` — previous versions of a file
-- `sessions` — id, user_id, token, expires_at, is_active
+- `files_history` — file_id, path, version (one row per stored version)
+- `sessions` — token (primary key), user_id, expires_at, is_active
 
 File bytes live on disk under the upload root, laid out as
 `<upload-root>/<user-id>/<file-id>/<version>_<filename>`. The `files` row is the

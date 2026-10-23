@@ -39,6 +39,9 @@ db/migrations/   golang-migrate SQL, one up/down pair per change
 secrets/         Docker secret files (the real one is gitignored)
 ```
 
+`ARCHITECTURE.md` is the full map: the request path, the data model, where the
+file bytes live, how the UI reaches the browser, and where a change belongs.
+
 ## Key Conventions
 
 - **Assignee**: `ASSIGNEE` is `fiwon123` — `workflow.md` tells agents to read
