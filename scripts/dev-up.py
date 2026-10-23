@@ -27,9 +27,10 @@ Usage
     python scripts/dev-up.py <command> [options]
 
 Commands:
-    dev-up        Build/start the developer loop (foreground logs)
+    dev-up        Start the developer loop (foreground logs)
     dev-down      Stop the sandbox (volumes kept)
-    dev-restart   down + up --build in one step
+    dev-restart   down + up in one step
+    dev-build     Rebuild the sandbox images (Dockerfile/entrypoint changes)
     dev-log       Tail the dev container logs
     dev-exec      Shell into the running dev container
     opencode      Run the AI coding agent inside the dev container
@@ -490,18 +491,23 @@ def cmd_dev_up() -> int:
 
     # The entrypoint reads the marker at container start, so the sandbox is
     # recreated: a plain `up` leaves an already-running one asleep.
+    #
+    # No `--build`, deliberately: Compose builds an image that does not exist
+    # yet, and building on every start is what made this look like `dev-build`
+    # (BuildKit re-resolves base-image metadata even on a cache hit). A
+    # Dockerfile or entrypoint edit is picked up by `dev-build` (#103).
     DEV_START_MARKER.parent.mkdir(parents=True, exist_ok=True)
     DEV_START_MARKER.touch()
 
     result = run_compose(
         files,
-        ["up", "-d", "--build", "--force-recreate", DEV_SERVICE],
+        ["up", "-d", "--force-recreate", DEV_SERVICE],
         with_github=True,
     )
     if result.returncode != 0:
         return result.returncode
 
-    result = run_compose(files, ["up", "-d", "--build", WEB_SERVICE], with_github=True)
+    result = run_compose(files, ["up", "-d", WEB_SERVICE], with_github=True)
     if result.returncode != 0:
         return result.returncode
 
@@ -521,6 +527,18 @@ def cmd_dev_restart() -> int:
     if code != 0:
         return code
     return cmd_dev_up()
+
+
+def cmd_dev_build() -> int:
+    """Rebuild the two sandbox images, the only path that regenerates them.
+
+    `dev-up` no longer passes `--build` (#103), so an edit to `Dockerfile`,
+    `web/Dockerfile.dev` or an entrypoint script they COPY needs this — the same
+    role `make dev-build` plays on POSIX hosts.
+    """
+    require_docker()
+    result = run_compose(BASE_COMPOSE, ["build", DEV_SERVICE, WEB_SERVICE])
+    return result.returncode
 
 
 def cmd_dev_log() -> int:
@@ -590,7 +608,8 @@ Usage:
 Commands:
   dev-up                 Start the dev loop: UI :5173 (Vite, hot reload), API :4000
   dev-down               Stop the loop (volumes kept)
-  dev-restart            Stop, then up --build
+  dev-restart            Stop, then start again (does not rebuild)
+  dev-build              Rebuild the sandbox images (dev and web-dev)
   dev-log                Tail dev container logs
   dev-exec               Shell into the running dev container
   opencode [args...]     Run the AI agent inside the dev container
@@ -616,6 +635,7 @@ COMMANDS = {
     "dev-up": cmd_dev_up,
     "dev-down": cmd_dev_down,
     "dev-restart": cmd_dev_restart,
+    "dev-build": cmd_dev_build,
     "dev-log": cmd_dev_log,
     "dev-exec": cmd_dev_exec,
     "opencode": cmd_opencode,

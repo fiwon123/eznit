@@ -497,6 +497,8 @@ help: ## List the available targets
 	@printf '  \033[36m%-30s\033[0m %s\n' "scripts/dev-up.py" "native Windows: python scripts/dev-up.py dev-up"
 	@printf '\n  %s\n' "dev-up is the dev loop: UI :5173 (Vite, hot reload) and API :4000, both"
 	@printf '  %s\n' "from the source. make up is the product: same ports, built images."
+	@printf '  %s\n' "dev-up does not rebuild: run make dev-build after a Dockerfile or entrypoint"
+	@printf '  %s\n' "change. dev-restart is dev-down followed by dev-up."
 
 # --- One-time local setup ---------------------------------------------------
 # Creates the two local files the stack needs, from the committed examples:
@@ -577,7 +579,7 @@ opencode-upgrade: ## Upgrade host opencode and refresh the dev sandbox
 # HOST_UID/HOST_GID need no explicit export here: docker-compose.yml defaults
 # them, and the exported values above supply the host's real identity when make
 # is running on the host. Only the GitHub token is resolved at up-time.
-.PHONY: dev-up dev-down dev-log dev-build dev-reset
+.PHONY: dev-up dev-down dev-restart dev-log dev-build dev-reset
 
 # dev-up is the developer loop, all of it: the API runs inside the sandbox
 # against the source, and the UI is the Vite server in `web-dev`, with hot
@@ -587,6 +589,21 @@ opencode-upgrade: ## Upgrade host opencode and refresh the dev sandbox
 # Two steps, not one, because of the marker file. The entrypoint reads it when
 # the container *starts*; a plain `up` leaves an already-running sandbox
 # asleep, so `dev` is recreated to make the entrypoint run again.
+#
+# Both steps carry the GitHub token. Compose recreates a container whose
+# configuration differs from the running one, and the token is part of `dev`'s
+# environment — so a token on the first command and not on the second recreated
+# `dev` a second time, restarting the API seconds after it had started. It is
+# resolved once for the same reason: two substitutions can disagree.
+#
+# Neither step passes `--build`, and that is deliberate. Building on every start
+# is what made `dev-up` look like `dev-build`: BuildKit resolves the base-image
+# metadata and prints a full step list even on a cache hit, which cost ~9s per
+# run on the machine this was measured on (#103). Compose still builds an image
+# that does not exist yet when a started service needs it, so a cold checkout is
+# unaffected. What stops being automatic is an edit to a Dockerfile or to a
+# script COPYed into the image — `make dev-build` is that path, and it exists
+# for exactly this reason.
 dev-up: MODE = dev
 dev-up: preflight preflight-ports ## Start the dev loop: UI :5173 (Vite, live reload), API :4000
 	@printf '\n  dev-up starts the developer loop in containers:\n'
@@ -595,19 +612,33 @@ dev-up: preflight preflight-ports ## Start the dev loop: UI :5173 (Vite, live re
 	@printf '  PostgreSQL and the migrations start first; the UI proxies /v1 to the API.\n'
 	@printf '  Ctrl-C stops the log stream — the containers keep running. "make dev-down" stops them.\n\n'
 	@mkdir -p .dev && touch $(DEV_START_MARKER)
-	@GH_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) GITHUB_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) HOST_PORT=$(HOST_PORT) WEB_PORT=$(WEB_PORT) $(COMPOSE_UP) up -d --build --force-recreate dev
-	@HOST_PORT=$(HOST_PORT) WEB_PORT=$(WEB_PORT) $(COMPOSE_UP) up -d --build web-dev
+	@set -e; \
+	 token="$$(scripts/resolve-gh-token.sh 2>/dev/null || true)"; \
+	 GH_TOKEN="$$token" GITHUB_TOKEN="$$token" HOST_PORT=$(HOST_PORT) WEB_PORT=$(WEB_PORT) $(COMPOSE_UP) up -d --force-recreate dev; \
+	 GH_TOKEN="$$token" GITHUB_TOKEN="$$token" HOST_PORT=$(HOST_PORT) WEB_PORT=$(WEB_PORT) $(COMPOSE_UP) up -d web-dev
 	@$(COMPOSE_UP) logs -f dev web-dev
 
 dev-down: ## Stop the dev loop and the local stack (keeps volumes)
 	@rm -f $(DEV_START_MARKER)
 	@$(COMPOSE_UP) down
 
+# The two halves are the real targets, run through $(MAKE) so this one cannot
+# drift from them: the marker removal in `dev-down` and the port preflight,
+# recreate and log tail in `dev-up` stay in a single place. Like `dev-up` it
+# ends on the log stream, so Ctrl-C leaves the loop running.
+dev-restart: ## Restart the dev loop: dev-down, then dev-up (does not rebuild)
+	@$(MAKE) --no-print-directory dev-down
+	@$(MAKE) --no-print-directory dev-up
+
 dev-log: ## Tail dev sandbox logs
 	@$(COMPOSE_UP) logs -f dev
 
-dev-build: check-identity ## Rebuild the dev image after Dockerfile/dependency changes
-	@docker compose build dev
+# The only path that rebuilds an image. It covers `web-dev` as well as `dev`:
+# since `dev-up` stopped passing `--build` (#103), this is what picks up an edit
+# to `web/Dockerfile.dev` — and it used to skip that image entirely, so such an
+# edit had no rebuild path at all.
+dev-build: check-identity ## Rebuild the dev images (dev and web-dev) after Dockerfile/dependency changes
+	@docker compose --profile dev build dev web-dev
 
 # Deliberately NOT called `reset`: `down --volumes` removes the named volumes,
 # and one of them is the PostgreSQL data volume. This wipes the local database
@@ -633,6 +664,21 @@ dev-opencode: preflight require-agent ## Run the AI coding agent inside the dev 
 dev-opencode-auto: OPENCODE_ARGS = --auto
 dev-opencode-auto: dev-opencode
 
-# args
+# --- Goals that name no target -----------------------------------------------
+# `make run_api <args>` and `make run_cli <args>` forward their arguments as
+# extra *goals* (that is what `$(filter-out $@,$(MAKECMDGOALS))` in those
+# recipes reads), so this catch-all exists to stop make from failing on them.
+# That is the only case where a goal naming no target is legitimate.
+#
+# Everything else is a typo, and a typo that exits 0 is the worst kind: the
+# caller reads green and goes on to debug state that never changed — which is
+# exactly what `make dev-restart` did while the target was missing (#104). So an
+# unknown goal fails, unless the first goal is one of the two that take
+# arguments.
 %:
-	@:
+	@case "$(firstword $(MAKECMDGOALS))" in \
+	  run_api|run_cli) : ;; \
+	  *) echo "ERROR: no rule to make target '$@'." >&2; \
+	     echo "       'make help' lists the targets." >&2; \
+	     exit 1 ;; \
+	esac
