@@ -4,11 +4,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
-	"path"
-	"path/filepath"
 	"strings"
 
 	"github.com/fiwon123/eznit/internal/domain/files"
@@ -17,8 +16,10 @@ import (
 	"github.com/fiwon123/eznit/internal/domain/users"
 	"github.com/fiwon123/eznit/internal/platform/middleware"
 	"github.com/fiwon123/eznit/internal/platform/sql"
+	"github.com/fiwon123/eznit/internal/platform/webui"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
+	"github.com/fiwon123/eznit/web"
 	"github.com/go-chi/chi/v5"
 	"github.com/joho/godotenv"
 )
@@ -86,16 +87,16 @@ func main() {
 
 	logger.Info("Initialized routes!")
 
-	// The web UI, when it is built. In development the Vite dev server
-	// proxies /v1 to this API; in production the API serves web/dist itself.
-	// One origin either way, so the API needs no CORS headers.
+	// The web UI, when there is one. In development the Vite dev server
+	// proxies /v1 to this API; in production this process serves the UI from
+	// web/dist, or from the copy embedded at build time. One origin either
+	// way, so the API needs no CORS headers.
 	var handler http.Handler = r
-	dist := webDistFolder()
-	if info, statErr := os.Stat(dist); statErr == nil && info.IsDir() {
-		logger.Info("Serving the web UI from " + dist)
-		handler = webHandler(dist, r)
+	if ui, source := pickWebUI(os.DirFS(webDistFolder()), web.FS(), r); ui != nil {
+		logger.Info("Serving the web UI from " + source)
+		handler = ui
 	} else {
-		logger.Info("No web UI found at " + dist + " — serving the API only")
+		logger.Info("No web UI found in " + webDistFolder() + " and none built in — serving the API only")
 	}
 
 	srv := &http.Server{
@@ -121,32 +122,20 @@ func webDistFolder() string {
 	return "web/dist"
 }
 
-// webHandler serves the built web UI in front of the API.
+// pickWebUI chooses the web UI to serve in front of the API, and describes it
+// for the log. It returns a nil handler when there is no UI to serve.
 //
-// The UI is a single page application: its routes live in the browser, so a
-// path like /templates/<id> has to answer with index.html and not with a 404.
-// The API keeps its own paths, so anything under /v1 goes to the router
-// untouched — including the 404 the router gives for an unknown API path.
-func webHandler(dist string, api http.Handler) http.Handler {
-	files := http.FileServer(http.Dir(dist))
-	index := filepath.Join(dist, "index.html")
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/v1/") {
-			api.ServeHTTP(w, r)
-			return
-		}
-
-		// path.Clean collapses "..", and filepath.Join keeps the result
-		// inside dist, so a crafted path cannot read a file outside it.
-		cleaned := path.Clean("/" + strings.TrimPrefix(r.URL.Path, "/"))
-		if info, err := os.Stat(filepath.Join(dist, filepath.FromSlash(cleaned))); err == nil && !info.IsDir() {
-			files.ServeHTTP(w, r)
-			return
-		}
-
-		http.ServeFile(w, r, index)
-	})
+// A built web/dist wins: that is the development loop, where `make web_build`
+// is visible without recompiling. The copy embedded at build time is the
+// fallback, and it is what makes a released binary self-contained.
+func pickWebUI(disk, embedded fs.FS, api http.Handler) (http.Handler, string) {
+	if webui.HasIndex(disk) {
+		return webui.Handler(disk, api), webDistFolder()
+	}
+	if webui.HasIndex(embedded) {
+		return webui.Handler(embedded, api), "the copy embedded at build time"
+	}
+	return nil, ""
 }
 
 func getDBPassword() string {
