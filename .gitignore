@@ -35,6 +35,13 @@ go.work.sum
 .opencode/memory/
 .opencode/progress.md
 
+# Dev sandbox marker files — per-checkout state, not source
+.dev/
+
+# Python bytecode from the sandbox launcher
+__pycache__/
+*.pyc
+
 # Editor/IDE
 # .idea/
 # .vscode/
@@ -56,3 +63,12 @@ logs/
 logs/*
 ~logs/
 ~logs/*
+
+# the web UI (web/) — the installed packages and the build output
+web/node_modules/
+# The build output is ignored, but the folder itself has to exist in the
+# repository: `//go:embed all:dist` (web/embed.go) refuses to compile when
+# dist is missing, and `make check` and CI compile the Go packages without
+# building the web UI. The placeholder is what makes a fresh clone buildable.
+web/dist/*
+!web/dist/.gitkeep

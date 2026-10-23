@@ -21,13 +21,15 @@ download, update, delete — on a Compose stack a single developer can run.
 - Go, `net/http` + `chi`, `sqlx` + `lib/pq` over PostgreSQL
 - `golang-migrate` for schema changes
 - `kong` for the CLI, `zap` + `log/slog` for logging, `godotenv` for config
-- Docker Compose for the local stack (`db`, `migrate`, `api`)
+- Docker Compose for the dev sandbox and the local stack (`dev`, `db`,
+  `migrate`; the `api` service is kept as a commented block)
 
 ### Core Architecture
 
 ```
 cmd/api/         API entrypoint: flags, logger, router, graceful shutdown
-cmd/cli/         CLI entrypoint and one file per command
+cmd/cli/         CLI entrypoint (version + main); commands in internal/cli
+web/             React + TypeScript + Vite web UI; built to web/dist and served by the API
 internal/domain/ one package per resource (users, sessions, files):
                  handler -> service -> repository, plus dto.go
 internal/platform/
@@ -36,6 +38,9 @@ pkg/             logger, errors, http/json helpers, path helpers, types
 db/migrations/   golang-migrate SQL, one up/down pair per change
 secrets/         Docker secret files (the real one is gitignored)
 ```
+
+`ARCHITECTURE.md` is the full map: the request path, the data model, where the
+file bytes live, how the UI reaches the browser, and where a change belongs.
 
 ## Key Conventions
 
@@ -60,29 +65,64 @@ secrets/         Docker secret files (the real one is gitignored)
 
 ## Runtime Environment
 
-The agent runs at the workspace root, directly on the host — no devcontainer.
+The AI agent (opencode) runs at the repository root. There are two modes, and
+they are not equivalent — say which one a claim was made in.
+
+### Host mode (the default)
+
+The agent runs directly on the host, against the tools installed on the
+machine. This is what `make check` and `git` operate on.
+
+### Sandbox mode (optional)
+
+`make dev-opencode` runs the agent inside the dev container, where the
+toolchain is pinned to Go 1.27.3 — the version in `go.mod`, the same one CI
+uses. The workspace is bind-mounted at `/workspace`; edits made inside are the
+same files on the host.
+
+The sandbox shares the Compose network with the `db` service, so the API
+started inside it (`make run_api`) reaches the database at `db:5432` with the
+stock `.env` — no `.env.local` override needed, and no password on the command
+line: the container reads the same file secret (`/run/secrets/db_password`) the
+API container reads.
+
+The container has **no Docker socket**: the agent inside it cannot manage
+containers, and that is deliberate. `docker` commands fail there, and a claim
+about the sandbox made from inside it cannot be about the host's Docker.
+
+The in-container agent needs a **Linux** opencode binary (the container is
+Linux). On macOS and native Windows, `make dev-opencode` refuses with a clear
+message and the agent stays on the host; use WSL2, where the host binary *is*
+Linux.
 
 ### What the agent CAN do
 
-- Edit Go, SQL, Markdown, JSON and YAML
-- Run `go build`, `go vet`, `gofmt`, `go test`, and `make check`
-- Run git and the GitHub CLI
-- Create and manage issues, PRs, and milestones
+- Run Go commands (`go build`, `go test`, `go vet`, `go run`, `gofmt`)
+- Run `make` targets
+- Run git and GitHub CLI commands
+- Read and edit any file in the repository except the secret files listed below
+- Start and use the dev sandbox (`make dev-up`, `make dev-shell`) from the host
 
 ### What the agent CANNOT do
 
-- Run `docker compose`. The Compose stack, the migrations that run inside it,
-  and anything that needs a live PostgreSQL are **not verifiable in this
-  environment**. A change that needs them must say it is unverified rather
-  than claim a green result
+- Access `.env`, `.env.*`, `.envrc`, `secrets/db_password.txt`, or any other
+  secret file without explicit permission
+- Run commands that dump environment values (`printenv`, `env`)
+- Run `docker` from **inside** the sandbox (no socket is mounted)
+- Push directly to `dev` or `main`
+- Merge a pull request without explicit instruction
 
 ## Development Commands
 
 ```bash
 make check     # gofmt, vet, test, build — the local verification gate
+make vuln      # reachable-vulnerability scan (needs network; not part of check)
 make run_api   # run the API against the configured database
 make run_cli   # run the CLI
 make build     # build both binaries into ./build
+make web_check # lint, format check, typecheck and build the web UI
+make web_build # build the web UI into web/dist
+make web_dev   # run the Vite dev server
 ```
 
 `make check` needs no database, no container and no secret file: it compiles
@@ -90,21 +130,52 @@ the API and the CLI, it does not run them. It fails loudly if the Go toolchain
 is missing rather than skipping, and it lists the packages that have no test
 files, because `go test` prints `[no test files]` and still exits 0.
 
+### Dev sandbox
+
+```bash
+make setup      # one-time: create .env and the database secret from their examples
+make dev-up     # start the sandbox + the local stack (db, migrate)
+make dev-shell  # a shell inside the sandbox
+make dev-down   # stop it (keeps the volumes)
+```
+
+`docker compose up` does the same thing without Make, and
+`python scripts/dev-up.py dev-up` is the native-Windows path. The sandbox needs
+the local files `make setup` creates — the database secret is a file secret, and
+Compose refuses to start without it.
+
+The image creates the directories the compose file mounts into, owned by the
+runtime user: Docker creates a mount destination the image does not contain as
+**root**, and the container runs as `${HOST_UID}`, so a sandbox whose image
+omits them cannot write its own caches — the agent dies with
+`EACCES: permission denied, mkdir '/home/devuser/.cache/opencode'` and the
+build fails with `mkdir /go/pkg/mod/cache: permission denied`. A sandbox
+created before that fix keeps its old root-owned volumes — Docker does not
+re-initialise a volume that already exists — so it needs `make dev-reset` once,
+which also drops the local database.
+
+A claim about the sandbox is only as good as the run behind it. The stack was
+run on a machine with Docker for this change: PostgreSQL came up healthy, the
+migrations exited 0, `make check` completed inside the container, and the
+agent answered from the project's own `opencode.json`. Anything that needs a
+live PostgreSQL is still **unverified** until you run it yourself — the point
+is that the sandbox can now be run at all, which it could not before.
+
 ## Known gaps — read this before trusting a green run
 
 These are tracked issues, not surprises for a reviewer to find:
 
 | Gap | Issue | Why it matters |
 | --- | --- | --- |
-| `GET /v1/files/{id}/content` requires no token, and the CLI never sends one | #4 | Anyone who has ever seen a file id can fetch the bytes |
-| `GET /v1/files/` returns every user's file metadata, unauthenticated | #5 | Metadata of every upload, to anyone |
-| The stored filename comes from the client | #5 | Path traversal is currently blocked incidentally, by one `filepath.Base` |
-| There are no tests | — | `make check` compiles and vets; it executes nothing |
+| The users and the middleware packages have no tests | — | `make check` compiles and vets them; it executes nothing. `sessions` has a schema test only |
+| The list of every upload is one catalogue for all users | — | A token is required, but any user sees every other user's file names |
 
-**There is no test file in this repository yet.** `go test ./...` prints
-`[no test files]` for every package and exits 0. A green `Test` step in CI
-means "the packages compiled", not "the behaviour was checked". Say so when
-reporting a result — a run that executed nothing is not coverage.
+**The files, sessions and templates domains, the CLI, the schema helper, the
+web UI and the path helper have tests; the rest of the repository does not.**
+`go test ./...` prints `[no test files]` for the packages without one, and
+still exits 0. A green `Test` step in CI means
+"the packages with tests passed" — name the packages when you report a
+result, because a run that executed nothing is not coverage.
 
 ## Git Workflow
 
@@ -164,9 +235,10 @@ can set them for you.
 
 ### Seed data
 
-`make docker_up_all` runs the migrations; it does not seed anything. The first
-`signup` through the CLI or the API creates the first user. There is no admin
-account and no way to promote one from the CLI yet.
+`make docker_up` runs the migrations against the local database; it does not
+seed anything. (`make docker_up_all` additionally starts the dev sandbox.) The
+first `signup` through the CLI or the API creates the first user. There is no
+admin account and no way to promote one from the CLI yet.
 
 ## Agents
 
@@ -176,16 +248,16 @@ Agent definitions live in `opencode.json` and `.opencode/agents/`:
 - **plan** (primary): Analysis and planning without making changes.
 - **backend** (subagent): Backend work — Go, SQL, migrations. Its edit scope is
   `cmd/api/**`, `internal/**`, `db/**` and `pkg/**`; it does not touch
-  `cmd/cli/**`.
+  `internal/cli/**` or `cmd/cli/**`.
 - **reviewer** (subagent): Reviews code for bugs, security, and regressions.
+- **visual** (subagent): Reviews the web UI for layout, accessibility,
+  console errors and regressions; can capture screenshots against the local
+  stack.
 
 Each agent's instructions live in exactly one place: the body of
 `.opencode/agents/<name>.md`. Model assignments, permissions, and mode live in
 `opencode.json`. Do not duplicate the prompt into `opencode.json` — two prompt
 sources for one agent drift apart, and nothing states which one wins.
-
-There is no `frontend` or `visual` agent: this project has no user interface
-beyond the CLI, and a CLI's output is verified by reading it.
 
 ## Skills
 

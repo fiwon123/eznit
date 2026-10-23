@@ -69,6 +69,27 @@ jobs:
       - name: Build
         run: go build ./...
 
+      # Reachable-vulnerability gate. The default (symbol-level) scan fails
+      # only when this code actually reaches a vulnerable function; findings
+      # that exist only in a required module do not fail it. That distinction
+      # is deliberate:
+      #
+      #   - `-scan=module` can never be green here: GO-2026-5932 is
+      #     "Fixed in: N/A" (x/crypto's unmaintained openpgp package, which
+      #     this repository does not import) and x/crypto cannot be dropped
+      #     because `bcrypt` comes from it.
+      #   - A red symbol-level run means something reachable regressed, which
+      #     is the actionable signal.
+      #
+      # Baseline when this step landed (Go 1.27.3, chi v5.5.0):
+      #   0 reachable findings, 1 module-level (the openpgp entry above).
+      #
+      # The tool is pinned so a new release cannot change the verdict on an
+      # unchanged tree; the vulnerability database is fetched fresh, so a new
+      # advisory against code that is still called will (correctly) fail.
+      - name: Vulnerability scan
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
 # A `paths:` filter that the change does not touch means this workflow does not
 # trigger at all, and a triggered run whose jobs are all gated out reports
 # `skipped`, not `passed`. Skipped is not passed: run `make check` locally
@@ -76,10 +97,13 @@ jobs:
 #
 # TWO LIMITS TO KNOW ABOUT:
 #
-# 1. THIS REPOSITORY HAS NO TESTS YET. `go test ./...` prints "[no test
-#    files]" for every package and still exits 0, so a green `Test` step here
-#    means "the packages compiled and nothing was executed". `make check`
-#    prints the list of uncovered packages for the same reason.
+# 1. THE TEST SUITE IS PARTIAL. Packages with tests run them; the rest print
+#    "[no test files]" and still exit 0, so a green `Test` step means "the
+#    packages with tests passed and the rest compiled" -- not full coverage.
+#    `make check` prints the list of uncovered packages for the same reason.
+#    The vulnerability scan is symbol-level, so it is only as complete as the
+#    call graph it can see; code behind an interface it cannot resolve may be
+#    missed.
 # 2. NOTHING HERE EXERCISES THE API AGAINST A DATABASE. The API compiles and
 #    vets, but no request is ever made to it and no migration is ever run.
 #    A green run says nothing about whether a query still matches a schema.

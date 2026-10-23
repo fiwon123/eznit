@@ -33,11 +33,23 @@ func NewService(db Repository, uploadFolder string, logger *logger.Config) *serv
 	}
 }
 
+// listLimit is the most files one list call returns. The list is a
+// catalogue of every upload, so it needs a bound: without one the route
+// reads the whole table on every call.
+const listLimit = 100
+
 // Get a list of files
 func (s *service) GetFiles(ctx context.Context) (ListResponse, *errors.AppError) {
+	// The route is behind the session guard. The check is here as well, so
+	// a route registered without the guard fails closed.
+	if _, ok := userIDFromContext(ctx); !ok {
+		s.logger.Warn("no user in the request context")
+		return ListResponse{}, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
+	}
+
 	s.logger.Debug("GetFiles")
 
-	files, ok := s.db.GetFiles()
+	files, ok := s.db.GetFiles(listLimit)
 	if !ok {
 		return ListResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to get failes")
 	}
@@ -58,9 +70,24 @@ func (s *service) GetFiles(ctx context.Context) (ListResponse, *errors.AppError)
 	}, nil
 }
 
+// userIDFromContext returns the user the guard put in the context. The
+// guard is the only thing that sets it, so a missing value means the
+// request never went through the guard — the route is registered without
+// it. The caller is rejected instead of the request panicking on the type
+// assertion, so a misregistered route fails closed.
+func userIDFromContext(ctx context.Context) (uuid.UUID, bool) {
+	userID, ok := ctx.Value("user_id").(uuid.UUID)
+	return userID, ok
+}
+
 // Get a list of Files for user
 func (s *service) GetFilesForUser(ctx context.Context) (ListResponse, *errors.AppError) {
-	userID := ctx.Value("user_id").(uuid.UUID)
+	userID, ok := userIDFromContext(ctx)
+	if !ok {
+		s.logger.Warn("no user in the request context")
+		return ListResponse{}, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
+	}
+
 	s.logger.Debug("GetFilesForUser", slog.String("userID", userID.String()))
 
 	files, ok := s.db.GetFilesForUser(userID)
@@ -100,25 +127,72 @@ func (s *service) GetFile(ctx context.Context, id uuid.UUID) (*File, *errors.App
 // Get only a single File for user
 func (s *service) GetFileForUser(ctx context.Context, id uuid.UUID) (*File, *errors.AppError) {
 
-	userID := ctx.Value("user_id").(uuid.UUID)
+	userID, ok := userIDFromContext(ctx)
+	if !ok {
+		s.logger.Warn("no user in the request context")
+		return nil, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
+	}
+
 	s.logger.Debug("GetFileForUser", slog.String("id", id.String()), slog.String("userID", userID.String()))
 
 	file, ok := s.db.GetFileForUser(id, userID)
 	if !ok {
-		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get faile for user")
+		s.logger.Warn("file not found for user")
+		// The file does not exist, or it belongs to somebody else. Both
+		// answer the same way: a caller must not be able to tell an id
+		// that exists from one that does not.
+		return nil, errors.NewAppError(http.StatusNotFound, "file not found")
 	}
 
 	return file, nil
 }
 
+// safeFileName validates the name the client sent and returns it unchanged.
+//
+// The name ends up in the path of the stored file, so a name carrying a
+// path separator is rejected instead of being stripped. Stripping it
+// quietly turns a traversal attempt into a file with an unrelated name,
+// stored without a word to the client about it — the write stays inside
+// the upload folder either way, but a request that is refused is a request
+// the client can see.
+func safeFileName(name string) (string, *errors.AppError) {
+	if name == "" {
+		return "", errors.NewAppError(http.StatusBadRequest, "invalid file name")
+	}
+
+	if strings.ContainsAny(name, `/\`) {
+		return "", errors.NewAppError(http.StatusBadRequest, "invalid file name")
+	}
+
+	// A name that is a directory reference on its own. Any other ".."
+	// inside a name is part of the name, not a path.
+	if name == "." || name == ".." {
+		return "", errors.NewAppError(http.StatusBadRequest, "invalid file name")
+	}
+
+	if strings.ContainsRune(name, 0) {
+		return "", errors.NewAppError(http.StatusBadRequest, "invalid file name")
+	}
+
+	return name, nil
+}
+
 // Storage a single file for user
 func (s *service) StorageFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, contentType string) (string, *errors.AppError) {
-	userID := ctx.Value("user_id").(uuid.UUID)
+	userID, ok := userIDFromContext(ctx)
+	if !ok {
+		s.logger.Warn("no user in the request context")
+		return "", errors.NewAppError(http.StatusUnauthorized, "unauthorized")
+	}
+
 	s.logger.Debug("StorageFile", slog.String("userID", userID.String()))
 
-	fileName := filepath.Base(header.Filename)
-	ext := filepath.Ext(fileName)
+	fileName, appError := safeFileName(header.Filename)
+	if appError != nil {
+		return "", appError
+	}
 
+	ext := filepath.Ext(fileName)
 	cleanName := strings.ReplaceAll(fileName, ext, "")
 	ext = strings.ReplaceAll(ext, ".", "")
 	fileID, err := uuid.NewV7()
@@ -132,6 +206,14 @@ func (s *service) StorageFile(ctx context.Context, file multipart.File, header *
 	version := 1
 	finalPath := filepath.Join(s.uploadFolder, userID.String(), fileID.String(), strconv.Itoa(version)+"_"+fileName)
 
+	// The name is validated and the path is built from it, so the write
+	// lands inside the upload root. The check is here anyway: it is the
+	// one place that can say so, and it costs nothing.
+	if !helper.PathIsInside(s.uploadFolder, finalPath) {
+		s.logger.Error("the storage path is outside the upload folder", slog.String("path", finalPath))
+		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
+	}
+
 	storageFile := File{
 		ID:          fileID,
 		Version:     version,
@@ -142,7 +224,7 @@ func (s *service) StorageFile(ctx context.Context, file multipart.File, header *
 		ContentType: contentType,
 	}
 
-	ok := s.db.StorageFile(storageFile)
+	ok = s.db.StorageFile(storageFile)
 	if !ok {
 		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
 	}
@@ -231,11 +313,20 @@ func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *m
 
 	newVersion := fileInfo.Version + 1
 
-	fileName := filepath.Base(header.Filename)
+	fileName, appError := safeFileName(header.Filename)
+	if appError != nil {
+		return "", appError
+	}
+
 	ext := filepath.Ext(fileName)
 
 	cleanName := strings.ReplaceAll(fileName, ext, "")
 	finalPath := filepath.Join(s.uploadFolder, fileInfo.UserID.String(), fileInfo.ID.String(), strconv.Itoa(newVersion)+"_"+fileName)
+
+	if !helper.PathIsInside(s.uploadFolder, finalPath) {
+		s.logger.Error("the storage path is outside the upload folder", slog.String("path", finalPath))
+		return "", errors.NewAppError(http.StatusInternalServerError, "update file failed")
+	}
 
 	updateFile := File{
 		ID:      id,
@@ -262,6 +353,15 @@ func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *m
 	_, err = io.Copy(dest, file)
 	if err != nil {
 		s.logger.Error("copy file failed: ", slog.Any("error", err))
+		return "", errors.NewAppError(http.StatusInternalServerError, "update file failed")
+	}
+
+	// The new version gets its own history row; the rows of the versions
+	// before it are left alone. An update is a new version, not a rewrite of
+	// the old one (#65).
+	ok = s.db.StorageFileHistory(updateFile)
+	if !ok {
+		s.logger.Error("can't store the file history")
 		return "", errors.NewAppError(http.StatusInternalServerError, "update file failed")
 	}
 

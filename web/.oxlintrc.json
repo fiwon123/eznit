@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y", "import", "promise"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "env": {
+    "browser": true,
+    "es2024": true
+  },
+  "settings": {
+    "react": {
+      "version": "19.3.1"
+    }
+  },
+  "rules": {
+    "eqeqeq": "error",
+    "no-console": "error",
+    "no-debugger": "error",
+    "prefer-const": "error",
+    "react/jsx-key": "error",
+    "react/no-danger": "error",
+    "unicorn/prefer-dom-node-text-content": "error",
+    "react/react-in-jsx-scope": "off"
+  },
+  "ignorePatterns": ["dist", "node_modules"]
+}

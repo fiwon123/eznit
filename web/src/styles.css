@@ -1,0 +1,594 @@
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --panel-2: #1e222b;
+  --line: #2b303b;
+  --text: #e6e8ec;
+  --muted: #98a0b0;
+  --accent: #6ea8fe;
+  --accent-ink: #0b1220;
+  --danger: #ff8080;
+  --ok: #7ee2a8;
+  --radius: 10px;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --panel-2: #f0f2f6;
+    --line: #dfe3ea;
+    --text: #1b1f27;
+    --muted: #5c6575;
+    --accent: #1f6feb;
+    --accent-ink: #ffffff;
+    --danger: #b42318;
+    --ok: #1a7f4b;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+code,
+pre {
+  font-family: var(--mono);
+  font-size: 0.87em;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* the top bar */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1.4rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.brand:hover {
+  text-decoration: none;
+}
+
+.brand-logo {
+  height: 28px;
+  width: auto;
+  display: block;
+}
+
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+}
+
+.linkbutton {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.linkbutton:hover {
+  text-decoration: underline;
+}
+
+.linkbutton.danger {
+  color: var(--danger);
+}
+
+/* the files page */
+
+.uploadrow {
+  margin-bottom: 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.uploadlabel {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  max-width: 100%;
+  color: var(--muted);
+}
+
+.fileinput {
+  color: var(--text);
+  max-width: 100%;
+  min-width: 0;
+}
+
+.tablewrap {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.tableactions {
+  display: flex;
+  gap: 0.8rem;
+  justify-content: flex-end;
+}
+
+/* a label a sighted reader does not need but a screen reader does */
+.visuallyhidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 1.6rem 1.4rem 3rem;
+}
+
+/* the pages */
+
+.page.narrow {
+  max-width: 420px;
+}
+
+.pagehead h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.65rem;
+  letter-spacing: -0.01em;
+}
+
+.lead {
+  margin: 0 0 1.2rem;
+  color: var(--muted);
+  max-width: 60ch;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin-bottom: 1.4rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 200px;
+  flex: 1;
+}
+
+.field > span {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+
+input,
+select {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  padding: 0.5rem 0.7rem;
+}
+
+input:focus,
+select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* the catalogue grid */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.card:hover {
+  border-color: var(--accent);
+}
+
+.cardhead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.cardtitle {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.cardtitle a {
+  color: var(--text);
+  display: inline-block;
+}
+
+.cardbody {
+  margin: 0;
+  color: var(--muted);
+  flex: 1;
+}
+
+.cardfoot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.badge {
+  display: inline-block;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  font-size: 0.74rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.2rem;
+}
+
+/* the detail page */
+
+.applybox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.8rem 1rem;
+  margin-bottom: 1.4rem;
+}
+
+@media (max-width: 560px) {
+  .applybox {
+    flex-wrap: wrap;
+  }
+}
+
+.applylabel {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+
+.applycommand {
+  font-size: 0.95rem;
+}
+
+/* The two actions of the apply box share a row and wrap together, so the box
+   stays one line on a wide screen and goes to two on a narrow one. */
+.applyactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+.applyactions button {
+  white-space: nowrap;
+}
+
+.detail {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) 1fr;
+  gap: 1.4rem;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .detail {
+    grid-template-columns: 1fr;
+  }
+}
+
+.detailside {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+}
+
+.sidehead {
+  margin: 0 0 0.6rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+
+.tree {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 0.2rem;
+}
+
+.tree .tree {
+  padding-left: 0.85rem;
+  border-left: 1px solid var(--line);
+}
+
+.treedir {
+  display: block;
+  padding: 0.15rem 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.83rem;
+}
+
+.treefile {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.83rem;
+  padding: 0.15rem 0.4rem;
+  cursor: pointer;
+}
+
+.treefile:hover {
+  background: var(--panel-2);
+}
+
+.treefile.selected {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.exec {
+  font-family: var(--font);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+}
+
+.detailmain {
+  min-width: 0;
+}
+
+.filehead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.filehead .sidehead {
+  margin: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.92rem;
+  color: var(--text);
+  font-family: var(--mono);
+}
+
+.filecontent {
+  margin: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  overflow: auto;
+  max-height: 26rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* the variables */
+
+.variables {
+  margin-top: 1.6rem;
+}
+
+.variablelist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.variablelist li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.7rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.9rem;
+}
+
+.variablekey {
+  color: var(--accent);
+}
+
+.variableprompt {
+  flex: 1;
+}
+
+.variablemeta {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* the forms and the notices */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.1rem;
+}
+
+button.primary,
+button.secondary {
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  font: inherit;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+}
+
+button.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+button.secondary {
+  background: var(--panel-2);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.empty {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--danger);
+}
+
+.notice {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.7rem 1rem;
+  color: var(--muted);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.4rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.82rem;
+}

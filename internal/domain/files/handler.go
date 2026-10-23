@@ -33,11 +33,13 @@ func NewHandler(service *service, guard *middleware.Guard, logger *logger.Config
 func (h *Handler) RegisterRoutes(r *chi.Mux) {
 
 	r.Route("/v1/files", func(r chi.Router) {
-		r.Get("/", h.getFilesHandler)
 
 		r.Group(func(r chi.Router) {
 			r.Use(h.guard.AuthUser)
 
+			// The catalogue lists every upload in the instance, so it
+			// needs a session like every other route on this resource.
+			r.Get("/", h.getFilesHandler)
 			r.Post("/", h.uploadHandler)
 			r.Get("/me", h.getFilesForUserHandler)
 
@@ -45,11 +47,14 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 
 		r.Route("/{id}", func(r chi.Router) {
 
-			r.Get("/content", h.downloadHandler)
-
 			r.Group(func(r chi.Router) {
 				r.Use(h.guard.AuthUser)
 
+				// The download is a read of somebody's file: it needs the
+				// same session as every other route on this resource, and
+				// the service resolves it for the caller, so a token for
+				// another user's file does not download it.
+				r.Get("/content", h.downloadHandler)
 				r.Get("/", h.getFileHandler)
 				r.Put("/", h.updateHandler)
 				r.Delete("/", h.deleteHandler)
@@ -139,7 +144,7 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fileData, appError := h.service.GetFile(r.Context(), parseID)
+	fileData, appError := h.service.GetFileForUser(r.Context(), parseID)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return

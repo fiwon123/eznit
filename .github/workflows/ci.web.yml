@@ -1,0 +1,78 @@
+name: CI (Web)
+
+# Web CI for this repository: oxlint, oxfmt --check, tsc --noEmit and the
+# vite build for the UI in web/.
+#
+# It runs on release pull requests (`dev` -> `main`) and on manual dispatch --
+# never on a feature-branch pull request. Feature branches are gated locally by
+# `make web_check`.
+#
+# The Node version is not written twice: `mise.toml` pins it, and setup-node
+# reads that file through `node-version-file`, so the developer and CI run the
+# same version. `web/package-lock.json` is the lockfile; `npm ci` installs
+# exactly what it pins.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  web:
+    # The job name is the status check's name. See the note in ci.go.yml: a
+    # required check that names something else never matches, and the pull
+    # request waits forever with no failing check to show for it.
+    name: CI (Web)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          # mise.toml holds the pin. setup-node parses it (smol-toml) and
+          # reads the `node` key of its `[tools]` table.
+          node-version-file: 'mise.toml'
+          cache: npm
+          cache-dependency-path: 'web/package-lock.json'
+
+      - name: Install the dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check the formatting
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+# A `paths:` filter that the change does not touch means this workflow does not
+# trigger at all, and a triggered run whose jobs are all gated out reports
+# `skipped`, not `passed`. Skipped is not passed: run `make web_check` locally
+# before relying on CI.
+#
+# WHAT THIS DOES NOT COVER: the web has no test suite. A green run here means
+# "the code lints, formats, typechecks and builds" -- it says nothing about
+# what the pages do in a browser, and nothing about the API they talk to. The
+# API has its own gate in ci.go.yml, and it does not exercise the API against
+# a database either.
+#
+# Read the run's log before treating a green build as coverage.
