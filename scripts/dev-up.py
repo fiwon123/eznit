@@ -511,8 +511,9 @@ def cmd_dev_up() -> int:
 def cmd_dev_down() -> int:
     require_docker()
     DEV_START_MARKER.unlink(missing_ok=True)
-    files = AGENT_COMPOSE if agent_available() else BASE_COMPOSE
-    return run_compose(files, ["down"]).returncode
+    # The base file is enough: `down` removes the project's containers by label,
+    # and the agent overlay only adds mounts to `dev`.
+    return run_compose(BASE_COMPOSE, ["down"]).returncode
 
 
 def cmd_dev_restart() -> int:

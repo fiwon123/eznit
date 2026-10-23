@@ -75,7 +75,7 @@ index; the path column is what `download` opens.
 | `make up` | Build + run the product: API `:4000`, web UI `:5173`, db, migrations |
 | `make docker_up` | Bring up db + the migrations |
 | `make docker_up_all` | Bring up db + the migrations + the dev sandbox (not the API) |
-| `make dev-up` | Start the dev sandbox (pinned Go toolchain) with the stack |
+| `make dev-up` | The developer loop: UI `:5173` (Vite, hot reload), API `:4000`, from the source |
 
 ## Environment
 

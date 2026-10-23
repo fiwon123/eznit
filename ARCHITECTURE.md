@@ -25,6 +25,13 @@ one origin and still needs no CORS. The `api` service sets `API_SERVE_WEB=false`
 so `:4000` stays the API only; the released binary keeps the embedded UI and
 needs neither the proxy nor the second port.
 
+The developer loop is the same split with a different pair of processes:
+`make dev-up` runs the API from the source inside the `dev` sandbox (Go 1.27.3)
+and the UI as Vite in `web-dev` (Node 24.22.1), both over the bind mount. The
+same two ports, the same `/v1` proxy, the same `API_SERVE_WEB=false` — so a bug
+that is caused by the two tiers is reproducible in either mode. Neither
+container holds the other's toolchain, and neither needs one on the host.
+
 The API's router is built by `internal/platform/api`, and both binaries use it:
 the API serves it directly, and the GUI either mounts it on its own listener
 (when the database is configured) or proxies `/v1` to `GUI_API_URL`. One router,
@@ -59,7 +66,7 @@ db/migrations/      golang-migrate SQL, one .up/.down pair per change
 scripts/            migrations runner, dev sandbox helpers, path setup
 Dockerfile          the dev sandbox image (Go 1.27.3, gh, zip)
 Dockerfile.api      the application image: Node builds the UI, Go embeds it
-docker-compose.yml  the product (db, migrate, api, web) and the dev sandbox (profile: dev)
+docker-compose.yml  the product (db, migrate, api, web) and the developer loop (profile: dev: dev, web-dev)
 ```
 
 `internal/` is where the project rules live; `pkg/` is reusable and knows
