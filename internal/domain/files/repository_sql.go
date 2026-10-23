@@ -8,6 +8,13 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// fileColumns is the column list every read of the files table names. It is
+// named, not `*`, because a migration that adds a column would otherwise break
+// every read at run time: sqlx cannot scan a column the struct does not hold,
+// and the repository would report "not found" for a file that is there.
+// files/schema_test.go checks it against the struct and the migrations.
+const fileColumns = "id, user_id, name, ext, path, version, content_type, created_at, updated_at"
+
 // Files Repository implementation
 type sqlRepository struct {
 	db     *sqlx.DB
@@ -29,7 +36,7 @@ func (r *sqlRepository) GetFiles(limit int) ([]File, bool) {
 
 	var files []File
 
-	err := r.db.Select(&files, "SELECT * FROM files ORDER BY created_at DESC LIMIT $1", limit)
+	err := r.db.Select(&files, "SELECT "+fileColumns+" FROM files ORDER BY created_at DESC LIMIT $1", limit)
 	if err != nil {
 		r.logger.Error("get files query", slog.Any("error", err))
 		return []File{}, false
@@ -46,7 +53,7 @@ func (r *sqlRepository) GetFilesForUser(userID uuid.UUID) ([]File, bool) {
 
 	var files []File
 
-	err := r.db.Select(&files, "SELECT * FROM files WHERE user_id=$1", userID)
+	err := r.db.Select(&files, "SELECT "+fileColumns+" FROM files WHERE user_id=$1", userID)
 	if err != nil {
 		r.logger.Error("get files for user", slog.Any("error", err))
 		return []File{}, false
@@ -64,7 +71,7 @@ func (r *sqlRepository) GetFile(id uuid.UUID) (*File, bool) {
 
 	var file File
 
-	err := r.db.Get(&file, "SELECT * FROM files WHERE id=$1", id)
+	err := r.db.Get(&file, "SELECT "+fileColumns+" FROM files WHERE id=$1", id)
 	if err != nil {
 		r.logger.Error("get file", slog.Any("error", err))
 		return nil, false
@@ -82,7 +89,7 @@ func (r *sqlRepository) GetFileForUser(id uuid.UUID, userID uuid.UUID) (*File, b
 
 	var file File
 
-	query := `SELECT * FROM files
+	query := "SELECT " + fileColumns + ` FROM files
 		      WHERE id=$1 AND user_id=$2`
 
 	err := r.db.Get(&file, query, id, userID)
