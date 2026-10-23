@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ApiError, listTemplates, messageOf } from "../api";
+import { ApiError, listSharedFiles, listTemplates, messageOf } from "../api";
+import SharedFileCard from "../components/SharedFileCard";
 import TemplateCard from "../components/TemplateCard";
 import { KINDS } from "../types";
-import type { TemplateData } from "../types";
+import type { SharedFileData, TemplateData } from "../types";
 
 // The answer of one catalogue request. It carries the kind it belongs to, so
 // a slow answer for an old kind never overwrites a newer one, and the loading
@@ -23,6 +24,8 @@ export default function Catalogue() {
   const [kind, setKind] = useState<string>("");
   const [query, setQuery] = useState<string>("");
   const [result, setResult] = useState<CatalogueResult | null>(null);
+  const [sharedFiles, setSharedFiles] = useState<SharedFileData[]>([]);
+  const [sharedError, setSharedError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,6 +54,31 @@ export default function Catalogue() {
       cancelled = true;
     };
   }, [kind]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async (): Promise<void> => {
+      try {
+        const response = await listSharedFiles();
+        if (!cancelled) {
+          setSharedFiles(response.data ?? []);
+          setSharedError(null);
+        }
+      } catch (cause: unknown) {
+        if (!cancelled) {
+          setSharedFiles([]);
+          setSharedError(messageOf(cause));
+        }
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const current = result !== null && result.kind === kind ? result : null;
   const templates = current === null ? NO_TEMPLATES : current.templates;
@@ -123,6 +151,20 @@ export default function Catalogue() {
         </p>
       ) : null}
 
+      {sharedError !== null ? <p className="error">{sharedError}</p> : null}
+
+      {sharedFiles.length > 0 ? (
+        <>
+          <h2>Shared files</h2>
+          <div className="grid">
+            {sharedFiles.map((file) => (
+              <SharedFileCard key={file.id} file={file} />
+            ))}
+          </div>
+        </>
+      ) : null}
+
+      <h2>Templates</h2>
       <div className="grid">
         {visible.map((template) => (
           <TemplateCard key={template.id} template={template} />
