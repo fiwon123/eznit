@@ -66,4 +66,9 @@ logs/*
 
 # the web UI (web/) — the installed packages and the build output
 web/node_modules/
-web/dist/
+# The build output is ignored, but the folder itself has to exist in the
+# repository: `//go:embed all:dist` (web/embed.go) refuses to compile when
+# dist is missing, and `make check` and CI compile the Go packages without
+# building the web UI. The placeholder is what makes a fresh clone buildable.
+web/dist/*
+!web/dist/.gitkeep
