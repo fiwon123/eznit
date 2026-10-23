@@ -48,7 +48,7 @@ pkg/                shared code with no project rules in it
 web/                the React UI; embed.go embeds the build into the binaries
 db/migrations/      golang-migrate SQL, one .up/.down pair per change
 scripts/            migrations runner, dev sandbox helpers, path setup
-Dockerfile          the dev sandbox image (Go 1.24.1, gh, zip)
+Dockerfile          the dev sandbox image (Go 1.27.3, gh, zip)
 docker-compose.yml  db, migrate, and the optional dev sandbox (api is commented)
 ```
 

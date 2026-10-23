@@ -76,7 +76,7 @@ machine. This is what `make check` and `git` operate on.
 ### Sandbox mode (optional)
 
 `make dev-opencode` runs the agent inside the dev container, where the
-toolchain is pinned to Go 1.24.1 — the version in `go.mod`, the same one CI
+toolchain is pinned to Go 1.27.3 — the version in `go.mod`, the same one CI
 uses. The workspace is bind-mounted at `/workspace`; edits made inside are the
 same files on the host.
 
