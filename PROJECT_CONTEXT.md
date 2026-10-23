@@ -27,7 +27,7 @@ empty field here means a placeholder somewhere else.
 | Web UI | React + TypeScript + Vite, served by the API from `web/dist` |
 | Logging | `go.uber.org/zap` via `log/slog`, rotating files with `lumberjack` |
 | Config | `joho/godotenv` |
-| Containers | Docker Compose — the dev sandbox (`dev`) and the local stack (`db`, `migrate`; `api` is kept as a commented block) |
+| Containers | Docker Compose — the product (`db`, `migrate`, `api` from `Dockerfile.api`) and the dev sandbox (`dev`, behind the `dev` profile) |
 
 ## Architecture
 

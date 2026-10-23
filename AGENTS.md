@@ -21,8 +21,9 @@ download, update, delete — on a Compose stack a single developer can run.
 - Go, `net/http` + `chi`, `sqlx` + `lib/pq` over PostgreSQL
 - `golang-migrate` for schema changes
 - `kong` for the CLI, `zap` + `log/slog` for logging, `godotenv` for config
-- Docker Compose for the dev sandbox and the local stack (`dev`, `db`,
-  `migrate`; the `api` service is kept as a commented block)
+- Docker Compose for the product (`db`, `migrate`, `api`; the API image is
+  built from `Dockerfile.api`) and for the dev sandbox (`dev`, behind the
+  `dev` profile)
 
 ### Core Architecture
 
