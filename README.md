@@ -154,6 +154,33 @@ browser, or use the login page.
 
 Node is pinned in `mise.toml` (the CI reads it via `node-version-file`).
 
+### The GUI binary
+
+`make build_gui` produces one executable that serves the UI it carries and
+opens a browser on it (`GUI_PORT`, default `8765`). The pages call `/v1` on the
+same origin, so the GUI answers those calls one of two ways:
+
+- **`GUI_API_URL` names a running API** — `/v1` is proxied there. This is the
+  launcher mode: the GUI needs no database configuration of its own, and
+  several windows can point at one server.
+- **otherwise the `DB_*` variables describe a database** — the API runs inside
+  the GUI process on the same listener, so one file is the whole product. The
+  GUI reads `API_UPLOADS` and `API_LOGS` like the API does, and `.env.local` /
+  `.env` if they are there.
+
+With neither, the window still opens and every `/v1` call answers `503` with
+the variable to set. A GUI that cannot reach the API or the database it was
+configured with says so the same way, instead of leaving the page with the
+static file server's 404.
+
+```sh
+# one file, with the database configuration from .env
+./build/eznit-gui
+
+# or: a window in front of an API that is already running
+GUI_API_URL=http://localhost:4000 ./build/eznit-gui
+```
+
 ## Security status
 
 This is a self-hosted tool, and it is not hardened. The known gaps are tracked

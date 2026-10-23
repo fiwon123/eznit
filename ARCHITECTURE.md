@@ -11,24 +11,30 @@ that drive it, see [README.md](README.md).
 | --- | --- | --- | --- |
 | API | `cmd/api` | The HTTP API, and the web UI in front of it | `:4000` |
 | CLI | `cmd/cli` | `kong` command line client, one file per command | — |
-| GUI | `cmd/gui` | Opens a browser on the web UI bundled in the binary | `:8765` |
+| GUI | `cmd/gui` | Opens a browser on the bundled UI, with the API in-process or proxied | `:8765` |
 | Web UI | `web/src` | React + TypeScript + Vite, built to `web/dist` | — |
 
 The API and the GUI both carry the built UI inside the binary (`web/embed.go`);
 the API also serves a `web/dist` folder when one exists. That is why one origin
 serves both the pages and `/v1`, and why the API needs no CORS headers.
 
+The API's router is built by `internal/platform/api`, and both binaries use it:
+the API serves it directly, and the GUI either mounts it on its own listener
+(when the database is configured) or proxies `/v1` to `GUI_API_URL`. One router,
+so the two cannot offer different APIs.
+
 ## Repository map
 
 ```
 cmd/api/            API entrypoint: flags, logging, database, router, UI, shutdown
 cmd/cli/            CLI entrypoint and one file per command
-cmd/gui/            GUI entrypoint: picks a web UI, opens a browser
+cmd/gui/            GUI entrypoint: the UI, the API (or a proxy), a browser
 internal/domain/    one package per resource — users, sessions, files, templates
                     handler.go -> service.go -> repository.go, plus dto.go
 internal/platform/  cross-domain infrastructure
+                    api/         the /v1 router, built once for both binaries
                     middleware/  session guard (Authorization: Bearer <token>)
-                    sql/         database connection
+                    sql/         database connection and the DSN from the environment
                     webui/       the SPA handler both binaries serve the UI with
 pkg/                shared code with no project rules in it
                     errors/   AppError: a message and an HTTP status
@@ -145,6 +151,11 @@ printed — the logger writes a token fingerprint, never a token.
 The CLI reads `CLI_API_HOST`, `CLI_API_PORT`, `CLI_DOWNLOADS` and `CLI_LOGS`,
 and stores its session in `~/.eznit/config.json` (mode `0600`).
 
+The GUI reads `GUI_API_URL` (proxy `/v1` to a running API instead of running
+one), `GUI_PORT` (`8765` by default) and `GUI_LOGS`, plus the API's database and
+upload variables for the in-process mode. With neither `GUI_API_URL` nor
+`DB_NAME`, the UI opens and `/v1` answers `503` with the variable to set.
+
 ## Gates
 
 | Command | Covers | Needs |
@@ -180,15 +191,14 @@ tracked, not forgotten:
 
 - **`cmd/cli` is not thin.** It holds the command logic rather than calling into
   `internal/cli`; the move is #64.
-- **The GUI serves the UI, not the API.** Every `/v1` call answers 404 there
-  until #60 wires the two together.
 - **`API_PORT` is not read.** The API listens on `:4000`, hardcoded; the
   variable exists in `.env.example` and matters only to the commented `api`
   service in `docker-compose.yml`.
-- **Several packages have no tests.** `internal/domain/sessions`,
-  `internal/domain/users`, `internal/platform/middleware`,
-  `internal/platform/sql`, `pkg/errors`, `pkg/logger` and `pkg/types` are
-  compiled and vetted, not exercised.
+- **Several packages have no tests.** `internal/domain/users`,
+  `internal/platform/middleware`, `pkg/errors`, `pkg/logger` and `pkg/types`
+  are compiled and vetted, not exercised. `internal/domain/sessions` has a
+  schema test (its reads match its struct and the migrations), not a
+  behaviour test.
 - **The file catalogue is not owner-scoped.** `GET /v1/files` returns every
   upload in the instance to any logged-in caller; `GET /v1/files/me` is the
   scoped one. See "Security status" in [README.md](README.md#security-status).
