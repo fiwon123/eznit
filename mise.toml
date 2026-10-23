@@ -11,3 +11,7 @@
 [tools]
 go = "1.24.1"
 gh = "2.102.0"
+# Node builds the web UI in web/. It is the current LTS ("Krypton"), and the
+# web CI reads this very line through setup-node's node-version-file, so the
+# developer and CI run the same version.
+node = "24.22.1"

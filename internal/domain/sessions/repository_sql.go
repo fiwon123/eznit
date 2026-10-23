@@ -9,6 +9,12 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// sessionColumns is the column list every read of the sessions table names.
+// It is named, not `*`, for the same reason as files: a migration that adds a
+// column must not break a read at run time. sessions/schema_test.go checks it
+// against the struct and the migrations.
+const sessionColumns = "token, user_id, is_active, created_at, expires_at"
+
 // Session repository implementation
 type sqlRepository struct {
 	db     *sqlx.DB
@@ -27,7 +33,7 @@ func NewRepository(db *sqlx.DB, logger *logger.Config) *sqlRepository {
 func (r *sqlRepository) GetSession(token string) *Session {
 	var session Session
 
-	err := r.db.Get(&session, "SELECT * FROM sessions WHERE token=$1", token)
+	err := r.db.Get(&session, "SELECT "+sessionColumns+" FROM sessions WHERE token=$1", token)
 	if err != nil {
 		r.logger.Error("get session", slog.Any("error", err))
 		return nil
@@ -41,7 +47,7 @@ func (r *sqlRepository) GetSessionByUserID(userID uuid.UUID) (*Session, bool) {
 	r.logger.Logger.Debug("GetSessionByUserID")
 	var session Session
 
-	err := r.db.Get(&session, "SELECT * FROM sessions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1", userID)
+	err := r.db.Get(&session, "SELECT "+sessionColumns+" FROM sessions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1", userID)
 	if err != nil {
 		r.logger.Error("get session by user id", slog.Any("error", err))
 		return nil, false

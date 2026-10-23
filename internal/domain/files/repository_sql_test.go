@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/fiwon123/eznit/pkg/logger"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -29,6 +30,13 @@ func (d *recordingDriver) record(query string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.queries = append(d.queries, query)
+}
+
+func (d *recordingDriver) allQueries() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	return append([]string(nil), d.queries...)
 }
 
 func (d *recordingDriver) lastQuery() string {
@@ -79,26 +87,35 @@ func (r *recordingRows) Close() error { return nil }
 
 func (r *recordingRows) Next(dest []driver.Value) error { return io.EOF }
 
-// The query that reaches the database is bounded: the list is a catalogue
-// of every upload, and an unbounded read is what made the route expensive.
-func TestGetFilesSendsABoundedQuery(t *testing.T) {
+// recordingRepository returns a repository whose database records every
+// query instead of running it: the SQL is what these tests are about.
+func recordingRepository(t *testing.T) (*sqlRepository, *recordingDriver) {
+	t.Helper()
+
 	recorder := &recordingDriver{}
 
-	name := "recording-driver"
+	// A driver name is global to the process, so each test registers its own.
+	name := "recording-driver-" + strings.ReplaceAll(t.Name(), "/", "-")
 	sql.Register(name, recorder)
 
 	db, err := sqlx.Open(name, "not-a-real-database")
 	if err != nil {
 		t.Fatalf("failed to open the recording database: %v", err)
 	}
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 
 	log, err := logger.NewConsole(t.TempDir(), false, true)
 	if err != nil {
 		t.Fatalf("failed to create the test logger: %v", err)
 	}
 
-	repo := NewRepository(db, log)
+	return NewRepository(db, log), recorder
+}
+
+// The query that reaches the database is bounded: the list is a catalogue
+// of every upload, and an unbounded read is what made the route expensive.
+func TestGetFilesSendsABoundedQuery(t *testing.T) {
+	repo, recorder := recordingRepository(t)
 
 	if _, ok := repo.GetFiles(100); !ok {
 		t.Fatal("expected the query to succeed")
@@ -112,5 +129,31 @@ func TestGetFilesSendsABoundedQuery(t *testing.T) {
 	upper := strings.ToUpper(query)
 	if !strings.Contains(upper, "LIMIT") && !strings.Contains(upper, "FETCH FIRST") {
 		t.Errorf("expected the query to be bounded, got %q", query)
+	}
+}
+
+// An update moves the index row and must leave `files_history` alone: the
+// rows of the versions before it are the record of what was written and
+// where. Rewriting them (the old statement was
+// `UPDATE files_history SET path=..., version=... WHERE file_id=...`) loses
+// the previous version and points every row at the newest file (#65).
+func TestUpdateFileDoesNotRewriteTheHistory(t *testing.T) {
+	repo, recorder := recordingRepository(t)
+
+	repo.UpdateFile(File{ID: uuid.New(), UserID: uuid.New(), Version: 2})
+
+	queries := recorder.allQueries()
+	if len(queries) == 0 {
+		t.Fatal("expected a query to reach the database")
+	}
+
+	for _, query := range queries {
+		if strings.Contains(strings.ToLower(query), "files_history") {
+			t.Errorf("UpdateFile touched files_history: %q", query)
+		}
+	}
+
+	if !strings.Contains(recorder.lastQuery(), "UPDATE files SET") {
+		t.Errorf("expected the index row to be updated, sent %v", queries)
 	}
 }

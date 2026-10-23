@@ -15,6 +15,7 @@ INJECT_VERSION:= main.Version
 
 API_FOLDER := ./cmd/api
 CLI_FOLDER := ./cmd/cli
+WEB_FOLDER := ./web
 
 DOCKER_COMPOSE := ./docker-compose.yml
 MIGRATIONS := ./db/migrations
@@ -54,7 +55,7 @@ WINDOWS_SERVER_ZIP := $(BUILD_API)/$(APP_NAME)_$(SERVER_NAME)_$(VERSION)_windows
 
 ## Builds
 .PHONY: clean
-.PHONY: build build_cli build_api verify
+.PHONY: build build_cli build_api build_gui verify
 .PHONY: zip
 .PHONY: check
 
@@ -76,13 +77,25 @@ build_cli: verify
 	chmod a+x $(LINUX_BIN)
 	chmod a+x $(SHORT_LINUX_BIN)
 
-build_api: verify
+# The API and GUI binaries carry the built web UI (web/embed.go), so building
+# either one builds the UI first. `make check` deliberately does not: the
+# committed web/dist/.gitkeep keeps the embed directive valid without a build,
+# which is what lets the Go gate run on a machine with no Node.
+build_api: web_build verify
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(LINUX_SERVER_BIN) $(API_FOLDER)
 
 	chmod -R a+r $(BUILD_API)
 	chmod a+x $(LINUX_SERVER_BIN)
 
-zip: build_cli build_api
+build_gui: web_build verify
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_DIR)/gui/eznit-gui.exe ./cmd/gui
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_DIR)/gui/eznit-gui ./cmd/gui
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_DIR)/gui/eznit-gui-darwin ./cmd/gui
+
+	chmod -R a+r $(BUILD_DIR)/gui
+	chmod a+x $(BUILD_DIR)/gui/eznit-gui
+
+zip: build_cli build_api build_gui
 	zip -j $(WINDOWS_ZIP) $(WINDOWS_BIN) $(SHORT_WINDOWS_BIN) $(WINDOWS_SCRIPT) README.md LICENSE
 	zip -r $(WINDOWS_SERVER_ZIP) $(LINUX_SERVER_BIN) $(MIGRATIONS) $(DOCKER_COMPOSE) $(SCRIPT_MIGRATION) $(SECRETS_EXAMPLE) $(ENV_EXAMPLE) README.md LICENSE
 
@@ -203,6 +216,11 @@ run_jq:
 #
 #   - A missing toolchain FAILS the target. It does not skip. A gate that
 #     cannot fail is worse than no gate: it reads green and proves nothing.
+#   - The first failing step STOPS the target. The recipe is one shell, so
+#     `set -e` is what turns a failed `go vet`, `go test` or `go build` into a
+#     non-zero exit; chaining the steps with `;` alone lets the shell return
+#     the status of the *last* command, and the notested report at the end
+#     always succeeds. That is #61.
 #   - After the run it names the packages that have no test files. `go test`
 #     prints "[no test files]" for those and still exits 0, so a green run
 #     would otherwise look like coverage that does not exist.
@@ -215,6 +233,7 @@ check: ## gofmt, vet, test, build — the local verification gate
 		echo "ERROR: go is not installed — the check cannot run, so nothing is verified" >&2; \
 		exit 1; \
 	fi; \
+	set -e; \
 	out="$$(gofmt -l .)"; \
 	if [ -n "$$out" ]; then echo "unformatted files:"; echo "$$out"; exit 1; fi; \
 	go vet ./...; \
@@ -226,6 +245,67 @@ check: ## gofmt, vet, test, build — the local verification gate
 		echo "NOTE: these packages have no test files — this run does not cover them:"; \
 		echo "$$notested" | sed 's/^/  /'; \
 	fi
+
+# ---------------------------------------------------------------------------
+# The web UI (web/)
+#
+# A second toolchain, so a second gate. `make check` stays Go-only on purpose:
+# the Go gate must not start failing because an npm package moved.
+#
+# The same rules as the Go gate:
+#
+#   - A missing toolchain FAILS the target. It does not skip. A gate that
+#     cannot fail is worse than no gate: it reads green and proves nothing.
+#   - Every step can fail on its own. `oxlint` exits non-zero on a lint error
+#     and `oxfmt --check` exits non-zero on a misformatted file, so the gate
+#     fails when the code is wrong and not only when it is missing.
+#
+# What this gate does NOT prove: the web has no test suite, so nothing here
+# checks what the pages do in a browser. It proves that the code lints,
+# formats, typechecks and builds.
+# ---------------------------------------------------------------------------
+.PHONY: web_install web_check web_build web_dev
+
+web_install: ## Install the web dependencies from the lockfile (npm ci)
+	@if ! command -v npm >/dev/null 2>&1; then \
+		echo "ERROR: npm is not installed — mise install puts the pinned Node on PATH (see mise.toml)" >&2; \
+		exit 1; \
+	fi; \
+	(cd $(WEB_FOLDER) && npm ci)
+
+web_check: ## lint, format check, typecheck and build the web UI — the web gate
+	@if ! command -v node >/dev/null 2>&1; then \
+		echo "ERROR: node is not installed — the check cannot run, so nothing is verified" >&2; \
+		echo "       mise install puts the pinned version on PATH (see mise.toml)" >&2; \
+		exit 1; \
+	fi; \
+	if [ ! -d "$(WEB_FOLDER)/node_modules" ]; then \
+		echo "[web] node_modules is missing — installing the pinned dependencies..."; \
+		(cd $(WEB_FOLDER) && npm ci); \
+	fi; \
+	cd $(WEB_FOLDER) && \
+		npm run lint && \
+		npm run format:check && \
+		npm run typecheck && \
+		npm run build
+
+web_build: ## Build the web UI into web/dist
+	@if ! command -v node >/dev/null 2>&1; then \
+		echo "ERROR: node is not installed — mise install puts the pinned Node on PATH (see mise.toml)" >&2; \
+		exit 1; \
+	fi; \
+	if [ ! -d "$(WEB_FOLDER)/node_modules" ]; then \
+		echo "[web] node_modules is missing — installing the pinned dependencies..."; \
+		(cd $(WEB_FOLDER) && npm ci); \
+	fi; \
+	cd $(WEB_FOLDER) && npm run build
+
+web_dev: ## Run the web UI dev server on http://localhost:5173
+	@if ! command -v node >/dev/null 2>&1; then \
+		echo "ERROR: node is not installed — mise install puts the pinned Node on PATH (see mise.toml)" >&2; \
+		exit 1; \
+	fi; \
+	cd $(WEB_FOLDER) && npm run dev
 
 # ---------------------------------------------------------------------------
 # Dev sandbox (multiplatform)
