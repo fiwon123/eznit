@@ -60,7 +60,10 @@ func (s *service) GetFilesForUser(ctx context.Context) (ListResponse, *errors.Ap
 		return ListResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to get failes for user")
 	}
 
-	var resp []FileData
+	// An empty list is a list: the slice is initialised so the envelope carries
+	// `[]`, the way users, templates and commands answer. A nil slice would
+	// encode as `null` and make every client null-check a range.
+	resp := make([]FileData, 0, len(files))
 	for _, file := range files {
 		resp = append(resp, FileData{
 			ID:       file.ID,
