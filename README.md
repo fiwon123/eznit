@@ -263,8 +263,12 @@ Also true today:
 - Passwords are hashed; session tokens are random and stored in the database
   with an expiry. The only `golang.org/x/crypto` package this repository links
   is `bcrypt` — the module's SSH and S/MIME advisories do not apply to the code
-  that is actually compiled. Nothing scans dependencies in `make check` or CI;
-  that is why an advisory can be reported while every check is green.
+  that is actually compiled. CI now runs a reachable-vulnerability scan
+  (`govulncheck`), and `make vuln` runs the same scan locally. It fails only
+  when this code reaches a vulnerable function: a module-level advisory in a
+  package nothing calls — such as the unmaintained `openpgp` package in
+  `x/crypto`, which has no fix — is printed by the tool but does not fail the
+  gate. `make check` stays offline and does not scan.
 - A git-host token is stored only in the CLI's own config file (mode 0600).
   It is never sent to the eznit API, never logged, never put in a URL, and
   never written into a clone's `.git/config`. It is passed to `git` through
@@ -290,6 +294,7 @@ chmod 600 .env .env.local secrets/db_password.txt
 
 ```sh
 make check     # gofmt, vet, test, build — the local verification gate
+make vuln      # scan for reachable dependency vulnerabilities (needs network)
 make run_api   # run the API against the configured database
 make run_cli   # run the CLI
 ```
