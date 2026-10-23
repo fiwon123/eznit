@@ -124,6 +124,7 @@ make build     # build both binaries into ./build
 make web_check # lint, format check, typecheck and build the web UI
 make web_build # build the web UI into web/dist
 make web_dev   # run the Vite dev server
+make dev-up    # the dev loop: UI :5173 (Vite, hot reload) + API :4000
 make up        # build + run the product: API :4000, web UI :5173, db, migrations
 ```
 
@@ -141,17 +142,32 @@ files, because `go test` prints `[no test files]` and still exits 0.
 
 ```bash
 make setup      # one-time: create .env and the database secret from their examples
-make dev-up     # start the sandbox + the local stack (db, migrate)
+make dev-up     # the dev loop: UI :5173 (Vite, hot reload) + API :4000, live source
 make dev-shell  # a shell inside the sandbox
 make dev-down   # stop it (keeps the volumes)
 ```
 
-The sandbox is behind the `dev` Compose profile, so plain `docker compose up`
-is the **product**, not the sandbox. The no-Make equivalent of `make dev-up` is
-`docker compose up dev db migrate` — naming a profiled service enables its
-profile — and `python scripts/dev-up.py dev-up` is the native-Windows path. The
-sandbox needs the local files `make setup` creates — the database secret is a
-file secret, and Compose refuses to start without it.
+`make dev-up` starts the whole loop and both ports answer when it returns: the
+API runs inside the sandbox (`make run_api`, against the bind-mounted source)
+and the UI is Vite in the `web-dev` service, proxying `/v1` to it. Both come
+from the source, so the loop needs no host Go or Node. A `.tsx` edit reloads
+the browser; a `.go` edit needs the API restarted — there is no Go file watcher.
+
+The services are behind the `dev` Compose profile, so plain
+`docker compose up` is the **product**, not the loop. The no-Make equivalent is
+`mkdir -p .dev && touch .dev/sandbox-start && docker compose up dev web-dev db migrate` —
+naming a profiled service enables its profile, and the marker is what makes the
+sandbox entrypoint run the API instead of sleeping — and
+`python scripts/dev-up.py dev-up` is the native-Windows path. The loop needs
+the local files `make setup` creates — the database secret is a file secret,
+and Compose refuses to start without it.
+
+The two entry points are alternatives and each checks the host ports before it
+starts anything: `make dev-up` refuses while `api`/`web` run (and
+`make up` while `dev`/`web-dev` do), naming the command that stops the other.
+Inside the sandbox the Makefile does not import the host's `.env` — compose
+supplies the in-network `DB_HOST`/`DB_PORT` — so a host-side `DB_HOST` cannot
+point the API at a database that does not exist on the Compose network.
 
 The image creates the directories the compose file mounts into, owned by the
 runtime user: Docker creates a mount destination the image does not contain as

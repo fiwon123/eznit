@@ -218,6 +218,7 @@ the committed placeholder — counts as "no UI": the API serves the API only.
 | `make web_dev` | Run the Vite dev server on `http://localhost:5173`; `/v1` is proxied to `http://localhost:4000` |
 | `make web_build` | Build the static assets into `web/dist` |
 | `make web_check` | Lint, format check, typecheck and build the web UI (fails on any error) |
+| `make dev-up` | Start the dev loop: UI `:5173` (Vite, hot reload), API `:4000` |
 | `make up` | Build and run the product stack: UI on `:5173`, API on `:4000` |
 
 The quickest way to see it needs no Node on the host — the images build the UI:
@@ -227,15 +228,21 @@ make setup
 make up                 # UI http://localhost:5173 — API http://localhost:4000
 ```
 
-For the development loop, with hot reload:
+For the development loop, with hot reload — one command, no host Go or Node:
 
 ```sh
 make setup
-make dev-up             # Postgres + migrations + the sandbox
-make dev-shell          # inside: make run_api
-make web_install
-make web_dev            # on the host: Vite on :5173, proxying /v1 to :4000
+make dev-up             # UI http://localhost:5173 + API http://localhost:4000
 ```
+
+Both ports answer when it returns: the API runs inside the sandbox against the
+source (`make run_api`), and the UI is Vite in the `web-dev` service, proxying
+`/v1` to it. Editing a `.tsx` file reloads the browser; a `.go` file needs the
+API restarted (`make dev-down && make dev-up`, or `make run_api` again inside
+`make dev-shell`).
+
+Host tools still work: `make run_api` and `make web_dev` are the same two
+processes outside containers.
 
 Sign up or log in through the CLI or the API, put the session token in
 `localStorage` as `eznit.token` in the browser, or use the login page.
@@ -336,30 +343,48 @@ prints `[no test files]` and still exits 0.
 The commands above need a Go toolchain on the host. The sandbox removes that
 requirement: it is a container with Go **1.27.3** — the version in `go.mod`,
 the same one CI uses — and the workspace is bind-mounted into it, so the files
-you edit are the same files.
+you edit are the same files. The frontend has the same arrangement in
+`web-dev`: the Node from `mise.toml`, running Vite against the same bind mount.
 
 ```sh
-make dev-up     # start the sandbox + PostgreSQL + the migrations
+make dev-up     # the loop: UI :5173 (Vite, hot reload) + API :4000
 make dev-shell  # a shell inside the sandbox
 make dev-down   # stop it (keeps the volumes)
 ```
 
-**`make dev-up` starts no HTTP service.** It brings up the sandbox, PostgreSQL
-and the migrations — not the `web` service and not the product `api` — so
-`http://localhost:5173` refuses the connection until you start a frontend
-yourself. `:4000` refuses too: the sandbox publishes the port, but the API is a
-process you start inside it.
+`make dev-up` starts four things: PostgreSQL, the migrations, the sandbox with
+`make run_api` in it, and the Vite dev server. Both HTTP ports answer when it
+returns, and an edit on the host is visible in the other one immediately — the
+Go process recompiles on its next start (there is no file watcher: restart the
+API after a Go change), and Vite reloads the browser on a web change.
+
+| Role | Where | Port |
+| --- | --- | --- |
+| Frontend (the app) | `web-dev` service, Vite | **5173** |
+| Backend (the API) | `dev` service, `make run_api` | **4000** |
 
 | What you want | Commands | Ports |
 | --- | --- | --- |
 | the product, in containers | `make up` | UI `:5173`, API `:4000` |
-| the dev loop, against the source | `make dev-up`, then `make run_api` (on the host, or inside `make dev-shell`), then `make web_dev` | API `:4000`, UI `:5173` |
+| the dev loop, against the source | `make dev-up` | UI `:5173`, API `:4000` |
+| the same loop with host toolchains | `make run_api` + `make web_dev` | API `:4000`, UI `:5173` |
 
-`make web_dev` proxies `/v1` to `localhost:4000`, so it needs `make run_api`:
-without it the page loads, but every request fails. The two entry points are
-alternatives — `make up` and `make dev-up` both publish `:4000`, so running
-them together fails with `bind: address already in use` (see
-[Troubleshooting](#troubleshooting)).
+The two entry points are alternatives: `make up` and `make dev-up` publish the
+same two ports, so each refuses to start while the other one holds them, and
+names the command that clears the way (`make docker_down` or `make dev-down`)
+instead of failing on `bind: address already in use`.
+
+`Ctrl-C` stops the log stream and leaves the loop running — `make dev-down` is
+what stops it. The marker file `.dev/sandbox-start` (gitignored) is how the
+entrypoint knows to start the API rather than sleep; `dev-up` creates it and
+`dev-down` removes it, so a bare `docker compose up dev db migrate` is still a
+quiet sandbox with a shell.
+
+Inside the sandbox the configuration comes from the container, not from `.env`:
+compose sets `DB_HOST=db` and `DB_PORT=5432` because that is the in-network
+address, and the Makefile deliberately does not import the host's `.env` there.
+The database password stays a file secret the container reads from
+`/run/secrets/db_password`.
 
 The sandbox waits for the stack: compose starts PostgreSQL, waits for it to
 be healthy, runs the migrations, and only then starts the sandbox. A
@@ -369,21 +394,22 @@ unmigrated database.
 Everything also works without Make:
 
 ```sh
-docker compose up dev db migrate               # the sandbox and the stack
-python scripts/dev-up.py dev-up                # native Windows
+mkdir -p .dev && touch .dev/sandbox-start      # makes the sandbox run the API
+docker compose up dev web-dev db migrate       # the whole loop
+python scripts/dev-up.py dev-up                # native Windows: same thing
 ```
 
 | Platform | How to run the dev flow |
 | --- | --- |
-| Linux, macOS | `make dev-up`, or `docker compose up dev db migrate` |
-| WSL2 | `make dev-up`, or `docker compose up dev db migrate` (the host is Linux) |
-| Windows (native) | `python scripts/dev-up.py dev-up`, or `docker compose up dev db migrate` |
+| Linux, macOS | `make dev-up` |
+| WSL2 | `make dev-up` (the host is Linux) |
+| Windows (native) | `python scripts/dev-up.py dev-up`, or `docker compose up dev web-dev db migrate` after creating the marker |
 
-The `dev` service is behind the `dev` Compose profile: plain
+The `dev` and `web-dev` services are behind the `dev` Compose profile: plain
 `docker compose up` is the **product** (see [Run the stack](#run-the-stack)),
-and naming `dev` explicitly enables the profile. `make dev-up` does exactly
-that, and still brings up everything the developer loop needs — database,
-migrations and sandbox — for `make run_api` and `make dev-opencode`.
+and naming one of them explicitly enables the profile. `make dev-up` does
+exactly that, and creates the `.dev/sandbox-start` marker that tells the
+sandbox entrypoint to start the API instead of sleeping for a shell.
 
 The sandbox shares the Compose network with PostgreSQL, so the API started
 inside it (`make run_api`) reaches the database at `db:5432` with the stock
@@ -522,16 +548,32 @@ migrations run again on the next `make dev-up`.
 
 **`bind: address already in use` on port 4000 or 5173**
 
-The product API and the sandbox both publish 4000 so the host CLI can reach
-them, and they are alternatives — do not run `make up` and `make dev-up` at the
-same time. The `web` container and `make web_dev` both use 5173 for the same
-reason: run one at a time. When something else holds a port, move one of them:
+The product and the dev loop publish the same two ports, and they are
+alternatives. Both entry points now check before they start anything and say
+which one is running, instead of failing halfway with Docker's message:
 
 ```sh
+make docker_down      # stop the product, then: make dev-up
+make dev-down         # stop the dev loop, then: make up
+```
+
+When the port belongs to something that is not this stack (a `make run_api` in
+another terminal, a second checkout), move one of them:
+
+```sh
+HOST_PORT=4001 make dev-up                     # the sandbox API
+WEB_PORT=5174 make dev-up                      # the dev UI (HMR follows it)
 API_PORT=4001 docker compose up                # the product API
 WEB_PORT=5174 docker compose up                # the product UI
-HOST_PORT=4001 docker compose up dev db migrate   # the sandbox
 ```
+
+**The UI loads on `:5173` but every request fails**
+
+The Vite dev server proxies `/v1` to the API, so an API that is not running
+looks like a broken UI: the page renders and the data does not. Check the API
+first — `curl -s -o /dev/null -w '%{http_code}\n' localhost:4000/v1/healthcheck`
+— then the sandbox log for a compile error (`make dev-log`). With
+`make dev-up` the log stream is attached, so the error is usually on screen.
 
 ## License
 
