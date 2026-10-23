@@ -216,6 +216,11 @@ run_jq:
 #
 #   - A missing toolchain FAILS the target. It does not skip. A gate that
 #     cannot fail is worse than no gate: it reads green and proves nothing.
+#   - The first failing step STOPS the target. The recipe is one shell, so
+#     `set -e` is what turns a failed `go vet`, `go test` or `go build` into a
+#     non-zero exit; chaining the steps with `;` alone lets the shell return
+#     the status of the *last* command, and the notested report at the end
+#     always succeeds. That is #61.
 #   - After the run it names the packages that have no test files. `go test`
 #     prints "[no test files]" for those and still exits 0, so a green run
 #     would otherwise look like coverage that does not exist.
@@ -228,6 +233,7 @@ check: ## gofmt, vet, test, build — the local verification gate
 		echo "ERROR: go is not installed — the check cannot run, so nothing is verified" >&2; \
 		exit 1; \
 	fi; \
+	set -e; \
 	out="$$(gofmt -l .)"; \
 	if [ -n "$$out" ]; then echo "unformatted files:"; echo "$$out"; exit 1; fi; \
 	go vet ./...; \
