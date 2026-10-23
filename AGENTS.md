@@ -141,10 +141,12 @@ files, because `go test` prints `[no test files]` and still exits 0.
 ### Dev sandbox
 
 ```bash
-make setup      # one-time: create .env and the database secret from their examples
-make dev-up     # the dev loop: UI :5173 (Vite, hot reload) + API :4000, live source
-make dev-shell  # a shell inside the sandbox
-make dev-down   # stop it (keeps the volumes)
+make setup       # one-time: create .env and the database secret from their examples
+make dev-up      # the dev loop: UI :5173 (Vite, hot reload) + API :4000, live source
+make dev-shell   # a shell inside the sandbox
+make dev-restart # stop and start the loop again (no rebuild)
+make dev-build   # rebuild the dev and web-dev images (Dockerfile/entrypoint edits)
+make dev-down    # stop it (keeps the volumes)
 ```
 
 `make dev-up` starts the whole loop and both ports answer when it returns: the
@@ -152,6 +154,11 @@ API runs inside the sandbox (`make run_api`, against the bind-mounted source)
 and the UI is Vite in the `web-dev` service, proxying `/v1` to it. Both come
 from the source, so the loop needs no host Go or Node. A `.tsx` edit reloads
 the browser; a `.go` edit needs the API restarted — there is no Go file watcher.
+
+`dev-up` does not build an image: Compose builds one the first time a service
+needs it, and after that a start is only a recreate (the marker requires one).
+An edit to a `Dockerfile`, `web/Dockerfile.dev` or a script one of them `COPY`s
+needs `make dev-build` — `dev-up` and `dev-restart` will not pick it up.
 
 The services are behind the `dev` Compose profile, so plain
 `docker compose up` is the **product**, not the loop. The no-Make equivalent is
