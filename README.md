@@ -303,7 +303,7 @@ prints `[no test files]` and still exits 0.
 ### Dev sandbox
 
 The commands above need a Go toolchain on the host. The sandbox removes that
-requirement: it is a container with Go **1.24.1** — the version in `go.mod`,
+requirement: it is a container with Go **1.27.3** — the version in `go.mod`,
 the same one CI uses — and the workspace is bind-mounted into it, so the files
 you edit are the same files.
 
