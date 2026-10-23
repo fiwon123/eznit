@@ -117,7 +117,10 @@ export default function Files() {
 
   async function onToggleShare(file: FileData): Promise<void> {
     const next = !file.is_public;
-    if (next && !window.confirm(`Make ${fileNameOf(file)} public? Anyone on this instance can download it.`)) {
+    if (
+      next &&
+      !window.confirm(`Make ${fileNameOf(file)} public? Anyone on this instance can download it.`)
+    ) {
       return;
     }
 
@@ -202,7 +205,11 @@ export default function Files() {
                         type="button"
                         className="linkbutton"
                         onClick={() => void onToggleShare(file)}
-                        aria-label={file.is_public ? `Unshare ${fileNameOf(file)}` : `Share ${fileNameOf(file)}`}
+                        aria-label={
+                          file.is_public
+                            ? `Unshare ${fileNameOf(file)}`
+                            : `Share ${fileNameOf(file)}`
+                        }
                         disabled={busy}
                       >
                         {file.is_public ? "unshare" : "share"}
