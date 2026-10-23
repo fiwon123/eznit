@@ -36,5 +36,5 @@ type ListResponse struct {
 // SharedListResponse lists shared files in the catalogue.
 type SharedListResponse struct {
 	Data  []SharedFileData `json:"data"`
-	Total int             `json:"total"`
+	Total int              `json:"total"`
 }
