@@ -51,6 +51,7 @@ LINUX_TAR := $(LINUX_CLI)/$(APP_NAME)_$(CLI_NAME)_$(VERSION)_linux.tar.gz
 LINUX_SERVER_BIN := $(BUILD_API)/$(SERVER_NAME)
 LINUX_SERVER_TAR := $(BUILD_API)/$(APP_NAME)_$(SERVER_NAME)_$(VERSION)_linux.tar.gz
 
+WINDOWS_SERVER_BIN := $(BUILD_API)/$(SERVER_NAME).exe
 WINDOWS_SERVER_ZIP := $(BUILD_API)/$(APP_NAME)_$(SERVER_NAME)_$(VERSION)_windows.zip
 
 ## Builds
@@ -83,6 +84,7 @@ build_cli: verify
 # which is what lets the Go gate run on a machine with no Node.
 build_api: web_build verify
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(LINUX_SERVER_BIN) $(API_FOLDER)
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(WINDOWS_SERVER_BIN) $(API_FOLDER)
 
 	chmod -R a+r $(BUILD_API)
 	chmod a+x $(LINUX_SERVER_BIN)
@@ -97,7 +99,7 @@ build_gui: web_build verify
 
 zip: build_cli build_api build_gui
 	zip -j $(WINDOWS_ZIP) $(WINDOWS_BIN) $(SHORT_WINDOWS_BIN) $(WINDOWS_SCRIPT) README.md LICENSE
-	zip -r $(WINDOWS_SERVER_ZIP) $(LINUX_SERVER_BIN) $(MIGRATIONS) $(DOCKER_COMPOSE) $(SCRIPT_MIGRATION) $(SECRETS_EXAMPLE) $(ENV_EXAMPLE) README.md LICENSE
+	zip -r $(WINDOWS_SERVER_ZIP) $(WINDOWS_SERVER_BIN) $(MIGRATIONS) $(DOCKER_COMPOSE) $(SCRIPT_MIGRATION) $(SECRETS_EXAMPLE) $(ENV_EXAMPLE) README.md LICENSE
 
 	tar -czvf $(LINUX_TAR) \
 	          -C $(LINUX_CLI) $(notdir $(LINUX_BIN)) $(notdir $(SHORT_LINUX_BIN)) \
