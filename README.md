@@ -391,6 +391,25 @@ connection string.
 3. If the change is user-visible in the CLI, read the output — a CLI has no
    screenshot, and its output is the artifact
 
+### Releasing
+
+A release is a `v*` tag on `main`. `.github/workflows/release.yml` refuses a tag
+that does not point at a commit on `main`, builds the archives with
+`make build VERSION=<tag>` — the same target a developer runs — and publishes
+them with `gh release create`:
+
+| Asset | Contents |
+| --- | --- |
+| `eznit_cli_<version>_windows.zip` | `eznit.exe`, `ez.exe`, `add_to_path.ps1`, README, LICENSE |
+| `eznit_cli_<version>_linux.tar.gz` | `eznit`, `ez`, `add_to_path.sh`, README, LICENSE |
+| `eznit_server_<version>_windows.zip` | the API server for Windows, the migrations, the Compose files and the example config |
+| `eznit_server_<version>_linux.tar.gz` | the API server for Linux, the migrations, the Compose files and the example config |
+| `checksums.txt` | SHA-256 of every archive |
+
+The workflow can also be run by hand (`workflow_dispatch`): that run builds the
+same archives and keeps them on the run, and publishes nothing. Only a tag
+publishes.
+
 ## Troubleshooting
 
 **`ERROR: DB_USER, DB_HOST and DB_NAME are not set`**

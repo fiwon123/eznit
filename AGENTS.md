@@ -366,6 +366,11 @@ feature-branch push. Two things can make a run verify nothing:
   trigger at all; and
 - a job gated behind a label or `if:` comes back `skipped`, not `passed`.
 
+The **release** workflow is separate: it runs on a `v*` tag push (and on
+manual dispatch, as a dry run that publishes nothing) and publishes the
+archives. It does not gate a change, and a green dry run does not prove the
+publish step — only a real tag does.
+
 **Skipped is not passed.** A run that never happened, or whose jobs were all
 gated out, is not coverage. Do not describe a change as "CI passed" unless a
 run actually executed the job that covers it; if it did not, say the change is
