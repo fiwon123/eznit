@@ -58,27 +58,37 @@ are gitignored, and `make setup` creates them from the committed examples:
 make setup
 ```
 
-The database password comes from `secrets/db_password.txt`, which Compose
-mounts as a Docker secret and the API reads through `DB_PASSWORD_FILE`. It is
-never an environment variable.
+Without `make`, copy `.env.example` to `.env` and
+`secrets/db_password.txt.example` to `secrets/db_password.txt` by hand. The
+database password is a Docker file secret read through `DB_PASSWORD_FILE`; it
+is never an environment variable.
 
-Then bring up the database and run the migrations:
+Then one command brings up the product:
 
 ```sh
-make docker_up      # or: docker compose up db migrate
+make up             # or: docker compose up
 ```
 
-The API runs from source, not from a container: `make run_api` on the host, or
-inside the dev sandbox (see [How to develop](#how-to-develop)). The host CLI
-talks to it on `http://localhost:4000`.
+That does four things, in order:
 
-> The `api` service in `docker-compose.yml` is kept as a commented block: it
-> runs the **prebuilt** binary from `./build`, which is the path a release
-> bundle takes. Uncomment it when that is what you want.
->
-> In a **release bundle** the same file ships without the sandbox's image
-> source, so start the database with `docker compose up db migrate` — the
-> `dev` service is the development sandbox, and it is not part of the bundle.
+1. builds the API image from `Dockerfile.api` — Node builds the web UI and Go
+   embeds it in the binary, so the image carries the UI and needs no host
+   toolchain;
+2. starts PostgreSQL and waits until it is healthy;
+3. runs the `migrate` service once (`migrate up` is idempotent);
+4. starts the API, which serves the UI and `/v1` on
+   `http://localhost:4000`.
+
+Uploaded bytes live on the `api-data` volume, so they survive
+`docker compose down` (use `docker compose down -v` to remove them too).
+
+> In a **release bundle** the source is not there, so there is no image to
+> build. Start the database with `docker compose up db migrate` and run the
+> prebuilt `build/api/server` (Windows: `build\api\server.exe`) from the
+> archive; it serves the UI embedded at build time. Plain `docker compose up`
+> is the source-checkout path — in a bundle it would try to build an image the
+> archive does not contain. `make dev-up` and the `dev` sandbox are not part of
+> the bundle either.
 
 ### Build the CLI
 
@@ -185,8 +195,8 @@ The web UI lives in `web/`. It reaches the browser two ways:
   is needed. Rebuilding the UI is enough; the API does not need a restart.
 - **from the binary** — the API and the GUI carry the UI embedded at build
   time (`web/embed.go`), so a released binary serves it with no `web/dist`
-  next to it. `make build_api` and `make build_gui` run `make web_build`
-  first for that reason.
+  next to it. `make build_api`, `make build_gui` and the compose image
+  (`Dockerfile.api`) build the UI first for that reason.
 
 A `web/dist` with no `index.html` — a fresh clone, where the folder holds only
 the committed placeholder — counts as "no UI": the API serves the API only.
@@ -197,22 +207,28 @@ the committed placeholder — counts as "no UI": the API serves the API only.
 | `make web_dev` | Run the Vite dev server on `http://localhost:5173`; `/v1` is proxied to `http://localhost:4000` |
 | `make web_build` | Build the static assets into `web/dist` |
 | `make web_check` | Lint, format check, typecheck and build the web UI (fails on any error) |
+| `make up` | Build and run the product stack; the UI is served on `:4000` |
 
-Run it locally:
+The quickest way to see it needs no Node on the host — the image builds the UI
+and embeds it:
 
 ```sh
 make setup
-make docker_up          # start Postgres + run migrations
-make run_api            # start the API (it serves web/dist if present)
-make web_install
-make web_build          # or make web_dev for hot reload
+make up                 # http://localhost:4000
 ```
 
-For hot reload during development, run the Vite dev server in one terminal
-(`make web_dev`) and the API in another (`make run_api`). The dev server
-proxies API calls to the API on `:4000`. Sign up or log in through the CLI or
-the API, put the session token in `localStorage` as `eznit.token` in the
-browser, or use the login page.
+For the development loop, with hot reload:
+
+```sh
+make setup
+make dev-up             # Postgres + migrations + the sandbox
+make dev-shell          # inside: make run_api
+make web_install
+make web_dev            # on the host: Vite on :5173, proxying /v1 to :4000
+```
+
+Sign up or log in through the CLI or the API, put the session token in
+`localStorage` as `eznit.token` in the browser, or use the login page.
 
 Node is pinned in `mise.toml` (the CI reads it via `node-version-file`).
 
@@ -326,15 +342,21 @@ unmigrated database.
 Everything also works without Make:
 
 ```sh
-docker compose up                              # the sandbox and the stack
+docker compose up dev db migrate               # the sandbox and the stack
 python scripts/dev-up.py dev-up                # native Windows
 ```
 
 | Platform | How to run the dev flow |
 | --- | --- |
-| Linux, macOS | `make dev-up`, or `docker compose up` |
-| WSL2 | `make dev-up`, or `docker compose up` (the host is Linux) |
-| Windows (native) | `python scripts/dev-up.py dev-up`, or `docker compose up` |
+| Linux, macOS | `make dev-up`, or `docker compose up dev db migrate` |
+| WSL2 | `make dev-up`, or `docker compose up dev db migrate` (the host is Linux) |
+| Windows (native) | `python scripts/dev-up.py dev-up`, or `docker compose up dev db migrate` |
+
+The `dev` service is behind the `dev` Compose profile: plain
+`docker compose up` is the **product** (see [Run the stack](#run-the-stack)),
+and naming `dev` explicitly enables the profile. `make dev-up` does exactly
+that, and still brings up everything the developer loop needs — database,
+migrations and sandbox — for `make run_api` and `make dev-opencode`.
 
 The sandbox shares the Compose network with PostgreSQL, so the API started
 inside it (`make run_api`) reaches the database at `db:5432` with the stock
@@ -467,14 +489,20 @@ make dev-reset     # docker compose down --volumes
 make dev-up
 ```
 
-`make dev-reset` also drops the `postgres-data` volume — that is why it is not
-called `reset` — so the migrations run again on the next `make dev-up`.
+`make dev-reset` also drops the `postgres-data` and `api-data` volumes — the
+database and the uploaded files — which is why it is not called `reset`. The
+migrations run again on the next `make dev-up`.
 
 **`bind: address already in use` on port 4000**
 
-The sandbox publishes 4000 so the host CLI can reach the API inside it. If the
-API runs on the host instead, publish a different host port:
-`HOST_PORT=4001 docker compose up`.
+The product API and the sandbox both publish 4000 so the host CLI can reach
+them, and they are alternatives — do not run `make up` and `make dev-up` at the
+same time. When something else holds the port, move one of them:
+
+```sh
+API_PORT=4001 docker compose up                # the product API
+HOST_PORT=4001 docker compose up dev db migrate   # the sandbox
+```
 
 ## License
 

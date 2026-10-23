@@ -1,9 +1,22 @@
-# Dev sandbox + local stack — one file, no host prerequisites.
+# The application and the dev sandbox — one file, no host prerequisites.
 #
-# `docker compose up` works on this file alone, on any OS, with **no host-side
-# prerequisites beyond Docker itself**: no Make, no Python, no opencode, no gh.
+# Two entry points, one stack:
+#
+#   docker compose up   the product: PostgreSQL, the migrations, and the API
+#                       serving the web UI on http://localhost:4000. The API
+#                       image is built from Dockerfile.api, so it carries the
+#                       UI and needs no host toolchain.
+#
+#   make dev-up         the developer loop: PostgreSQL, the migrations, and the
+#                       sandbox where `make run_api`, `make check` and
+#                       `make dev-opencode` run against the source. The `dev`
+#                       service is behind the `dev` profile; naming it on the
+#                       command line enables that profile, so `make dev-up`
+#                       and `docker compose up dev db migrate` both work.
+#
 # Every host-derived value below has an inline default, so nothing has to be
-# exported first.
+# exported first. The two local files (`make setup` creates them) still have to
+# exist: the database password is a file secret, not an environment value.
 #
 # Host-only mounts (the gh/opencode config dirs, `~/.gitconfig`) deliberately do
 # NOT live here. Compose treats a missing bind-mount source as fatal on Windows
@@ -12,22 +25,19 @@
 # live in `docker-compose.agent.yml`, merged only by the developer entry points
 # and only when the host can actually provide them.
 #
-# This file replaces the old `docker-compose.yaml`, which held only the local
-# stack. The stack is unchanged — `db`, `migrate` and the file secret are the
-# same — and the sandbox joins it here instead of living in a second file that
-# could drift away from this one.
-#
-# The `api` service is kept as a commented block at the bottom: it runs the
-# PREBUILT binary from ./build, which is the path a release bundle takes. It is
-# commented out because the development flow does not use it — the API runs
-# from source inside the sandbox (`make run_api`), where it is rebuilt with the
-# change instead of from a stale binary. Uncomment it to run the prebuilt
-# binary; the block is kept valid so it still parses when you do.
+# A release bundle has no source and no Dockerfile: it runs the PREBUILT binary
+# from ./build instead of the `api` service below. `docker compose up db
+# migrate` never builds anything, and the binary serves the UI embedded in it.
 
 name: eznit
 
 services:
   dev:
+    # The developer sandbox only. Plain `docker compose up` is the product
+    # (`api` + `db` + `migrate`); the sandbox is opt-in because it is a shell
+    # for a pinned toolchain, not the application. `make dev-up` names this
+    # service, and Compose enables the profile of an explicitly named service.
+    profiles: ["dev"]
     build:
       context: .
       dockerfile: Dockerfile
@@ -36,7 +46,8 @@ services:
         HOST_GID: ${HOST_GID:-1000}
     # Host identity defaults to UID/GID 1000, which is correct for Docker
     # Desktop (macOS/Windows virtualise bind-mount ownership). A Linux user
-    # whose uid differs overrides it: `HOST_UID="$(id -u)" docker compose up`.
+    # whose uid differs overrides it:
+    # `HOST_UID="$(id -u)" docker compose up dev db migrate`.
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     extra_hosts:
       # Docker Desktop injects this name itself; plain Linux Docker does not,
@@ -155,29 +166,58 @@ services:
       - ./scripts/run_migrate.sh:/scripts/run_migrate.sh:ro
     entrypoint: ["/scripts/run_migrate.sh"]
     command: []
+    # A one-shot, not a service: `up` starts it, it applies what is missing
+    # (`migrate up` is idempotent) and exits 0. The API waits for that exit, so
+    # a failed migration leaves the API down instead of running it against an
+    # unmigrated schema.
+    restart: "no"
     depends_on:
       db:
         condition: service_healthy
 
-  # api:
-  #   image: alpine:3.23
-  #   env_file:
-  #     - path: ./.env
-  #       required: true
-  #   environment:
-  #     DB_PASSWORD_FILE: /run/secrets/db_password
-  #   secrets:
-  #     - db_password
-  #   command: ./api/server
-  #   ports:
-  #     - "${API_PORT:-4000}:4000"
-  #   volumes:
-  #     - ./build/api/server:/api/server:ro
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #     migrate:
-  #       condition: service_completed_successfully
+  api:
+    # The application. It builds its own image, so `docker compose up` needs
+    # Docker and nothing else -- no Go, no Node, no prebuilt binary.
+    #
+    # The web UI is embedded at build time (Dockerfile.api), which is why there
+    # is no `web/dist` mount here: the image serves a UI that cannot go stale
+    # against the binary.
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      args:
+        VERSION: ${VERSION:-dev}
+    ports:
+      # Same port the host CLI and the Vite dev server expect. Override it when
+      # it is taken: `API_PORT=4001 docker compose up`.
+      - "${API_PORT:-4000}:4000"
+    environment:
+      # In-network addresses, explicitly: `env_file` is deliberately not used
+      # here. The gitignored .env belongs to the developer loop (host paths,
+      # a host-tuned database port); the application container has to reach
+      # the database over the compose network and keep its data on /data.
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER:-root}
+      DB_NAME: ${DB_NAME:-eznit}
+      # The password stays a file secret, the same way the sandbox and the
+      # migration read it -- never an environment variable.
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      API_UPLOADS: /data/uploads
+      API_LOGS: /data/logs
+    secrets:
+      - db_password
+    volumes:
+      # Uploaded bytes are the product. Without this they live in the container
+      # layer and disappear on `docker compose down`.
+      - api-data:/data
+    # Come back after a Docker restart, and after a crash, without a rebuild.
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 secrets:
   db_password:
@@ -185,5 +225,6 @@ secrets:
 
 volumes:
   postgres-data:
+  api-data:
   gomodcache:
   gocache:

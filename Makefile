@@ -173,13 +173,16 @@ migrate_force:
 ## Docker
 unexport
 
-.PHONY: docker_up docker_down docker_up_all docker_down_v
+.PHONY: docker_up docker_down docker_up_all docker_down_v up
+
+up: ## Build and run the product: db, migrations, API + web UI on http://localhost:4000
+	docker compose up --build db migrate api
 
 docker_up:
 	docker compose up db migrate
 
 docker_up_all:
-	docker compose up
+	docker compose --profile dev up --build dev db migrate
 
 docker_down:
 	docker compose down
@@ -343,8 +346,9 @@ web_dev: ## Run the web UI dev server on http://localhost:5173
 # Cross-platform note: this Makefile targets POSIX hosts — Linux, macOS and
 # WSL2 — where `make` runs recipes under a POSIX shell. Native Windows users
 # should use `python scripts/dev-up.py dev-up` (or `scripts/dev-up.ps1`), which
-# provides the same targets without a POSIX shell. Everyone can run the project
-# with a plain `docker compose up`, which needs no Make at all.
+# provides the same targets without a POSIX shell. Everyone can run the product
+# with a plain `docker compose up`, which needs no Make at all, and the sandbox
+# with `docker compose up dev db migrate`.
 # ---------------------------------------------------------------------------
 
 # Extra flags for the opencode invocation. `make opencode-auto` /
@@ -384,10 +388,13 @@ OPENCODE_BIN ?= $(HOME)/.opencode/bin/opencode
 OPENCODE_MAGIC := $(shell head -c 4 "$(OPENCODE_BIN)" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n')
 AGENT_AVAILABLE := $(if $(filter 7f454c46,$(OPENCODE_MAGIC)),yes,no)
 
+# --profile dev is explicit on purpose. The dev targets below name services
+# anyway (which enables the profile), but `exec`/`ps` act on an already-running
+# container and are easier to reason about when the profile is plainly on.
 ifeq ($(AGENT_AVAILABLE),yes)
-COMPOSE_UP := docker compose -f docker-compose.yml -f docker-compose.agent.yml
+COMPOSE_UP := docker compose --profile dev -f docker-compose.yml -f docker-compose.agent.yml
 else
-COMPOSE_UP := docker compose
+COMPOSE_UP := docker compose --profile dev
 endif
 
 # The sandbox needs the database: the API talks to the `db` service on the
@@ -396,7 +403,8 @@ DEV_SERVICES := dev db migrate
 
 help: ## List the available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(firstword $(MAKEFILE_LIST)) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
-	@printf '\n  \033[36m%-30s\033[0m %s\n' "docker compose up" "run the sandbox with no host prerequisites (any OS)"
+	@printf '\n  \033[36m%-30s\033[0m %s\n' "docker compose up" "run the product with no host prerequisites (any OS)"
+	@printf '  \033[36m%-30s\033[0m %s\n' "docker compose up dev db migrate" "run the dev sandbox without Make"
 	@printf '  \033[36m%-30s\033[0m %s\n' "scripts/dev-up.py" "native Windows: python scripts/dev-up.py dev-up"
 
 # --- One-time local setup ---------------------------------------------------

@@ -27,7 +27,7 @@ empty field here means a placeholder somewhere else.
 | Web UI | React + TypeScript + Vite, served by the API from `web/dist` |
 | Logging | `go.uber.org/zap` via `log/slog`, rotating files with `lumberjack` |
 | Config | `joho/godotenv` |
-| Containers | Docker Compose — the dev sandbox (`dev`) and the local stack (`db`, `migrate`; `api` is kept as a commented block) |
+| Containers | Docker Compose — the product (`db`, `migrate`, `api` from `Dockerfile.api`) and the dev sandbox (`dev`, behind the `dev` profile) |
 
 ## Architecture
 
@@ -72,8 +72,9 @@ index; the path column is what `download` opens.
 | `make web_build` | Build the web UI into `web/dist` |
 | `make web_dev` | Run the Vite dev server |
 | `make setup` | One-time: create `.env` and the database secret from their examples |
+| `make up` | Build + run the product: db, migrations, API and web UI on `:4000` |
 | `make docker_up` | Bring up db + the migrations |
-| `make docker_up_all` | Bring up db + the migrations + the dev sandbox |
+| `make docker_up_all` | Bring up db + the migrations + the dev sandbox (not the API) |
 | `make dev-up` | Start the dev sandbox (pinned Go toolchain) with the stack |
 
 ## Environment

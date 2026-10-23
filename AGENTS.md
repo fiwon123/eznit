@@ -21,8 +21,9 @@ download, update, delete — on a Compose stack a single developer can run.
 - Go, `net/http` + `chi`, `sqlx` + `lib/pq` over PostgreSQL
 - `golang-migrate` for schema changes
 - `kong` for the CLI, `zap` + `log/slog` for logging, `godotenv` for config
-- Docker Compose for the dev sandbox and the local stack (`dev`, `db`,
-  `migrate`; the `api` service is kept as a commented block)
+- Docker Compose for the product (`db`, `migrate`, `api`; the API image is
+  built from `Dockerfile.api`) and for the dev sandbox (`dev`, behind the
+  `dev` profile)
 
 ### Core Architecture
 
@@ -123,7 +124,12 @@ make build     # build both binaries into ./build
 make web_check # lint, format check, typecheck and build the web UI
 make web_build # build the web UI into web/dist
 make web_dev   # run the Vite dev server
+make up        # build + run the product: db, migrations, API and web UI on :4000
 ```
+
+The quickest way to see the product needs no host toolchain beyond Docker:
+`make setup && make up` builds the API image (`Dockerfile.api`) with the web UI
+embedded, runs the migrations once and serves http://localhost:4000.
 
 `make check` needs no database, no container and no secret file: it compiles
 the API and the CLI, it does not run them. It fails loudly if the Go toolchain
@@ -139,10 +145,12 @@ make dev-shell  # a shell inside the sandbox
 make dev-down   # stop it (keeps the volumes)
 ```
 
-`docker compose up` does the same thing without Make, and
-`python scripts/dev-up.py dev-up` is the native-Windows path. The sandbox needs
-the local files `make setup` creates — the database secret is a file secret, and
-Compose refuses to start without it.
+The sandbox is behind the `dev` Compose profile, so plain `docker compose up`
+is the **product**, not the sandbox. The no-Make equivalent of `make dev-up` is
+`docker compose up dev db migrate` — naming a profiled service enables its
+profile — and `python scripts/dev-up.py dev-up` is the native-Windows path. The
+sandbox needs the local files `make setup` creates — the database secret is a
+file secret, and Compose refuses to start without it.
 
 The image creates the directories the compose file mounts into, owned by the
 runtime user: Docker creates a mount destination the image does not contain as
@@ -236,9 +244,10 @@ can set them for you.
 ### Seed data
 
 `make docker_up` runs the migrations against the local database; it does not
-seed anything. (`make docker_up_all` additionally starts the dev sandbox.) The
-first `signup` through the CLI or the API creates the first user. There is no
-admin account and no way to promote one from the CLI yet.
+seed anything. (`make docker_up_all` starts the dev sandbox and the stack,
+excluding the product API — the two both publish port 4000.) The first `signup`
+through the CLI or the API creates the first user. There is no admin account
+and no way to promote one from the CLI yet.
 
 ## Agents
 
@@ -365,6 +374,11 @@ feature-branch push. Two things can make a run verify nothing:
 - a `paths:` filter the change does not touch means the workflow does not
   trigger at all; and
 - a job gated behind a label or `if:` comes back `skipped`, not `passed`.
+
+There are three gates on a release pull request: **CI (Go)**, **CI (Web)** and
+**CI (Image)**. The last one builds `Dockerfile.api` and renders
+`docker-compose.yml` — buildability, not behaviour: the container is not
+started, because the API exits without a database.
 
 The **release** workflow is separate: it runs on a `v*` tag push (and on
 manual dispatch, as a dry run that publishes nothing) and publishes the

@@ -49,7 +49,8 @@ web/                the React UI; embed.go embeds the build into the binaries
 db/migrations/      golang-migrate SQL, one .up/.down pair per change
 scripts/            migrations runner, dev sandbox helpers, path setup
 Dockerfile          the dev sandbox image (Go 1.27.3, gh, zip)
-docker-compose.yml  db, migrate, and the optional dev sandbox (api is commented)
+Dockerfile.api      the application image: Node builds the UI, Go embeds it
+docker-compose.yml  the product (db, migrate, api) and the dev sandbox (profile: dev)
 ```
 
 `internal/` is where the project rules live; `pkg/` is reusable and knows
@@ -254,9 +255,9 @@ dispatch only. Feature pull requests are gated locally.
 These are the places where the code does not match the shape above. They are
 tracked, not forgotten:
 
-- **`API_PORT` is not read.** The API listens on `:4000`, hardcoded; the
-  variable exists in `.env.example` and matters only to the commented `api`
-  service in `docker-compose.yml`.
+- **`API_PORT` is not read by the API.** The API listens on `:4000`, hardcoded;
+  the variable only sets the host port the `api` service in `docker-compose.yml`
+  publishes, so two stacks can run side by side.
 - **Several packages have no tests.** `internal/domain/users`,
   `internal/platform/middleware`, `pkg/errors`, `pkg/logger` and `pkg/types`
   are compiled and vetted, not exercised. `internal/domain/sessions` has a
