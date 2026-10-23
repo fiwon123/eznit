@@ -72,8 +72,9 @@ index; the path column is what `download` opens.
 | `make web_build` | Build the web UI into `web/dist` |
 | `make web_dev` | Run the Vite dev server |
 | `make setup` | One-time: create `.env` and the database secret from their examples |
+| `make up` | Build + run the product: db, migrations, API and web UI on `:4000` |
 | `make docker_up` | Bring up db + the migrations |
-| `make docker_up_all` | Bring up db + the migrations + the dev sandbox |
+| `make docker_up_all` | Bring up db + the migrations + the dev sandbox (not the API) |
 | `make dev-up` | Start the dev sandbox (pinned Go toolchain) with the stack |
 
 ## Environment

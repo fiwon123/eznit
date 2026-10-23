@@ -7,7 +7,7 @@ The Makefile is a great interface on Linux, macOS and WSL2, but it cannot work
 on native Windows: its preflight and recipes use POSIX ``test -x``/``stat``/
 ``mkdir -p``/``id -u``, and ``make`` there runs under cmd.exe/PowerShell rather
 than a POSIX shell. Windows users therefore had no supported way to start the
-sandbox with anything other than a bare ``docker compose up``.
+sandbox without a POSIX shell.
 
 This script reproduces the Makefile's developer targets in Python, using only
 the standard library, so the same commands run on Linux, macOS, WSL2 and native

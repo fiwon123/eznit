@@ -1,0 +1,63 @@
+# syntax=docker/dockerfile:1.7
+#
+# The application image: the API and the web UI in one container.
+#
+#   docker compose up        # builds this and serves http://localhost:4000
+#
+# Three stages, each pinned to the version this repository pins elsewhere, so
+# the image cannot quietly drift from the local toolchain:
+#
+#   web    node 24.22.1  (mise.toml)
+#   build  go 1.27.3     (go.mod)
+#   final  alpine 3.23
+#
+# The UI is embedded (`web/embed.go`, `//go:embed all:dist`), so the runtime
+# image needs no `web/dist` directory, no Node and no source tree.
+
+ARG NODE_VERSION=24.22.1
+ARG GO_VERSION=1.27.3
+ARG ALPINE_VERSION=3.23
+
+FROM node:${NODE_VERSION}-bookworm-slim AS web
+WORKDIR /src/web
+# Copy the manifests first: the dependency install then survives a change to
+# the source, and only a lockfile change invalidates that layer.
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
+FROM golang:${GO_VERSION}-bookworm AS build
+ARG VERSION=dev
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+# `//go:embed all:dist` reads this folder at compile time, so the built UI has
+# to be in place before `go build`. Copying it after the sources keeps a UI
+# change from invalidating the Go dependency layer above.
+COPY --from=web /src/web/dist ./web/dist
+RUN CGO_ENABLED=0 GOOS=linux go build \
+      -trimpath \
+      -ldflags "-s -w -X main.Version=${VERSION}" \
+      -o /out/server ./cmd/api
+
+FROM alpine:${ALPINE_VERSION}
+RUN apk add --no-cache ca-certificates \
+ && addgroup -g 10001 app \
+ && adduser -D -H -u 10001 -G app app \
+ && mkdir -p /data/uploads /data/logs \
+ && chown -R app:app /data
+
+WORKDIR /app
+COPY --from=build /out/server /app/server
+
+# Both folders are relative-or-absolute paths read by cmd/api. Pointing them at
+# /data keeps the named volume in one place; the defaults (`./uploads`,
+# `./logs`) would write into the container layer and vanish on recreate.
+ENV API_UPLOADS=/data/uploads \
+    API_LOGS=/data/logs
+
+USER app
+EXPOSE 4000
+ENTRYPOINT ["/app/server"]
