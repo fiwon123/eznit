@@ -182,48 +182,6 @@ func TestUpdateFileRecordsTheNewVersionInHistory(t *testing.T) {
 	}
 }
 
-// The list is bounded: the service asks the repository for a limited list
-// and returns no more than that.
-func TestGetFilesIsBounded(t *testing.T) {
-	owner := uuid.New()
-
-	var files []File
-	for i := 0; i < listLimit+25; i++ {
-		files = append(files, File{ID: uuid.New(), UserID: owner, Name: "file"})
-	}
-
-	repo := newFakeRepository(files...)
-	svc := newTestService(t, repo, t.TempDir())
-
-	resp, appError := svc.GetFiles(userContext(owner))
-	if appError != nil {
-		t.Fatalf("expected the list to be returned, got error %v", appError)
-	}
-
-	if repo.lastLimit != listLimit {
-		t.Errorf("expected the repository to be asked for %d files, got %d", listLimit, repo.lastLimit)
-	}
-
-	if len(resp.Data) > listLimit {
-		t.Errorf("expected at most %d files, got %d", listLimit, len(resp.Data))
-	}
-}
-
-// The list needs a session: without a user in the context the service
-// refuses, so a route registered without the guard fails closed.
-func TestGetFilesWithoutAUserIsUnauthorized(t *testing.T) {
-	svc := newTestService(t, newFakeRepository(), t.TempDir())
-
-	_, appError := svc.GetFiles(context.Background())
-	if appError == nil {
-		t.Fatal("expected the list to be refused")
-	}
-
-	if appError.StatusCode() != http.StatusUnauthorized {
-		t.Errorf("expected status %d, got %d", http.StatusUnauthorized, appError.StatusCode())
-	}
-}
-
 // userContext returns a context carrying the user the guard would set.
 func userContext(userID uuid.UUID) context.Context {
 	return context.WithValue(context.Background(), "user_id", userID)

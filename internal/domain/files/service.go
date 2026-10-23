@@ -33,43 +33,6 @@ func NewService(db Repository, uploadFolder string, logger *logger.Config) *serv
 	}
 }
 
-// listLimit is the most files one list call returns. The list is a
-// catalogue of every upload, so it needs a bound: without one the route
-// reads the whole table on every call.
-const listLimit = 100
-
-// Get a list of files
-func (s *service) GetFiles(ctx context.Context) (ListResponse, *errors.AppError) {
-	// The route is behind the session guard. The check is here as well, so
-	// a route registered without the guard fails closed.
-	if _, ok := userIDFromContext(ctx); !ok {
-		s.logger.Warn("no user in the request context")
-		return ListResponse{}, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
-	}
-
-	s.logger.Debug("GetFiles")
-
-	files, ok := s.db.GetFiles(listLimit)
-	if !ok {
-		return ListResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to get failes")
-	}
-
-	var resp []FileData
-	for _, file := range files {
-		resp = append(resp, FileData{
-			ID:      file.ID,
-			Name:    file.Name,
-			Ext:     file.Ext,
-			Version: file.Version,
-		})
-	}
-
-	return ListResponse{
-		Data:  resp,
-		Total: len(resp),
-	}, nil
-}
-
 // userIDFromContext returns the user the guard put in the context. The
 // guard is the only thing that sets it, so a missing value means the
 // request never went through the guard — the route is registered without
@@ -80,7 +43,9 @@ func userIDFromContext(ctx context.Context) (uuid.UUID, bool) {
 	return userID, ok
 }
 
-// Get a list of Files for user
+// GetFilesForUser lists the caller's own files. Every list route on this
+// resource answers with the caller's own files: a file belongs to the user
+// who uploaded it, so there is no instance-wide list to ask for.
 func (s *service) GetFilesForUser(ctx context.Context) (ListResponse, *errors.AppError) {
 	userID, ok := userIDFromContext(ctx)
 	if !ok {

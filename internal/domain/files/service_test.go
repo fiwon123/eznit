@@ -81,3 +81,46 @@ func TestGetFileForUserReturnsTheOwnersFile(t *testing.T) {
 		t.Errorf("expected file %s, got %s", fileID, file.ID)
 	}
 }
+
+// The list is the caller's own files and nothing else: a file another user
+// uploaded is not in it, however many rows the instance holds.
+func TestGetFilesForUserListsOnlyTheCallersFiles(t *testing.T) {
+	owner := uuid.New()
+	stranger := uuid.New()
+
+	repo := newFakeRepository(
+		File{ID: uuid.New(), UserID: owner, Name: "mine", Ext: "txt"},
+		File{ID: uuid.New(), UserID: stranger, Name: "theirs", Ext: "txt"},
+	)
+	svc := newTestService(t, repo, t.TempDir())
+
+	ctx := context.WithValue(context.Background(), "user_id", owner)
+
+	resp, appError := svc.GetFilesForUser(ctx)
+	if appError != nil {
+		t.Fatalf("expected the list to be returned, got error %v", appError)
+	}
+
+	if len(resp.Data) != 1 {
+		t.Fatalf("expected the caller's one file, got %d files", len(resp.Data))
+	}
+
+	if resp.Data[0].Name != "mine" {
+		t.Errorf("expected the caller's file, got %q", resp.Data[0].Name)
+	}
+}
+
+// The list needs a session: without a user in the context the service
+// refuses, so a route registered without the guard fails closed.
+func TestGetFilesForUserWithoutAUserIsUnauthorized(t *testing.T) {
+	svc := newTestService(t, newFakeRepository(), t.TempDir())
+
+	_, appError := svc.GetFilesForUser(context.Background())
+	if appError == nil {
+		t.Fatal("expected the list to be refused")
+	}
+
+	if appError.StatusCode() != http.StatusUnauthorized {
+		t.Errorf("expected status %d, got %d", http.StatusUnauthorized, appError.StatusCode())
+	}
+}

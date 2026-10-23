@@ -104,45 +104,63 @@ func writeFileOnDisk(t *testing.T, content string) string {
 	return path
 }
 
-// The catalogue lists every upload in the instance, so it is not public:
-// without a token it is refused.
+// The list answers the caller's own files, so it is not public: without a
+// token both routes are refused.
 func TestListWithoutTokenIsRejected(t *testing.T) {
 	owner := uuid.New()
 
 	repo := newFakeRepository(File{ID: uuid.New(), UserID: owner, Name: "secret", Ext: "txt"})
 	router := newTestRouter(t, repo, t.TempDir(), owner)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/files/", nil)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	for _, path := range []string{"/v1/files/", "/v1/files/me"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
-	}
+			if rec.Code != http.StatusUnauthorized {
+				t.Errorf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+			}
 
-	if !strings.Contains(rec.Body.String(), "No token provided") {
-		t.Errorf("expected the session guard to reject the request, got %q", rec.Body.String())
+			if !strings.Contains(rec.Body.String(), "No token provided") {
+				t.Errorf("expected the session guard to reject the request, got %q", rec.Body.String())
+			}
+		})
 	}
 }
 
-// The owner still gets the catalogue.
-func TestListWithATokenReturnsTheFiles(t *testing.T) {
+// Both list routes answer the caller's own files and nothing else: a file
+// another user uploaded is not in the response, whichever route is asked.
+func TestListReturnsOnlyTheCallersFiles(t *testing.T) {
 	owner := uuid.New()
+	stranger := uuid.New()
 
-	repo := newFakeRepository(File{ID: uuid.New(), UserID: owner, Name: "secret", Ext: "txt"})
+	repo := newFakeRepository(
+		File{ID: uuid.New(), UserID: owner, Name: "mine", Ext: "txt"},
+		File{ID: uuid.New(), UserID: stranger, Name: "theirs", Ext: "txt"},
+	)
 	router := newTestRouter(t, repo, t.TempDir(), owner)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/files/", nil)
-	req.Header.Set("Authorization", "Bearer test-token")
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	for _, path := range []string{"/v1/files/", "/v1/files/me"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("Authorization", "Bearer test-token")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
-	}
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+			}
 
-	if !strings.Contains(rec.Body.String(), "secret") {
-		t.Errorf("expected the file in the response, got %q", rec.Body.String())
+			body := rec.Body.String()
+			if !strings.Contains(body, "mine") {
+				t.Errorf("expected the caller's file in the response, got %q", body)
+			}
+
+			if strings.Contains(body, "theirs") {
+				t.Errorf("another user's file is in the response: %q", body)
+			}
+		})
 	}
 }
 

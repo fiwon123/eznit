@@ -13,9 +13,6 @@ type fakeRepository struct {
 	// history holds the rows StorageFileHistory was asked for, so a test can
 	// assert an update adds a version instead of rewriting the ones before it.
 	history []File
-	// lastLimit is the limit the last GetFiles call was made with, so a
-	// test can assert the route asked for a bounded list.
-	lastLimit int
 }
 
 // newFakeRepository returns a repository holding the given files.
@@ -25,21 +22,6 @@ func newFakeRepository(files ...File) *fakeRepository {
 		repo.files[file.ID] = file
 	}
 	return repo
-}
-
-func (r *fakeRepository) GetFiles(limit int) ([]File, bool) {
-	r.lastLimit = limit
-
-	all := make([]File, 0, len(r.files))
-	for _, file := range r.files {
-		all = append(all, file)
-	}
-
-	if limit > 0 && len(all) > limit {
-		all = all[:limit]
-	}
-
-	return all, true
 }
 
 func (r *fakeRepository) GetFilesForUser(userID uuid.UUID) ([]File, bool) {
