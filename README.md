@@ -82,9 +82,13 @@ talks to it on `http://localhost:4000`.
 ### Build the CLI
 
 ```sh
-make build        # both binaries into ./build
+make build        # both binaries into ./build (and the web UI, which they embed)
 ./build/cli/eznit --help
 ```
+
+Node is needed here even for the Go binaries: `make build_api` and
+`make build_gui` build the web UI first, because both binaries carry a copy of
+it (see [Web UI](#web-ui)). `make check` does not — the Go gate stays Node-free.
 
 ### Commands
 
@@ -111,8 +115,18 @@ eznit download
 
 ## Web UI
 
-The web UI lives in `web/`. The API serves `web/dist` when it exists, so a
-production build runs from the same origin as the API — no CORS is needed.
+The web UI lives in `web/`. It reaches the browser two ways:
+
+- **from disk** — the API serves `web/dist` when it holds a build, so a
+  production server runs the UI from the same origin as the API, and no CORS
+  is needed. Rebuilding the UI is enough; the API does not need a restart.
+- **from the binary** — the API and the GUI carry the UI embedded at build
+  time (`web/embed.go`), so a released binary serves it with no `web/dist`
+  next to it. `make build_api` and `make build_gui` run `make web_build`
+  first for that reason.
+
+A `web/dist` with no `index.html` — a fresh clone, where the folder holds only
+the committed placeholder — counts as "no UI": the API serves the API only.
 
 | Command | What it does |
 | --- | --- |
