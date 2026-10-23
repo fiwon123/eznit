@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, Route, Routes, useParams } from "react-router-dom";
 import { clearToken, getToken, setToken } from "./api";
+import Logo from "./components/Logo";
 import Catalogue from "./pages/Catalogue";
 import Files from "./pages/Files";
 import Login from "./pages/Login";
@@ -35,10 +36,10 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <Link className="brand" to="/">
-          {/* The mark carries the word too, so the plain-text heading goes: two
-              "eznit"s side by side read as a mistake. The alt text is what a
-              screen reader announces for the link. */}
-          <img src="/logo.svg" alt="eznit" className="brand-logo" />
+          {/* The mark is inlined as a component so currentColor follows the
+              theme; an <img>-loaded SVG isolates its document and made the
+              wordmark black-on-black on the dark default. */}
+          <Logo className="brand-logo" />
         </Link>
         <nav className="topnav">
           <Link to="/">catalogue</Link>
