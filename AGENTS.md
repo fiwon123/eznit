@@ -116,6 +116,7 @@ Linux.
 
 ```bash
 make check     # gofmt, vet, test, build — the local verification gate
+make vuln      # reachable-vulnerability scan (needs network; not part of check)
 make run_api   # run the API against the configured database
 make run_cli   # run the CLI
 make build     # build both binaries into ./build
