@@ -149,6 +149,33 @@ eznit template publish . --command <command-id>=scripts/fmt.sh
 `eznit template apply` writes the command at its target path. A command that a
 template pulls in cannot be removed until the template stops referencing it.
 
+#### Git hosts
+
+`eznit` can list the repositories a GitHub token can reach and clone one. The
+token is a **personal access token**, and it stays on your machine: it is kept
+in `~/.eznit/config.json` (mode 0600) next to the session token, and the eznit
+API never sees it.
+
+| Command | What it does |
+| --- | --- |
+| `eznit repo auth` | Store a GitHub token (prompt by default, `--token`, `--token-file`); `--remove` forgets it |
+| `eznit repo list` | List the repositories the token can reach |
+| `eznit repo clone <owner/name> [--dir <path>]` | Clone into `<dir>/github/<owner>/<repo>` (default `~/eznit`) |
+
+```sh
+eznit repo auth                 # paste a token at the prompt
+eznit repo list
+eznit repo clone fiwon123/eznit
+```
+
+The clone runs `git` directly, with the token supplied through the child
+process's environment (`http.extraheader`), so it is never in the command
+line, never in the URL, and never written into the clone's `.git/config`. The
+remote stays the plain HTTPS URL. `EZNIT_REPOS` sets the clone root when
+`--dir` is not given, and `EZNIT_GITHUB_API` points at a GitHub Enterprise API.
+`eznit logout` removes the session token and leaves the host token in place;
+`eznit repo auth --remove` removes that one.
+
 ## Web UI
 
 The web UI lives in `web/`. It reaches the browser two ways:
@@ -235,6 +262,11 @@ Also true today:
 - There is no rate limiting on `signup` or `login`.
 - Passwords are hashed; session tokens are random and stored in the database
   with an expiry.
+- A git-host token is stored only in the CLI's own config file (mode 0600).
+  It is never sent to the eznit API, never logged, never put in a URL, and
+  never written into a clone's `.git/config`. It is passed to `git` through
+  the child process's environment, which the same user's other processes can
+  read — the same exposure as any credential on a shared machine.
 
 **Do not put this on a public interface as it stands.** It is fine on
 `localhost`, or behind a VPN you control.

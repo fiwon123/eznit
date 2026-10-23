@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
@@ -76,15 +74,8 @@ func sendLogoutRequest(baseURL string, token string, g *Globals) bool {
 	return true
 }
 
+// deleteToken removes the session token and leaves the rest of the config
+// file alone — the provider credentials are not the session's to delete.
 func deleteToken() error {
-	home, _ := os.UserHomeDir()
-	configDir := filepath.Join(home, ".eznit")
-	configPath := filepath.Join(configDir, "config.json")
-
-	os.MkdirAll(configDir, 0700)
-
-	config := map[string]string{}
-	data, _ := json.MarshalIndent(config, "", "  ")
-
-	return os.WriteFile(configPath, data, 0600)
+	return removeConfigValue("token")
 }
