@@ -261,7 +261,10 @@ Also true today:
 - Files are stored unencrypted on the server's disk.
 - There is no rate limiting on `signup` or `login`.
 - Passwords are hashed; session tokens are random and stored in the database
-  with an expiry.
+  with an expiry. The only `golang.org/x/crypto` package this repository links
+  is `bcrypt` — the module's SSH and S/MIME advisories do not apply to the code
+  that is actually compiled. Nothing scans dependencies in `make check` or CI;
+  that is why an advisory can be reported while every check is green.
 - A git-host token is stored only in the CLI's own config file (mode 0600).
   It is never sent to the eznit API, never logged, never put in a URL, and
   never written into a clone's `.git/config`. It is passed to `git` through
