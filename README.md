@@ -219,6 +219,8 @@ the committed placeholder — counts as "no UI": the API serves the API only.
 | `make web_build` | Build the static assets into `web/dist` |
 | `make web_check` | Lint, format check, typecheck and build the web UI (fails on any error) |
 | `make dev-up` | Start the dev loop: UI `:5173` (Vite, hot reload), API `:4000` |
+| `make dev-restart` | Restart the loop: `dev-down`, then `dev-up` (no rebuild) |
+| `make dev-build` | Rebuild the `dev` and `web-dev` images after a Dockerfile or entrypoint change |
 | `make up` | Build and run the product stack: UI on `:5173`, API on `:4000` |
 
 The quickest way to see it needs no Node on the host — the images build the UI:
@@ -238,7 +240,7 @@ make dev-up             # UI http://localhost:5173 + API http://localhost:4000
 Both ports answer when it returns: the API runs inside the sandbox against the
 source (`make run_api`), and the UI is Vite in the `web-dev` service, proxying
 `/v1` to it. Editing a `.tsx` file reloads the browser; a `.go` file needs the
-API restarted (`make dev-down && make dev-up`, or `make run_api` again inside
+API restarted (`make dev-restart`, or `make run_api` again inside
 `make dev-shell`).
 
 Host tools still work: `make run_api` and `make web_dev` are the same two
@@ -351,6 +353,13 @@ returns, and an edit on the host is visible in the other one immediately — the
 Go process recompiles on its next start (there is no file watcher: restart the
 API after a Go change), and Vite reloads the browser on a web change.
 
+`dev-up` does not rebuild an image, so a start is a start: nothing is compiled
+into an image layer, and it reads the same on the second run as on the first.
+Compose still builds the images the first time they are needed. An edit to a
+`Dockerfile`, `web/Dockerfile.dev`, or a script one of them `COPY`s is the one
+change the loop cannot pick up by itself — `make dev-build` rebuilds both
+images, and `make dev-restart` is `dev-down` followed by `dev-up`.
+
 | Role | Where | Port |
 | --- | --- | --- |
 | Frontend (the app) | `web-dev` service, Vite | **5173** |
@@ -397,6 +406,10 @@ python scripts/dev-up.py dev-up                # native Windows: same thing
 | Linux, macOS | `make dev-up` |
 | WSL2 | `make dev-up` (the host is Linux) |
 | Windows (native) | `python scripts/dev-up.py dev-up`, or `docker compose up dev web-dev db migrate` after creating the marker |
+
+`make dev-build` and `python scripts/dev-up.py dev-build` are the rebuild path
+on each: recreating the containers, which `dev-up` and `dev-restart` both do, is
+not a rebuild, and only an image change needs one.
 
 The `dev` and `web-dev` services are behind the `dev` Compose profile: plain
 `docker compose up` is the **product** (see [Run the stack](#run-the-stack)),
