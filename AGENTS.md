@@ -166,12 +166,13 @@ These are tracked issues, not surprises for a reviewer to find:
 
 | Gap | Issue | Why it matters |
 | --- | --- | --- |
-| The users, sessions and middleware packages have no tests | — | `make check` compiles and vets them; it executes nothing |
+| The users and the middleware packages have no tests | — | `make check` compiles and vets them; it executes nothing. `sessions` has a schema test only |
 | The list of every upload is one catalogue for all users | — | A token is required, but any user sees every other user's file names |
 
-**The files domain, the CLI and the path helper have tests; the rest of the
-repository does not.** `go test ./...` prints `[no test files]` for the
-packages without one, and still exits 0. A green `Test` step in CI means
+**The files, sessions and templates domains, the CLI, the schema helper, the
+web UI and the path helper have tests; the rest of the repository does not.**
+`go test ./...` prints `[no test files]` for the packages without one, and
+still exits 0. A green `Test` step in CI means
 "the packages with tests passed" — name the packages when you report a
 result, because a run that executed nothing is not coverage.
 
