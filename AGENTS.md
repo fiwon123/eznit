@@ -76,7 +76,7 @@ machine. This is what `make check` and `git` operate on.
 ### Sandbox mode (optional)
 
 `make dev-opencode` runs the agent inside the dev container, where the
-toolchain is pinned to Go 1.24.1 — the version in `go.mod`, the same one CI
+toolchain is pinned to Go 1.27.3 — the version in `go.mod`, the same one CI
 uses. The workspace is bind-mounted at `/workspace`; edits made inside are the
 same files on the host.
 
@@ -116,6 +116,7 @@ Linux.
 
 ```bash
 make check     # gofmt, vet, test, build — the local verification gate
+make vuln      # reachable-vulnerability scan (needs network; not part of check)
 make run_api   # run the API against the configured database
 make run_cli   # run the CLI
 make build     # build both binaries into ./build

@@ -261,7 +261,14 @@ Also true today:
 - Files are stored unencrypted on the server's disk.
 - There is no rate limiting on `signup` or `login`.
 - Passwords are hashed; session tokens are random and stored in the database
-  with an expiry.
+  with an expiry. The only `golang.org/x/crypto` package this repository links
+  is `bcrypt` — the module's SSH and S/MIME advisories do not apply to the code
+  that is actually compiled. CI now runs a reachable-vulnerability scan
+  (`govulncheck`), and `make vuln` runs the same scan locally. It fails only
+  when this code reaches a vulnerable function: a module-level advisory in a
+  package nothing calls — such as the unmaintained `openpgp` package in
+  `x/crypto`, which has no fix — is printed by the tool but does not fail the
+  gate. `make check` stays offline and does not scan.
 - A git-host token is stored only in the CLI's own config file (mode 0600).
   It is never sent to the eznit API, never logged, never put in a URL, and
   never written into a clone's `.git/config`. It is passed to `git` through
@@ -287,6 +294,7 @@ chmod 600 .env .env.local secrets/db_password.txt
 
 ```sh
 make check     # gofmt, vet, test, build — the local verification gate
+make vuln      # scan for reachable dependency vulnerabilities (needs network)
 make run_api   # run the API against the configured database
 make run_cli   # run the CLI
 ```
@@ -300,7 +308,7 @@ prints `[no test files]` and still exits 0.
 ### Dev sandbox
 
 The commands above need a Go toolchain on the host. The sandbox removes that
-requirement: it is a container with Go **1.24.1** — the version in `go.mod`,
+requirement: it is a container with Go **1.27.3** — the version in `go.mod`,
 the same one CI uses — and the workspace is bind-mounted into it, so the files
 you edit are the same files.
 

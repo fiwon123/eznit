@@ -46,9 +46,15 @@ env:
   # issue number is part of the convention (`<type>/<issue-number>-<slug>`), so
   # a branch that names no issue is rejected too.
   #
+  # `dependabot/` is the one exception to the issue-number rule. Dependabot
+  # names its branches `dependabot/<ecosystem>/<target-branch>/<dependency>`,
+  # and renaming one breaks its update tracking. The pull request itself is the
+  # record for an automated bump, so it is reviewed on its own diff rather than
+  # traced to a human's issue. Human branches still need the number.
+  #
   # If your project keeps release branches, add `release/` to the main pattern
   # below rather than loosening it further.
-  DEV_BRANCH_PATTERN: '^(feat|fix|refactor|docs|test|chore|ci)/[0-9]+-'
+  DEV_BRANCH_PATTERN: '^((feat|fix|refactor|docs|test|chore|ci)/[0-9]+-|dependabot/)'
 
   # Branches that may target `main`:
   #   - `dev`  -- the release pull request. The head of that PR *is* the
@@ -79,7 +85,7 @@ jobs:
           case "$BASE_REF" in
             dev)
               pattern="$DEV_BRANCH_PATTERN"
-              expected="<type>/<issue-number>-<slug> -- <type> is one of feat, fix, refactor, docs, test, chore, ci"
+              expected="<type>/<issue-number>-<slug> -- <type> is one of feat, fix, refactor, docs, test, chore, ci -- or dependabot/<ecosystem>/<target>/<dependency>"
               ;;
             main)
               pattern="$MAIN_BRANCH_PATTERN"
