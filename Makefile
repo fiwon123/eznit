@@ -225,8 +225,9 @@ run_jq:
 #     prints "[no test files]" for those and still exits 0, so a green run
 #     would otherwise look like coverage that does not exist.
 #
-# This repository has no test file at all yet, so every package shows up in
-# that list. That is the state of the suite, not a pass.
+# The suite is partial: packages without a test file show up in that list.
+# Read a green run as "what has tests passed, the rest compiled", not as
+# coverage of the whole repository.
 # ---------------------------------------------------------------------------
 check: ## gofmt, vet, test, build — the local verification gate
 	@if ! command -v go >/dev/null 2>&1; then \
@@ -245,6 +246,29 @@ check: ## gofmt, vet, test, build — the local verification gate
 		echo "NOTE: these packages have no test files — this run does not cover them:"; \
 		echo "$$notested" | sed 's/^/  /'; \
 	fi
+
+# ---------------------------------------------------------------------------
+# Dependency vulnerability scan
+#
+# Deliberately NOT part of `make check`: the scan downloads the tool and the
+# vulnerability database, and the verification gate has to work offline on a
+# fresh clone. CI runs the same command as a step of its own.
+#
+# Symbol-level (the default) fails only when this code actually reaches a
+# vulnerable function. `-scan=module` cannot go green here: GO-2026-5932 on
+# x/crypto's openpgp package is "Fixed in: N/A" and the package is not
+# imported, while x/crypto itself cannot be dropped (it provides `bcrypt`).
+# See the comment in .github/workflows/ci.go.yml.
+#
+# A missing toolchain FAILS the target, like every other gate in this file.
+# ---------------------------------------------------------------------------
+.PHONY: vuln
+vuln: ## scan for reachable dependency vulnerabilities (needs network)
+	@if ! command -v go >/dev/null 2>&1; then \
+		echo "ERROR: go is not installed — the scan cannot run, so nothing is verified" >&2; \
+		exit 1; \
+	fi; \
+	go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
 # ---------------------------------------------------------------------------
 # The web UI (web/)
