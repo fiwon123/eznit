@@ -63,10 +63,11 @@ func (s *service) GetFilesForUser(ctx context.Context) (ListResponse, *errors.Ap
 	var resp []FileData
 	for _, file := range files {
 		resp = append(resp, FileData{
-			ID:      file.ID,
-			Name:    file.Name,
-			Ext:     file.Ext,
-			Version: file.Version,
+			ID:       file.ID,
+			Name:     file.Name,
+			Ext:      file.Ext,
+			Version:  file.Version,
+			IsPublic: file.IsPublic,
 		})
 	}
 
@@ -74,6 +75,63 @@ func (s *service) GetFilesForUser(ctx context.Context) (ListResponse, *errors.Ap
 		Data:  resp,
 		Total: len(resp),
 	}, nil
+}
+
+// ListSharedFiles returns all public files for the catalogue.
+func (s *service) ListSharedFiles(ctx context.Context) (SharedListResponse, *errors.AppError) {
+	userID, ok := userIDFromContext(ctx)
+	if !ok {
+		s.logger.Warn("no user in the request context")
+		return SharedListResponse{}, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
+	}
+
+	_ = userID
+
+	files, ok := s.db.ListSharedFiles()
+	if !ok {
+		return SharedListResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to get shared files")
+	}
+
+	var resp []SharedFileData
+	for _, file := range files {
+		resp = append(resp, SharedFileData{
+			ID:         file.ID,
+			Name:       file.Name,
+			Ext:        file.Ext,
+			Version:    file.Version,
+			IsPublic:   file.IsPublic,
+			Owner:      file.UserID.String(),
+			OwnerEmail: file.OwnerEmail,
+		})
+	}
+
+	return SharedListResponse{
+		Data:  resp,
+		Total: len(resp),
+	}, nil
+}
+
+// ShareFile toggles sharing for a file owned by the caller.
+func (s *service) ShareFile(ctx context.Context, id uuid.UUID, isPublic bool) (string, *errors.AppError) {
+	userID, ok := userIDFromContext(ctx)
+	if !ok {
+		s.logger.Warn("no user in the request context")
+		return "", errors.NewAppError(http.StatusUnauthorized, "unauthorized")
+	}
+
+	if !s.db.IsUserOwner(id, userID) {
+		return "", errors.NewAppError(http.StatusNotFound, "file not found")
+	}
+
+	if !s.db.SetFilePublic(id, userID, isPublic) {
+		return "", errors.NewAppError(http.StatusInternalServerError, "failed to update file")
+	}
+
+	if isPublic {
+		return "file shared!", nil
+	}
+
+	return "file unshared!", nil
 }
 
 // Get only a single File for any user
@@ -109,6 +167,29 @@ func (s *service) GetFileForUser(ctx context.Context, id uuid.UUID) (*File, *err
 		return nil, errors.NewAppError(http.StatusNotFound, "file not found")
 	}
 
+	return file, nil
+}
+
+// GetFileForDownload returns a file the caller may download: either owned by
+// the caller or shared publicly.
+func (s *service) GetFileForDownload(ctx context.Context, id uuid.UUID) (*File, *errors.AppError) {
+	userID, ok := userIDFromContext(ctx)
+	if !ok {
+		s.logger.Warn("no user in the request context")
+		return nil, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
+	}
+
+	file, ok := s.db.GetFileForUser(id, userID)
+	if ok {
+		return file, nil
+	}
+
+	file, ok = s.db.GetSharedFile(id)
+	if !ok {
+		return nil, errors.NewAppError(http.StatusNotFound, "file not found")
+	}
+
+	_ = userID
 	return file, nil
 }
 

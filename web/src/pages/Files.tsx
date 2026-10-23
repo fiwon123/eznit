@@ -9,6 +9,7 @@ import {
   listFiles,
   MAX_UPLOAD_BYTES,
   messageOf,
+  shareFile,
   uploadFile,
 } from "../api";
 import type { FileData } from "../types";
@@ -114,6 +115,24 @@ export default function Files() {
     }
   }
 
+  async function onToggleShare(file: FileData): Promise<void> {
+    const next = !file.is_public;
+    if (next && !window.confirm(`Make ${fileNameOf(file)} public? Anyone on this instance can download it.`)) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await shareFile(file.id, next);
+      await reload();
+      setError(null);
+    } catch (cause: unknown) {
+      setError(messageOf(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="page">
       <div className="pagehead">
@@ -164,6 +183,7 @@ export default function Files() {
                 <th>Name</th>
                 <th>Type</th>
                 <th>Version</th>
+                <th>Sharing</th>
                 <th>
                   <span className="visuallyhidden">Actions</span>
                 </th>
@@ -175,8 +195,18 @@ export default function Files() {
                   <td>{fileNameOf(file)}</td>
                   <td>{file.ext === "" ? "none" : file.ext}</td>
                   <td>v{file.version}</td>
+                  <td>{file.is_public ? "public" : "private"}</td>
                   <td>
                     <div className="tableactions">
+                      <button
+                        type="button"
+                        className="linkbutton"
+                        onClick={() => void onToggleShare(file)}
+                        aria-label={file.is_public ? `Unshare ${fileNameOf(file)}` : `Share ${fileNameOf(file)}`}
+                        disabled={busy}
+                      >
+                        {file.is_public ? "unshare" : "share"}
+                      </button>
                       <button
                         type="button"
                         className="linkbutton"

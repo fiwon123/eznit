@@ -45,9 +45,8 @@ info:
 
     - `PUT` and `DELETE /v1/users/{id}` sit behind an admin guard that is still
       a TODO, so they answer `401` for everybody (#109).
-    - `GET /v1/users` and `GET /v1/users/{id}` answer with any account's email,
-      and `GET /v1/files/{id}` answers `302` with the storage record — path
-      included — instead of a file shape (#108, #110).
+    - `GET /v1/users` and `GET /v1/users/{id}` answer with any account's email
+      (#110).
 
     Neither is a contract to build on; they are recorded so a client author is
     not surprised by them.
@@ -373,23 +372,14 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
-  /v1/files/{id}:
-    parameters:
-      - $ref: "#/components/parameters/FileID"
+  /v1/files/shared:
     get:
-      operationId: getFile
+      operationId: listSharedFiles
       tags: [files]
-      summary: Read one file's record
-      description: |
-        Answers `302` with the storage record, which carries the server's path
-        on disk. This is a known gap: a correct answer would be `200` with a
-        shape that hides where the bytes live. Do not build a client on it.
-
-        The gap has a second half: an id that names no file answers `500`,
-        not `404`. Both halves are recorded here rather than promised away.
+      summary: List shared files
       responses:
-        "302":
-          description: The storage record, sent with `302 Found`.
+        "200":
+          description: Shared files.
           content:
             application/json:
               schema:
@@ -398,13 +388,37 @@ paths:
                   - type: object
                     properties:
                       data:
-                        $ref: "#/components/schemas/FileRecord"
-        "400":
-          $ref: "#/components/responses/BadRequest"
+                        $ref: "#/components/schemas/SharedFileList"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalServerError"
+
+  /v1/files/{id}:
+    parameters:
+      - $ref: "#/components/parameters/FileID"
+    get:
+      operationId: getFile
+      tags: [files]
+      summary: Read one file's record
+      responses:
+        "200":
+          description: The file record.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/FileData"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
     put:
       operationId: updateFile
       tags: [files]
@@ -465,6 +479,39 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/files/{id}/share:
+    parameters:
+      - $ref: "#/components/parameters/FileID"
+    post:
+      operationId: shareFile
+      tags: [files]
+      summary: Share or unshare a file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShareRequest"
+      responses:
+        "200":
+          description: Sharing updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: The file does not exist or is not owned by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -1058,7 +1105,7 @@ components:
     FileData:
       type: object
       description: One file, as the list shows it.
-      required: [id, name, ext, version]
+      required: [id, name, ext, version, is_public]
       properties:
         id:
           type: string
@@ -1073,6 +1120,8 @@ components:
           type: integer
           minimum: 1
           description: Increments on every replacement.
+        is_public:
+          type: boolean
 
     FileList:
       type: object
@@ -1088,13 +1137,54 @@ components:
         total:
           type: integer
 
+    SharedFileData:
+      type: object
+      required: [id, name, ext, version, is_public, owner, owner_email]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: The file name without its extension.
+        ext:
+          type: string
+          description: The extension without the dot; empty when there is none.
+        version:
+          type: integer
+          minimum: 1
+        is_public:
+          type: boolean
+        owner:
+          type: string
+        owner_email:
+          type: string
+          format: email
+
+    SharedFileList:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SharedFileData"
+        total:
+          type: integer
+
+    ShareRequest:
+      type: object
+      required: [is_public]
+      properties:
+        is_public:
+          type: boolean
+
     FileRecord:
       type: object
       description: |
-        The storage row, sent by `GET /v1/files/{id}`. It carries no JSON tags,
-        so its keys are the Go field names, and `Path` is the server's path on
-        disk. Both are part of the known gap described on that operation.
-      required: [ID, UserID, Name, Ext, Path, Version, ContentType, CreatedAt, UpdatedAt]
+        The storage row. It carries no JSON tags, so its keys are the Go field
+        names.
+      required: [ID, UserID, Name, Ext, Path, Version, ContentType, IsPublic, CreatedAt, UpdatedAt]
       properties:
         ID:
           type: string
@@ -1113,6 +1203,8 @@ components:
           type: integer
         ContentType:
           type: string
+        IsPublic:
+          type: boolean
         CreatedAt:
           type: string
           format: date-time

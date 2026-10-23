@@ -53,6 +53,17 @@ export interface FileData {
   name: string;
   ext: string;
   version: number;
+  is_public: boolean;
+}
+
+export interface SharedFileData {
+  id: string;
+  name: string;
+  ext: string;
+  version: number;
+  is_public: boolean;
+  owner: string;
+  owner_email: string;
 }
 
 export interface ListResponse<T = TemplateData> {

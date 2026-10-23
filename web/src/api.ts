@@ -3,6 +3,7 @@ import type {
   FileData,
   ListResponse,
   LoginResponse,
+  SharedFileData,
   TemplateDetail,
   TemplateFileData,
 } from "./types";
@@ -194,6 +195,22 @@ export function listFiles(): Promise<ListResponse<FileData>> {
   return request<ListResponse<FileData>>("/files/me");
 }
 
+export function listSharedFiles(): Promise<ListResponse<SharedFileData>> {
+  return request<ListResponse<SharedFileData>>("/files/shared");
+}
+
+export async function shareFile(id: string, isPublic: boolean): Promise<void> {
+  const response = await fetch(`/v1/files/${encodeURIComponent(id)}/share`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ is_public: isPublic }),
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, reason(await readEnvelope(response), response.status));
+  }
+}
+
 export async function uploadFile(file: File): Promise<void> {
   const form = new FormData();
   form.append("file", file);
@@ -219,6 +236,14 @@ export async function downloadFile(file: FileData): Promise<void> {
   });
 
   await saveDownload(response, fileNameOf(file));
+}
+
+export async function downloadFileShared(file: SharedFileData): Promise<void> {
+  const response = await fetch(`/v1/files/${encodeURIComponent(file.id)}/content`, {
+    headers: authHeaders(),
+  });
+
+  await saveDownload(response, fileNameOf(file as unknown as FileData));
 }
 
 export function deleteFile(id: string): Promise<void> {

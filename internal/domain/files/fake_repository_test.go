@@ -84,6 +84,34 @@ func (r *fakeRepository) UpdateFile(file File) bool {
 	return true
 }
 
+func (r *fakeRepository) GetSharedFile(id uuid.UUID) (*File, bool) {
+	file, ok := r.files[id]
+	if !ok || !file.IsPublic {
+		return nil, false
+	}
+	return &file, true
+}
+
+func (r *fakeRepository) ListSharedFiles() ([]SharedFileWithOwner, bool) {
+	var out []SharedFileWithOwner
+	for _, file := range r.files {
+		if file.IsPublic {
+			out = append(out, SharedFileWithOwner{File: file, OwnerEmail: "user@example.com"})
+		}
+	}
+	return out, true
+}
+
+func (r *fakeRepository) SetFilePublic(id uuid.UUID, userID uuid.UUID, isPublic bool) bool {
+	file, ok := r.files[id]
+	if !ok || file.UserID != userID {
+		return false
+	}
+	file.IsPublic = isPublic
+	r.files[id] = file
+	return true
+}
+
 func (r *fakeRepository) IsUserOwner(id uuid.UUID, userID uuid.UUID) bool {
 	file, ok := r.files[id]
 	return ok && file.UserID == userID

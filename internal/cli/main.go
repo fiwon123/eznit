@@ -47,6 +47,8 @@ type CLI struct {
 	Upload   UploadCmd   `cmd:"" aliases:"u" help:"upload a file"`
 	List     ListCmd     `cmd:"" help:"list files"`
 	Delete   DeleteCmd   `cmd:"" help:"delete file"`
+	Share    ShareCmd    `cmd:"" help:"share a file"`
+	Unshare  UnshareCmd  `cmd:"" help:"unshare a file"`
 	Logout   LogoutCmd   `cmd:"" help:"logout user and remove credential"`
 
 	Template TemplateCmd `cmd:"" help:"work with templates"`
