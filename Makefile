@@ -77,13 +77,17 @@ build_cli: verify
 	chmod a+x $(LINUX_BIN)
 	chmod a+x $(SHORT_LINUX_BIN)
 
-build_api: verify
+# The API and GUI binaries carry the built web UI (web/embed.go), so building
+# either one builds the UI first. `make check` deliberately does not: the
+# committed web/dist/.gitkeep keeps the embed directive valid without a build,
+# which is what lets the Go gate run on a machine with no Node.
+build_api: web_build verify
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(LINUX_SERVER_BIN) $(API_FOLDER)
 
 	chmod -R a+r $(BUILD_API)
 	chmod a+x $(LINUX_SERVER_BIN)
 
-build_gui: verify
+build_gui: web_build verify
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_DIR)/gui/eznit-gui.exe ./cmd/gui
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_DIR)/gui/eznit-gui ./cmd/gui
 	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_DIR)/gui/eznit-gui-darwin ./cmd/gui
@@ -283,6 +287,10 @@ web_build: ## Build the web UI into web/dist
 	@if ! command -v node >/dev/null 2>&1; then \
 		echo "ERROR: node is not installed — mise install puts the pinned Node on PATH (see mise.toml)" >&2; \
 		exit 1; \
+	fi; \
+	if [ ! -d "$(WEB_FOLDER)/node_modules" ]; then \
+		echo "[web] node_modules is missing — installing the pinned dependencies..."; \
+		(cd $(WEB_FOLDER) && npm ci); \
 	fi; \
 	cd $(WEB_FOLDER) && npm run build
 
