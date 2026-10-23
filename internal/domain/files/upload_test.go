@@ -128,6 +128,60 @@ func TestUpdateFileRejectsAFilenameWithAPath(t *testing.T) {
 	}
 }
 
+// An update is a new version: the index row moves to it, and it gets its own
+// history row. The version before it keeps its row — a history that is
+// rewritten to the newest path cannot say where anything older went (#65).
+func TestUpdateFileRecordsTheNewVersionInHistory(t *testing.T) {
+	owner := uuid.New()
+	fileID := uuid.New()
+
+	firstVersion := File{
+		ID:      fileID,
+		UserID:  owner,
+		Name:    "report",
+		Ext:     "txt",
+		Version: 1,
+		Path:    filepath.Join(t.TempDir(), "1_report.txt"),
+	}
+
+	uploadRoot := t.TempDir()
+	// The upload left the file's own folder behind, and an update writes the
+	// next version into it.
+	if err := os.MkdirAll(filepath.Join(uploadRoot, owner.String(), fileID.String()), 0o755); err != nil {
+		t.Fatalf("make the file's folder: %v", err)
+	}
+
+	repo := newFakeRepository(firstVersion)
+	svc := newTestService(t, repo, uploadRoot)
+
+	header := &multipart.FileHeader{Filename: "report.txt"}
+
+	if _, appError := svc.UpdateFile(userContext(owner), multipartFile(t, []byte("the second version")), header, fileID, owner); appError != nil {
+		t.Fatalf("expected the update to succeed, got %v", appError)
+	}
+
+	if got := repo.files[fileID].Version; got != 2 {
+		t.Errorf("the index row is version %d, want 2", got)
+	}
+
+	if len(repo.history) != 1 {
+		t.Fatalf("expected one history row for the new version, got %d", len(repo.history))
+	}
+
+	history := repo.history[0]
+	if history.ID != fileID || history.Version != 2 {
+		t.Errorf("the history row is file %s version %d, want %s version 2", history.ID, history.Version, fileID)
+	}
+
+	if base := filepath.Base(history.Path); base != "2_report.txt" {
+		t.Errorf("the history row points at %q, want 2_report.txt", base)
+	}
+
+	if repo.history[0].Path == firstVersion.Path {
+		t.Error("the history row points at the first version's path")
+	}
+}
+
 // The list is bounded: the service asks the repository for a limited list
 // and returns no more than that.
 func TestGetFilesIsBounded(t *testing.T) {

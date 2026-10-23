@@ -85,8 +85,10 @@ A file's content is not in the database. It is written under the upload root
 
 The `files` row is the index of that path — `name`, `ext`, `content_type` and
 `version` are what the API serves, the path is what a download opens. Every
-version writes a new file into the file's own directory, and the `files` row
-moves to it.
+version writes a new file into the file's own directory, the `files` row moves
+to it, and `files_history` keeps a row for each version written. A superseded
+version's bytes stay on disk because that row points at them; deleting the
+file removes the whole directory.
 
 Template contents are the exception: they live in `TEXT` columns in PostgreSQL,
 not on disk.
@@ -97,7 +99,7 @@ not on disk.
 | --- | --- |
 | `users` | id, email, password hash, created_at, updated_at |
 | `files` | id, user_id, name, ext, content_type, path, version, timestamps |
-| `files_history` | file_id, path, version — one row per stored version, written on upload (see #65: an update currently rewrites these rows) |
+| `files_history` | file_id, path, version — one row per stored version: upload writes the first, an update adds the next, and earlier rows are never rewritten |
 | `sessions` | token (primary key), user_id, is_active, created_at, expires_at |
 | `templates` | id, user_id, name, slug, description, kind, version, is_public |
 | `template_files` | template_id, path, content, is_executable — unique per (template, path) |
