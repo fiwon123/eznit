@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1.7
+#
+# The Vite dev server in a container — the `web-dev` compose service.
+#
+# The Go side has had a pinned sandbox all along; the frontend needed Node on
+# the host, so `make dev-up` could only ever start half of the developer loop.
+# This image is the other half, and it pins the same Node as
+# `web/Dockerfile` (`mise.toml`), so a developer sees the version that ships.
+#
+# The build context is the repository root, not `web/`, because the entrypoint
+# lives in `scripts/` with the other sandbox scripts.
+
+ARG NODE_VERSION=24.22.1
+FROM node:${NODE_VERSION}-bookworm-slim
+
+# The host uid/gid, forwarded by docker-compose.yml. The base image's `node`
+# user is uid 1000, which is only the host user on a default Linux install, so
+# the image creates a matching account instead of assuming. Compose pins the
+# exact uid/gid through `user:` as well.
+ARG HOST_UID=1000
+ARG HOST_GID=1000
+
+RUN if ! getent group "${HOST_GID}" >/dev/null; then groupadd --gid "${HOST_GID}" devuser; fi \
+    && if ! getent passwd "${HOST_UID}" >/dev/null; then \
+         useradd --uid "${HOST_UID}" --gid "${HOST_GID}" --create-home --shell /bin/bash devuser; \
+       fi
+
+# --- the mount points, created in the image ---------------------------------
+#
+# Docker creates the DESTINATION of a bind mount or a volume when the image
+# does not already contain it, and it creates that path as **root**. The
+# runtime user is ${HOST_UID}, so it then cannot write what Docker just made,
+# and `npm ci` dies with `EACCES: permission denied, mkdir '.../node_modules'`
+# while the container still reports `Up`.
+#
+# ADD YOUR OWN MOUNT POINTS HERE: every directory docker-compose.yml mounts
+# into this service needs a line in this block. `node_modules` is the one that
+# matters — the workspace itself is a bind mount the host already owns.
+RUN mkdir -p /workspace/web/node_modules \
+    && chown -R "${HOST_UID}:${HOST_GID}" /workspace
+
+COPY scripts/web-dev-entrypoint.sh /usr/local/bin/web-dev-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/web-dev-entrypoint.sh
+
+USER ${HOST_UID}:${HOST_GID}
+
+WORKDIR /workspace/web
+
+CMD ["/usr/local/bin/web-dev-entrypoint.sh"]

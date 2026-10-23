@@ -2,7 +2,18 @@
 # file a non-error, so a fresh clone can run `make check`, `make clean` and
 # `make build` without a secret file. The targets that genuinely need the
 # variables check for themselves (see `require_db_vars` below).
+#
+# Not inside the sandbox. There the configuration is the container's: compose
+# sets DB_HOST/DB_PORT/DB_USER/DB_NAME explicitly (the in-network address) and
+# passes the rest through `env_file`, which strips the quotes `.env` is written
+# with. Importing the file here *again* overrides all of that with the host
+# values — and make keeps the quotes, so `DB_HOST="localhost"` reaches the API's
+# DSN as a literal `"localhost"` and the sandbox cannot reach the database.
+# DEV_SANDBOX is set by the `dev` service in docker-compose.yml.
+ifeq ($(DEV_SANDBOX),1)
+else
 -include .env .env.local
+endif
 export
 
 SERVER_NAME := server
@@ -12,6 +23,14 @@ APP_NAME := eznit
 APP_NAME_SHORT := ez
 SCRIPT_NAME := add_to_path
 INJECT_VERSION:= main.Version
+
+# Host ports for the two entry points. `make up` (the product) and
+# `make dev-up` (the developer loop) publish the same pair, so they are
+# alternatives: `preflight-ports` is what turns "the other one is already
+# running" into a message instead of a Docker bind error. Compose reads the
+# same names, so an override here is the override everywhere.
+HOST_PORT ?= 4000
+WEB_PORT ?= 5173
 
 API_FOLDER := ./cmd/api
 CLI_FOLDER := ./cmd/cli
@@ -173,9 +192,48 @@ migrate_force:
 ## Docker
 unexport
 
-.PHONY: docker_up docker_down docker_up_all docker_down_v up
+.PHONY: docker_up docker_down docker_up_all docker_down_v up preflight-ports
 
-up: ## Build and run the product: API :4000, web UI :5173, db, migrations
+# Which entry point is starting. Set by the target that depends on
+# `preflight-ports`, and only read there.
+MODE ?= dev
+
+# `make up` and `make dev-up` publish the same host ports, so they are
+# alternatives. This guard runs before either one starts anything, and names the
+# command that clears the way — instead of starting half a stack and failing on
+# `bind: address already in use`.
+#
+# A port held by *this* entry point's own containers is not a collision:
+# `make dev-up` twice in a row must work.
+preflight-ports:
+	@services="$$(docker compose --profile dev ps --services --status running 2>/dev/null || true)"; \
+	running() { printf '%s\n' "$$services" | grep -qx "$$1"; }; \
+	probe() { bash -c "exec 3<>/dev/tcp/127.0.0.1/$$1" 2>/dev/null; }; \
+	die() { echo "ERROR: $$1" >&2; shift; for line in "$$@"; do echo "       $$line" >&2; done; exit 1; }; \
+	if [ "$(MODE)" = "dev" ]; then \
+	    if running api || running web; then \
+	        die "the product stack is running (api/web) and already holds the host ports." \
+	            "make up and make dev-up are alternatives — stop the product first:" \
+	            "    make docker_down"; \
+	    fi; \
+	    if ! running dev && probe "$(HOST_PORT)"; then \
+	        die "host port $(HOST_PORT) is already in use by something that is not this stack." \
+	            "Free it, or start the dev loop elsewhere: HOST_PORT=<port> make dev-up"; \
+	    fi; \
+	    if ! running web-dev && probe "$(WEB_PORT)"; then \
+	        die "host port $(WEB_PORT) is already in use by something that is not this stack." \
+	            "Free it, or start the dev loop elsewhere: WEB_PORT=<port> make dev-up"; \
+	    fi; \
+	else \
+	    if running dev || running web-dev; then \
+	        die "the dev loop is running (dev/web-dev) and already holds the host ports." \
+	            "make up and make dev-up are alternatives — stop the dev loop first:" \
+	            "    make dev-down"; \
+	    fi; \
+	fi
+
+up: MODE = product
+up: preflight-ports ## Build and run the product: API :4000, web UI :5173, db, migrations
 	docker compose up --build db migrate api web
 
 docker_up:
@@ -371,7 +429,7 @@ HOST_HOME ?= $(HOME)
 # compose, whatever the surrounding sections do with export attributes.
 # Without a named export the sandbox would start as UID/GID 1000 on a Linux
 # host whose uid differs, and the bind mount would end up root-owned.
-export HOST_UID HOST_GID HOST_HOME
+export HOST_UID HOST_GID HOST_HOME HOST_PORT WEB_PORT
 
 # --- Optional in-container agent ---------------------------------------------
 # Starting the sandbox never requires opencode. The agent layer is optional so
@@ -397,17 +455,18 @@ else
 COMPOSE_UP := docker compose --profile dev
 endif
 
-# The sandbox needs the database: the API talks to the `db` service on the
-# compose network, so the stack comes up with it.
-DEV_SERVICES := dev db migrate
+# The marker file is the dev entrypoint's opt-in (scripts/dev-entrypoint.sh):
+# with it present the sandbox runs `make run_api` instead of sleeping. It is
+# gitignored per-checkout state, created by `dev-up` and removed by `dev-down`.
+DEV_START_MARKER := .dev/sandbox-start
 
 help: ## List the available targets
-	@grep -E '^[a-zA-Z_-]+:.*## ' $(firstword $(MAKEFILE_LIST)) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*## ' $(firstword $(MAKEFILE_LIST)) | sort | awk 'BEGIN{FS=":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 	@printf '\n  \033[36m%-30s\033[0m %s\n' "docker compose up" "run the product with no host prerequisites (any OS)"
-	@printf '  \033[36m%-30s\033[0m %s\n' "docker compose up dev db migrate" "run the dev sandbox without Make"
+	@printf '  \033[36m%-30s\033[0m %s\n' "docker compose up dev web-dev db migrate" "the dev loop without Make (needs .dev/sandbox-start)"
 	@printf '  \033[36m%-30s\033[0m %s\n' "scripts/dev-up.py" "native Windows: python scripts/dev-up.py dev-up"
-	@printf '\n  %s\n' "dev-up starts no frontend and no API: the UI on :5173 comes from make up"
-	@printf '  %s\n' "(the product) or make web_dev (dev loop, needs make run_api). Both use :4000."
+	@printf '\n  %s\n' "dev-up is the dev loop: UI :5173 (Vite, hot reload) and API :4000, both"
+	@printf '  %s\n' "from the source. make up is the product: same ports, built images."
 
 # --- One-time local setup ---------------------------------------------------
 # Creates the two local files the stack needs, from the committed examples:
@@ -488,19 +547,34 @@ opencode-upgrade: ## Upgrade host opencode and refresh the dev sandbox
 # HOST_UID/HOST_GID need no explicit export here: docker-compose.yml defaults
 # them, and the exported values above supply the host's real identity when make
 # is running on the host. Only the GitHub token is resolved at up-time.
-dev-up: preflight ## Start the sandbox + db + migrations — no UI and no API process (see make up)
-	@printf '\n  dev-up starts the sandbox, PostgreSQL and the migrations — no HTTP listener.\n'
-	@printf '  http://localhost:5173 is not started here. Use one of:\n'
-	@printf '    %-28s %s\n' "make up" "the product: UI :5173, API :4000"
-	@printf '    %-28s %s\n' "make web_dev + make run_api" "the dev loop: Vite :5173, API :4000"
-	@printf '\n'
-	@GH_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) GITHUB_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) $(COMPOSE_UP) up --build $(DEV_SERVICES)
+.PHONY: dev-up dev-down dev-log dev-build dev-reset
 
-dev-down: ## Stop the dev sandbox and the local stack (keeps volumes)
-	@docker compose down
+# dev-up is the developer loop, all of it: the API runs inside the sandbox
+# against the source, and the UI is the Vite server in `web-dev`, with hot
+# reload. Both ports answer when this returns — which is the whole point of the
+# target, and what it did not do before.
+#
+# Two steps, not one, because of the marker file. The entrypoint reads it when
+# the container *starts*; a plain `up` leaves an already-running sandbox
+# asleep, so `dev` is recreated to make the entrypoint run again.
+dev-up: MODE = dev
+dev-up: preflight preflight-ports ## Start the dev loop: UI :5173 (Vite, live reload), API :4000
+	@printf '\n  dev-up starts the developer loop in containers:\n'
+	@printf '    %-14s %s\n' "UI (Vite)" "http://localhost:$(WEB_PORT)   hot reload"
+	@printf '    %-14s %s\n' "API" "http://localhost:$(HOST_PORT)"
+	@printf '  PostgreSQL and the migrations start first; the UI proxies /v1 to the API.\n'
+	@printf '  Ctrl-C stops the log stream — the containers keep running. "make dev-down" stops them.\n\n'
+	@mkdir -p .dev && touch $(DEV_START_MARKER)
+	@GH_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) GITHUB_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) HOST_PORT=$(HOST_PORT) WEB_PORT=$(WEB_PORT) $(COMPOSE_UP) up -d --build --force-recreate dev
+	@HOST_PORT=$(HOST_PORT) WEB_PORT=$(WEB_PORT) $(COMPOSE_UP) up -d web-dev
+	@$(COMPOSE_UP) logs -f dev web-dev
+
+dev-down: ## Stop the dev loop and the local stack (keeps volumes)
+	@rm -f $(DEV_START_MARKER)
+	@$(COMPOSE_UP) down
 
 dev-log: ## Tail dev sandbox logs
-	@docker compose logs -f dev
+	@$(COMPOSE_UP) logs -f dev
 
 dev-build: check-identity ## Rebuild the dev image after Dockerfile/dependency changes
 	@docker compose build dev
@@ -510,7 +584,8 @@ dev-build: check-identity ## Rebuild the dev image after Dockerfile/dependency c
 # along with the build caches, so the name says so.
 dev-reset: ## Stop everything and wipe the volumes — INCLUDING the local database
 	@echo "This removes the local database volume as well as the build caches." >&2
-	@docker compose down --volumes
+	@rm -f $(DEV_START_MARKER)
+	@$(COMPOSE_UP) down --volumes
 
 shell: dev-shell
 opencode: dev-opencode
