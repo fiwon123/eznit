@@ -200,9 +200,16 @@ These are tracked issues, not surprises for a reviewer to find:
 | Gap | Issue | Why it matters |
 | --- | --- | --- |
 | The users and the middleware packages have no tests | — | `make check` compiles and vets them; it executes nothing. `sessions` has a schema test only |
+| `GET /v1/users` and `GET /v1/users/{id}` answer with any account's email | #110 | any caller with a session can enumerate the instance's accounts |
+| `PUT` and `DELETE /v1/users/{id}` answer `401` for every caller | #109 | the admin guard is a TODO, so the routes are unreachable |
+| `GET /v1/files/{id}` answers `302` with the storage record, `Path` included | #108 | a client that follows redirects reads nothing, and the body leaks where the bytes live |
+
+The OpenAPI document (`internal/platform/openapi/openapi.yaml`) records these
+three as known gaps instead of promising what the code does not do.
 
 **The files, sessions and templates domains, the CLI, the schema helper, the
-web UI and the path helper have tests; the rest of the repository does not.**
+web UI, the OpenAPI package and the path helper have tests; the rest of the
+repository does not.**
 `go test ./...` prints `[no test files]` for the packages without one, and
 still exits 0. A green `Test` step in CI means
 "the packages with tests passed" — name the packages when you report a

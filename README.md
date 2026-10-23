@@ -20,6 +20,7 @@ retrieving your own files, backed by PostgreSQL.
   - [Build the CLI](#build-the-cli)
   - [Commands](#commands)
 - [Web UI](#web-ui)
+- [API reference](#api-reference)
 - [Security status](#security-status)
 - [How to develop](#how-to-develop)
   - [Layout](#layout)
@@ -196,6 +197,23 @@ remote stays the plain HTTPS URL. `EZNIT_REPOS` sets the clone root when
 `--dir` is not given, and `EZNIT_GITHUB_API` points at a GitHub Enterprise API.
 `eznit logout` removes the session token and leaves the host token in place;
 `eznit repo auth --remove` removes that one.
+
+## API reference
+
+Every `/v1` operation is described in one OpenAPI 3.1 document, served by the
+API itself:
+
+- **`http://localhost:4000/docs`** — Swagger UI, with an **Authorize** button
+  for a session token and "Try it out" on every operation.
+- **`http://localhost:4000/v1/openapi.yaml`** — the document.
+- **`http://localhost:4000/v1/openapi.json`** — the same document as JSON.
+
+The UI assets are embedded in the binary, so the reference works with no
+internet access, and none of these routes needs a session — a client author can
+read the contract before they have a token. The document is committed at
+`internal/platform/openapi/openapi.yaml`. A test fails when it and the router
+disagree, so it describes the API as it is, including the known gaps listed in
+[`AGENTS.md`](AGENTS.md#known-gaps--read-this-before-trusting-a-green-run).
 
 ## Web UI
 

@@ -51,6 +51,7 @@ internal/gitprovider/  git-host clients (GitHub today) behind one interface;
                     holds no credential — the token is an argument
 internal/platform/  cross-domain infrastructure
                     api/         the /v1 router, built once for both binaries
+                    openapi/     the OpenAPI document, its JSON twin, and Swagger UI at /docs
                     middleware/  session guard (Authorization: Bearer <token>)
                     sql/         database connection and the DSN from the environment
                     webui/       the SPA handler both binaries serve the UI with
@@ -150,6 +151,39 @@ that pulls it in. A command a template references cannot be deleted while the
 reference exists: `ON DELETE RESTRICT` keeps a published template from quietly
 losing a file. A template may only reference commands of its own owner, and
 the service checks it before the reference is stored.
+
+## The API reference
+
+`internal/platform/openapi/` holds the contract and the UI over it:
+
+- `openapi.yaml` is the document: OpenAPI 3.1, every `/v1` operation, the
+  response envelope, the multipart bodies and the bearer scheme. It is
+  committed, reviewed like code, and embedded in the binary.
+- `openapi.go` serves it — `GET /v1/openapi.yaml`, the same document as JSON at
+  `GET /v1/openapi.json`, and Swagger UI at `/docs`.
+- `index.html` is the UI page. Its JavaScript and stylesheet come from
+  `github.com/swaggo/files/v2`, which embeds the Swagger UI distribution in the
+  binary, so nothing on `/docs` reaches the network: the reference works on a
+  host with no internet access.
+
+The routes are public on purpose — a client author reads the contract before
+they have a token. They expose the route table and the schemas, never a row, a
+file or a token. `internal/platform/webui` passes `/docs` to the API, because
+the SPA fallback would otherwise answer it with the app.
+
+The document is the source of truth, not a by-product of comments. Three tests
+keep it honest:
+
+- `internal/platform/api/openapi_test.go` walks the router with `chi.Walk` and
+  fails when an operation is in one and not the other, in either direction;
+- the same file compares each DTO schema with its struct's json tags, and the
+  `FileRecord` schema with the field names the storage model actually sends;
+- `internal/platform/openapi/openapi_test.go` resolves every `$ref`, checks
+  each operation has an id, a summary, a success response and its path
+  parameters, and asserts the UI page references no network URL.
+
+Adding an endpoint means adding it to `openapi.yaml` in the same pull request;
+the gate fails otherwise.
 
 ## Data model
 
@@ -259,6 +293,7 @@ dispatch only. Feature pull requests are gated locally.
 | You are adding… | Start at |
 | --- | --- |
 | an endpoint | `internal/domain/<resource>/handler.go` (+ `dto.go`) |
+| the documentation of an endpoint | `internal/platform/openapi/openapi.yaml` — the drift gate fails until it matches |
 | a rule ("only the owner may…") | the same package's `service.go`, with a test |
 | a query or a column read | `repository_sql.go`; name the columns, never `SELECT *` |
 | a table or a constraint | a new `db/migrations/NNNNNN_*.up.sql`/`.down.sql` pair |
