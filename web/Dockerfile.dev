@@ -40,7 +40,14 @@ RUN mkdir -p /workspace/web/node_modules \
     && chown -R "${HOST_UID}:${HOST_GID}" /workspace
 
 COPY scripts/web-dev-entrypoint.sh /usr/local/bin/web-dev-entrypoint.sh
-RUN chmod 0755 /usr/local/bin/web-dev-entrypoint.sh
+# The `sed` is what makes the comment at the top of that script true. COPY reads
+# the host *working tree*, not what git stored, and a Windows checkout (or one
+# materialised before .gitattributes existed) can be CRLF — `#!/bin/sh\r` is not
+# a shebang the kernel can run, so the container would die before the entrypoint
+# ran a line. Rather than detect that at run time the way the bind-mounted
+# scripts/dev-entrypoint.sh has to, the image normalises the bytes once.
+RUN chmod 0755 /usr/local/bin/web-dev-entrypoint.sh \
+    && sed -i 's/\r$//' /usr/local/bin/web-dev-entrypoint.sh
 
 USER ${HOST_UID}:${HOST_GID}
 

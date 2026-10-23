@@ -24,13 +24,35 @@ APP_NAME_SHORT := ez
 SCRIPT_NAME := add_to_path
 INJECT_VERSION:= main.Version
 
-# Host ports for the two entry points. `make up` (the product) and
-# `make dev-up` (the developer loop) publish the same pair, so they are
-# alternatives: `preflight-ports` is what turns "the other one is already
-# running" into a message instead of a Docker bind error. Compose reads the
-# same names, so an override here is the override everywhere.
+# Host ports. WEB_PORT is shared by both entry points: the product's `web`
+# service and the loop's `web-dev` publish the same one. The API port has TWO
+# names, because the two API processes are independent services: the sandbox
+# `dev` publishes `${HOST_PORT}` and the product's `api` publishes
+# `${API_PORT}` (see docker-compose.yml). Both default to 4000.
+#
+# `make up` (the product) and `make dev-up` (the developer loop) therefore want
+# the same pair, whichever names they use, and `preflight-ports` probes exactly
+# what the entry point about to start will bind — that is what turns "the other
+# one is already running", or a listener belonging to neither, into a message
+# instead of a Docker bind error.
 HOST_PORT ?= 4000
+API_PORT ?= 4000
 WEB_PORT ?= 5173
+
+# `.env` is shell syntax, not make syntax, and make does not strip the quotes it
+# is written with — `API_PORT="4000"` (see .env.example) arrives here as the
+# literal `"4000"`. That is harmless inside a recipe, because the shell removes
+# the quotes when it expands the variable, but it is fatal in the *environment*:
+# Compose only unquotes when it parses `.env` itself, so an exported `"4000"`
+# reaches it as a five-character port and every command fails with
+#
+#     invalid hostPort: "4000"
+#
+# including `down` and `ps`. Normalise to what the file meant. Single quotes are
+# stripped too, since Compose strips them.
+HOST_PORT := $(patsubst "%",%,$(patsubst '%',%,$(HOST_PORT)))
+API_PORT := $(patsubst "%",%,$(patsubst '%',%,$(API_PORT)))
+WEB_PORT := $(patsubst "%",%,$(patsubst '%',%,$(WEB_PORT)))
 
 API_FOLDER := ./cmd/api
 CLI_FOLDER := ./cmd/cli
@@ -229,6 +251,14 @@ preflight-ports:
 	        die "the dev loop is running (dev/web-dev) and already holds the host ports." \
 	            "make up and make dev-up are alternatives — stop the dev loop first:" \
 	            "    make dev-down"; \
+	    fi; \
+	    if ! running api && probe "$(API_PORT)"; then \
+	        die "host port $(API_PORT) is already in use by something that is not this stack." \
+	            "Free it, or run the product elsewhere: API_PORT=<port> make up"; \
+	    fi; \
+	    if ! running web && probe "$(WEB_PORT)"; then \
+	        die "host port $(WEB_PORT) is already in use by something that is not this stack." \
+	            "Free it, or run the product elsewhere: WEB_PORT=<port> make up"; \
 	    fi; \
 	fi
 
@@ -429,7 +459,7 @@ HOST_HOME ?= $(HOME)
 # compose, whatever the surrounding sections do with export attributes.
 # Without a named export the sandbox would start as UID/GID 1000 on a Linux
 # host whose uid differs, and the bind mount would end up root-owned.
-export HOST_UID HOST_GID HOST_HOME HOST_PORT WEB_PORT
+export HOST_UID HOST_GID HOST_HOME HOST_PORT API_PORT WEB_PORT
 
 # --- Optional in-container agent ---------------------------------------------
 # Starting the sandbox never requires opencode. The agent layer is optional so
@@ -566,7 +596,7 @@ dev-up: preflight preflight-ports ## Start the dev loop: UI :5173 (Vite, live re
 	@printf '  Ctrl-C stops the log stream — the containers keep running. "make dev-down" stops them.\n\n'
 	@mkdir -p .dev && touch $(DEV_START_MARKER)
 	@GH_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) GITHUB_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) HOST_PORT=$(HOST_PORT) WEB_PORT=$(WEB_PORT) $(COMPOSE_UP) up -d --build --force-recreate dev
-	@HOST_PORT=$(HOST_PORT) WEB_PORT=$(WEB_PORT) $(COMPOSE_UP) up -d web-dev
+	@HOST_PORT=$(HOST_PORT) WEB_PORT=$(WEB_PORT) $(COMPOSE_UP) up -d --build web-dev
 	@$(COMPOSE_UP) logs -f dev web-dev
 
 dev-down: ## Stop the dev loop and the local stack (keeps volumes)

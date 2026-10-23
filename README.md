@@ -394,7 +394,7 @@ unmigrated database.
 Everything also works without Make:
 
 ```sh
-touch .dev/sandbox-start                       # makes the sandbox run the API
+mkdir -p .dev && touch .dev/sandbox-start      # makes the sandbox run the API
 docker compose up dev web-dev db migrate       # the whole loop
 python scripts/dev-up.py dev-up                # native Windows: same thing
 ```
@@ -403,7 +403,7 @@ python scripts/dev-up.py dev-up                # native Windows: same thing
 | --- | --- |
 | Linux, macOS | `make dev-up` |
 | WSL2 | `make dev-up` (the host is Linux) |
-| Windows (native) | `python scripts/dev-up.py dev-up`, or `docker compose up dev web-dev db migrate` after touching the marker |
+| Windows (native) | `python scripts/dev-up.py dev-up`, or `docker compose up dev web-dev db migrate` after creating the marker |
 
 The `dev` and `web-dev` services are behind the `dev` Compose profile: plain
 `docker compose up` is the **product** (see [Run the stack](#run-the-stack)),

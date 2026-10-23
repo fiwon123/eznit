@@ -501,7 +501,7 @@ def cmd_dev_up() -> int:
     if result.returncode != 0:
         return result.returncode
 
-    result = run_compose(files, ["up", "-d", WEB_SERVICE], with_github=True)
+    result = run_compose(files, ["up", "-d", "--build", WEB_SERVICE], with_github=True)
     if result.returncode != 0:
         return result.returncode
 

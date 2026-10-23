@@ -155,7 +155,7 @@ the browser; a `.go` edit needs the API restarted — there is no Go file watche
 
 The services are behind the `dev` Compose profile, so plain
 `docker compose up` is the **product**, not the loop. The no-Make equivalent is
-`touch .dev/sandbox-start && docker compose up dev web-dev db migrate` —
+`mkdir -p .dev && touch .dev/sandbox-start && docker compose up dev web-dev db migrate` —
 naming a profiled service enables its profile, and the marker is what makes the
 sandbox entrypoint run the API instead of sleeping — and
 `python scripts/dev-up.py dev-up` is the native-Windows path. The loop needs

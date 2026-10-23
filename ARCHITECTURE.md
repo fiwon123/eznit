@@ -61,6 +61,7 @@ pkg/                shared code with no project rules in it
                     types/    Envelope[T], the response wrapper
 web/                the React UI; embed.go embeds the build into the binaries
                     Dockerfile   the web tier image (Node builds, nginx serves)
+                    Dockerfile.dev  the Vite dev server, the `web-dev` service
                     nginx.conf   SPA fallback and the /v1 proxy
 db/migrations/      golang-migrate SQL, one .up/.down pair per change
 scripts/            migrations runner, dev sandbox helpers, path setup

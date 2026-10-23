@@ -2,9 +2,11 @@
 # Entrypoint for the `web-dev` compose service: the Vite dev server.
 #
 # POSIX sh on purpose — the Node image's /bin/sh is dash and nothing here needs
-# more than that. Unlike scripts/dev-entrypoint.sh this one does not need the
-# CRLF guard: it is COPYed into the image, so the image build reads the file
-# from git-normalised bytes, not from the host working tree.
+# more than that. Unlike scripts/dev-entrypoint.sh this one needs no run-time
+# CRLF guard: it is COPYed into the image rather than bind-mounted, and the
+# build normalises the bytes it copies (see web/Dockerfile.dev). A bind-mounted
+# script cannot do that, which is why the Go sandbox has to detect the case
+# while it runs.
 set -eu
 
 cd /workspace/web
