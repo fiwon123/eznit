@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -66,6 +67,36 @@ func TestTheRouterAndTheDocumentAgree(t *testing.T) {
 		if !served[operation] {
 			t.Errorf("the document describes %s but the router does not serve it", operation)
 		}
+	}
+}
+
+// The documentation is public on purpose: a client author reads the contract
+// before they have a token. These routes are mounted outside every session
+// guard, and this is what proves it — the gate above only proves they exist.
+func TestTheDocumentationAnswersWithoutASession(t *testing.T) {
+	router := newTestRouter(t)
+
+	tests := []struct {
+		name   string
+		path   string
+		status int
+	}{
+		{"the document", openapi.SpecPath, http.StatusOK},
+		{"the document as JSON", openapi.SpecJSONPath, http.StatusOK},
+		{"the UI page", openapi.DocsPath, http.StatusOK},
+		{"the bare UI path", "/docs", http.StatusMovedPermanently},
+		{"a UI asset", "/docs/swagger-ui.css", http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, tt.path, nil))
+
+			if recorder.Code != tt.status {
+				t.Errorf("GET %s = %d, want %d", tt.path, recorder.Code, tt.status)
+			}
+		})
 	}
 }
 

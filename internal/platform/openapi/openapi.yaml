@@ -20,8 +20,10 @@ info:
     | `error` | a request that failed | why |
     | `timestamp` | always | RFC 3339, server time |
 
-    A `data` that is an empty list is omitted rather than sent as `[]`,
-    because the field carries `omitempty`.
+    `data` is present when the operation returns a payload and absent when it
+    returns only a message. A list resource answers the list even when it is
+    empty: `[]` for users, templates and commands, `null` for files, whose DTO
+    keeps the slice nil.
 
     A download (`/content`, `/archive`) is not an envelope: it is the bytes,
     with `Content-Disposition` naming the file.
@@ -38,8 +40,8 @@ info:
 
     ## Known gaps
 
-    This document describes the API **as it behaves today**, including two
-    routes that do not behave well yet:
+    This document describes the API **as it behaves today**, including the
+    routes below, which do not behave well yet:
 
     - `PUT` and `DELETE /v1/users/{id}` sit behind an admin guard that is still
       a TODO, so they answer `401` for everybody (#109).
@@ -257,6 +259,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No account with that id — the answer once the guard is implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
     delete:
@@ -376,6 +384,9 @@ paths:
         Answers `302` with the storage record, which carries the server's path
         on disk. This is a known gap: a correct answer would be `200` with a
         shape that hides where the bytes live. Do not build a client on it.
+
+        The gap has a second half: an id that names no file answers `500`,
+        not `404`. Both halves are recorded here rather than promised away.
       responses:
         "302":
           description: The storage record, sent with `302 Found`.
@@ -392,8 +403,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
     put:
       operationId: updateFile
       tags: [files]
@@ -420,15 +431,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
         "400":
-          description: No `file` part, or the body is over the limit.
+          description: No `file` part, the body is over the limit, or the file does not exist.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The caller does not own the file.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
     delete:
@@ -443,11 +458,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          description: The id is not a UUID, or the file does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -546,12 +563,6 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "409":
-          description: The slug is taken, or a referenced command is not the caller's.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -637,12 +648,6 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
-        "409":
-          description: The caller does not own the template, or the slug is taken.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
     delete:
@@ -1074,7 +1079,10 @@ components:
       required: [data, total]
       properties:
         data:
-          type: array
+          type: [array, "null"]
+          description: |
+            `null`, not `[]`, when the caller has no files: the DTO does not
+            initialise the slice. Treat both as "none".
           items:
             $ref: "#/components/schemas/FileData"
         total:
