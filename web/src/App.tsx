@@ -35,10 +35,11 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <Link className="brand" to="/">
+        <Link className="brand" to="/" aria-label="eznit">
           {/* The mark is inlined as a component so currentColor follows the
               theme; an <img>-loaded SVG isolates its document and made the
-              wordmark black-on-black on the dark default. */}
+              wordmark black-on-black on the dark default. The mark itself is
+              decorative, so the link that wraps it is what names it. */}
           <Logo className="brand-logo" />
         </Link>
         <nav className="topnav">

@@ -22,7 +22,12 @@ export default function SharedFileCard({ file }: SharedFileCardProps) {
     }
   }
 
-  const name = fileNameOf({ id: file.id, name: file.name, ext: file.ext, version: file.version } as any);
+  const name = fileNameOf({
+    id: file.id,
+    name: file.name,
+    ext: file.ext,
+    version: file.version,
+  } as any);
 
   return (
     <article className="card">
