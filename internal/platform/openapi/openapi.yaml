@@ -22,8 +22,7 @@ info:
 
     `data` is present when the operation returns a payload and absent when it
     returns only a message. A list resource answers the list even when it is
-    empty: `[]` for users, templates and commands, `null` for files, whose DTO
-    keeps the slice nil.
+    empty: every list answers `[]`, never `null`.
 
     A download (`/content`, `/archive`) is not an envelope: it is the bytes,
     with `Content-Disposition` naming the file.
@@ -1128,10 +1127,7 @@ components:
       required: [data, total]
       properties:
         data:
-          type: [array, "null"]
-          description: |
-            `null`, not `[]`, when the caller has no files: the DTO does not
-            initialise the slice. Treat both as "none".
+          type: array
           items:
             $ref: "#/components/schemas/FileData"
         total:

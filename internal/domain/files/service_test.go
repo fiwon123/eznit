@@ -2,6 +2,7 @@ package files
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -122,5 +123,26 @@ func TestGetFilesForUserWithoutAUserIsUnauthorized(t *testing.T) {
 
 	if appError.StatusCode() != http.StatusUnauthorized {
 		t.Errorf("expected status %d, got %d", http.StatusUnauthorized, appError.StatusCode())
+	}
+}
+
+// An empty list is still a list: a caller with no files gets `[]`, not `null`,
+// so a client ranges over the payload instead of null-checking it. The wire
+// shape is asserted, not the Go value — `null` is what the browser sees.
+func TestGetFilesForUserAnswersAnEmptyListAsArray(t *testing.T) {
+	svc := newTestService(t, newFakeRepository(), t.TempDir())
+
+	resp, appError := svc.GetFilesForUser(userContext(uuid.New()))
+	if appError != nil {
+		t.Fatalf("expected an empty list, got error %v", appError)
+	}
+
+	body, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("failed to encode the list: %v", err)
+	}
+
+	if got, want := string(body), `{"data":[],"total":0}`; got != want {
+		t.Errorf("the empty list encodes as %s, want %s", got, want)
 	}
 }
