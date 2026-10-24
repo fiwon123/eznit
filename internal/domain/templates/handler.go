@@ -39,24 +39,42 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 
 	r.Route("/v1/templates", func(r chi.Router) {
 
+		// The reads are public: the catalogue is a page a visitor may open
+		// without an account. The visibility rule is in the query — an
+		// anonymous caller only ever matches `is_public = TRUE` — so opening
+		// the route does not widen what it answers. The optional guard is
+		// what puts a caller who does have a session back in the query.
 		r.Group(func(r chi.Router) {
-			r.Use(h.guard.AuthUser)
+			r.Use(h.guard.OptionalUser)
 
-			// The catalogue lists the templates a user may use, so it
-			// needs a session like every other route on this resource.
+			// The catalogue: every public template, plus the caller's own
+			// when the request carries a session.
 			r.Get("/", h.listTemplatesHandler)
-			r.Post("/", h.publishTemplateHandler)
 
-			// The caller's own templates, the private ones included.
-			r.Get("/mine", h.listMyTemplatesHandler)
-
+			// A public template's detail, its archive and its files. A
+			// private template that is not the caller's is a 404, anonymous
+			// or not, so an id cannot be probed.
 			r.Get("/{id}", h.getTemplateHandler)
-			r.Put("/{id}", h.updateTemplateHandler)
-			r.Delete("/{id}", h.deleteTemplateHandler)
 			r.Get("/{id}/archive", h.downloadArchiveHandler)
 			// One file of a template, for a binary file the detail does not
 			// carry inline anywhere but in a publish-shaped response.
 			r.Get("/{id}/files/{fileID}/content", h.downloadTemplateFileHandler)
+		})
+
+		// Everything that writes, and everything that answers with the
+		// caller's own private templates, needs a session.
+		r.Group(func(r chi.Router) {
+			r.Use(h.guard.AuthUser)
+
+			r.Post("/", h.publishTemplateHandler)
+
+			// The caller's own templates, the private ones included. chi
+			// prefers this static segment over the `{id}` route above, so
+			// "mine" is never read as an id.
+			r.Get("/mine", h.listMyTemplatesHandler)
+
+			r.Put("/{id}", h.updateTemplateHandler)
+			r.Delete("/{id}", h.deleteTemplateHandler)
 		})
 	})
 }

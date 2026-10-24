@@ -10,8 +10,9 @@ import type {
 
 const TOKEN_KEY = "eznit.token";
 
-// The token lives in localStorage. The catalogue and the detail page are
-// behind the session guard, so the token is the only thing the API asks for.
+// The token lives in localStorage. The catalogue and a public template's
+// detail answer without one; the token is what widens the answer to the
+// caller's own private templates, and what every write needs.
 export function getToken(): string | null {
   return window.localStorage.getItem(TOKEN_KEY);
 }
@@ -82,8 +83,9 @@ function reason(envelope: Envelope<unknown>, status: number): string {
   return `The request failed (${status}).`;
 }
 
-// authHeaders carries the session token the guard reads. The files routes sit
-// behind the same guard as the catalogue, so they all send it.
+// authHeaders carries the session token the guard reads, when there is one.
+// The shared catalogue and a public file's bytes answer without it; the
+// caller's own routes do not.
 function authHeaders(): Headers {
   const headers = new Headers();
   const token = getToken();
@@ -155,7 +157,7 @@ export async function downloadTemplateArchive(template: TemplateDetail): Promise
 
 // downloadTemplateFile fetches one file of a template. The detail page uses it
 // for a binary file: the bytes are not inline, and a plain link would not
-// carry the token the guard wants.
+// carry the token a private template's bytes need.
 export async function downloadTemplateFile(
   templateID: string,
   file: TemplateFileData,

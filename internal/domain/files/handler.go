@@ -36,6 +36,15 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 
 	r.Route("/v1/files", func(r chi.Router) {
 
+		// The shared catalogue is public: it lists the files their owners
+		// marked public, and nothing else. The optional guard is what keeps
+		// the owner's address on the row for a caller with a session and
+		// leaves it off for a visitor.
+		r.Group(func(r chi.Router) {
+			r.Use(h.guard.OptionalUser)
+			r.Get("/shared", h.listSharedFilesHandler)
+		})
+
 		r.Group(func(r chi.Router) {
 			r.Use(h.guard.AuthUser)
 
@@ -43,10 +52,6 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 			// session like every other route on this resource.
 			r.Get("/", h.getFilesHandler)
 			r.Post("/", h.uploadHandler)
-
-			// Shared files for the catalogue (any authenticated user may
-			// list them).
-			r.Get("/shared", h.listSharedFilesHandler)
 
 			// An alias of the list above, kept for the clients that name
 			// the caller's files explicitly: the web UI and
@@ -56,12 +61,19 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 
 		r.Route("/{id}", func(r chi.Router) {
 
+			// The bytes of a public file are public too. A private file
+			// that is not the caller's answers 404, so the route does not
+			// confirm that an id exists. The optional guard is what lets an
+			// owner download their own private file with a session, the
+			// same way they could before.
+			r.Group(func(r chi.Router) {
+				r.Use(h.guard.OptionalUser)
+				r.Get("/content", h.downloadHandler)
+			})
+
 			r.Group(func(r chi.Router) {
 				r.Use(h.guard.AuthUser)
 
-				// The download allows the owner or any authenticated caller
-				// for a shared file.
-				r.Get("/content", h.downloadHandler)
 				// Return a safe record (no path) instead of the storage row.
 				r.Get("/", h.getFileHandler)
 				r.Put("/", h.updateHandler)

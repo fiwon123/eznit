@@ -37,10 +37,11 @@ func TestTheHealthCheckAnswersWithoutADatabase(t *testing.T) {
 	}
 }
 
-// Every /v1 resource is mounted and guarded: a route that answered 404 would
-// be a route the router never registered, and an unguarded one would be a
-// route that skips the session check.
-func TestTheRoutesAreMountedAndGuarded(t *testing.T) {
+// Every route that answers the caller's own rows is mounted and guarded: a
+// route that answered 404 would be a route the router never registered, and a
+// route that answered anything but 401 without a token would be a route that
+// skips the session check.
+func TestTheGuardedRoutesRejectAVisitor(t *testing.T) {
 	router := newTestRouter(t)
 
 	tests := []struct {
@@ -51,9 +52,11 @@ func TestTheRoutesAreMountedAndGuarded(t *testing.T) {
 		{"the file list", http.MethodGet, "/v1/files"},
 		{"the caller's files alias", http.MethodGet, "/v1/files/me"},
 		{"an upload", http.MethodPost, "/v1/files"},
-		{"a download", http.MethodGet, "/v1/files/1f0c1a9e-0000-0000-0000-000000000000/content"},
-		{"the template catalogue", http.MethodGet, "/v1/templates"},
-		{"a login", http.MethodPost, "/v1/login"},
+		{"a file record", http.MethodGet, "/v1/files/1f0c1a9e-0000-0000-0000-000000000000"},
+		{"a publish", http.MethodPost, "/v1/templates"},
+		{"the caller's own templates", http.MethodGet, "/v1/templates/mine"},
+		{"the command library", http.MethodGet, "/v1/commands"},
+		{"the user list", http.MethodGet, "/v1/users"},
 	}
 
 	for _, tt := range tests {
@@ -65,10 +68,49 @@ func TestTheRoutesAreMountedAndGuarded(t *testing.T) {
 				t.Fatalf("%s %s = 404, want a registered route", tt.method, tt.path)
 			}
 
-			// /v1/login is public by design; everything else needs a
-			// session, and no request here carries one.
-			if tt.path != "/v1/login" && recorder.Code != http.StatusUnauthorized {
+			if recorder.Code != http.StatusUnauthorized {
 				t.Errorf("%s %s without a token = %d, want %d", tt.method, tt.path, recorder.Code, http.StatusUnauthorized)
+			}
+		})
+	}
+}
+
+// The public reads are mounted and are not guarded: without a token they reach
+// their handler instead of the session check.
+//
+// The database here is nil, so a request that reached a repository would panic.
+// The rows below name a value the handler refuses before it queries — a 400
+// from the handler is what proves the guard let the request through. The list
+// that does reach the database (the shared files) is covered by the files
+// handler's own test, which runs against a fake repository.
+func TestThePublicReadsAreNotGuarded(t *testing.T) {
+	router := newTestRouter(t)
+
+	tests := []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{"the template catalogue", http.MethodGet, "/v1/templates?kind=bogus"},
+		{"a template detail", http.MethodGet, "/v1/templates/not-an-id"},
+		{"a download", http.MethodGet, "/v1/files/not-an-id/content"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, httptest.NewRequest(tt.method, tt.path, nil))
+
+			if recorder.Code == http.StatusNotFound {
+				t.Fatalf("%s %s = 404, want a registered route", tt.method, tt.path)
+			}
+
+			if recorder.Code == http.StatusUnauthorized {
+				t.Errorf("%s %s without a token = 401, want the public read to answer", tt.method, tt.path)
+			}
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Errorf("%s %s = %d, want %d", tt.method, tt.path, recorder.Code, http.StatusBadRequest)
 			}
 		})
 	}

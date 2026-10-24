@@ -193,55 +193,138 @@ func TestListReturnsOnlyTheCallersFiles(t *testing.T) {
 	}
 }
 
-// The download route is behind the session guard: without a token nothing is
-// served.
-//
-// The body is asserted as well as the status, because the status alone does
-// not say *who* rejected the request: the service also refuses a request
-// that never went through the guard. The guard's own message is what proves
-// the route sits inside the AuthUser group.
-func TestDownloadWithoutTokenIsRejected(t *testing.T) {
+// The download is public for a shared file and not found for a private one:
+// without a token the caller is a visitor, and the shared half of the rule is
+// all a visitor gets.
+func TestDownloadWithoutToken(t *testing.T) {
 	owner := uuid.New()
 	path := writeFileOnDisk(t, "the bytes")
 
-	repo := newFakeRepository(File{ID: uuid.New(), UserID: owner, Name: "secret", Ext: "txt", Path: path})
+	sharedID := uuid.New()
+	privateID := uuid.New()
+
+	repo := newFakeRepository(
+		File{ID: sharedID, UserID: owner, Name: "shared", Ext: "txt", Path: path, IsPublic: true},
+		File{ID: privateID, UserID: owner, Name: "secret", Ext: "txt", Path: path},
+	)
 	router := newTestRouter(t, repo, t.TempDir(), owner)
 
-	fileID := uuid.New()
-	repo.files[fileID] = File{ID: fileID, UserID: owner, Name: "secret", Ext: "txt", Path: path}
+	t.Run("shared file serves the bytes", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/v1/files/"+sharedID.String()+"/content", nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/files/"+fileID.String()+"/content", nil)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+		}
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
-	}
+		if body := rec.Body.String(); body != "the bytes" {
+			t.Errorf("expected the file's bytes, got %q", body)
+		}
+	})
 
-	if body := rec.Body.String(); body == "the bytes" {
-		t.Error("the file content was served without a token")
-	}
+	t.Run("private file is not found", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/v1/files/"+privateID.String()+"/content", nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
 
-	if !strings.Contains(rec.Body.String(), "No token provided") {
-		t.Errorf("expected the session guard to reject the request, got %q", rec.Body.String())
-	}
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected status %d, got %d: %s", http.StatusNotFound, rec.Code, rec.Body.String())
+		}
+
+		if body := rec.Body.String(); body == "the bytes" {
+			t.Error("the file content was served without a token")
+		}
+	})
+
+	t.Run("missing file is not found", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/v1/files/"+uuid.NewString()+"/content", nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected status %d, got %d", http.StatusNotFound, rec.Code)
+		}
+	})
 }
 
-// An unknown token is rejected the same way.
-func TestDownloadWithAnInvalidTokenIsRejected(t *testing.T) {
+// An unknown token on the public download route buys nothing: the route does
+// not read it, and a private file still answers 404.
+func TestDownloadWithAnInvalidTokenAnswersAsAVisitor(t *testing.T) {
 	owner := uuid.New()
 	path := writeFileOnDisk(t, "the bytes")
 
-	repo := newFakeRepository(File{ID: uuid.New(), UserID: owner, Name: "secret", Ext: "txt", Path: path})
+	fileID := uuid.New()
+	repo := newFakeRepository(File{ID: fileID, UserID: owner, Name: "secret", Ext: "txt", Path: path})
 	router := newTestRouter(t, repo, t.TempDir(), owner)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/files/"+uuid.NewString()+"/content", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/files/"+fileID.String()+"/content", nil)
 	req.Header.Set("Authorization", "Bearer not-a-real-token")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected status %d, got %d", http.StatusNotFound, rec.Code)
+	}
+
+	if body := rec.Body.String(); body == "the bytes" {
+		t.Error("the file content was served for an invalid token")
+	}
+}
+
+// The shared list is public: it answers the files their owners shared, and
+// none of the private ones.
+func TestSharedListWithoutTokenReturnsOnlyPublicFiles(t *testing.T) {
+	owner := uuid.New()
+
+	repo := newFakeRepository(
+		File{ID: uuid.New(), UserID: owner, Name: "shared", Ext: "txt", IsPublic: true},
+		File{ID: uuid.New(), UserID: owner, Name: "private-one", Ext: "txt"},
+	)
+	router := newTestRouter(t, repo, t.TempDir(), owner)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/files/shared", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "shared") {
+		t.Errorf("expected the shared file in the response, got %q", body)
+	}
+
+	if strings.Contains(body, "private-one") {
+		t.Errorf("a private file is in the shared list: %q", body)
+	}
+
+	// The fake repository answers with this address on every row.
+	if strings.Contains(body, "user@example.com") {
+		t.Error("the owner's email is in a visitor's shared list")
+	}
+}
+
+// A caller with a session still gets the attribution: the address is what the
+// catalogue shows next to a shared file, and it stays for an account.
+func TestSharedListWithATokenCarriesTheOwnerEmail(t *testing.T) {
+	owner := uuid.New()
+
+	repo := newFakeRepository(File{ID: uuid.New(), UserID: owner, Name: "shared", Ext: "txt", IsPublic: true})
+	router := newTestRouter(t, repo, t.TempDir(), owner)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/files/shared", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	if body := rec.Body.String(); !strings.Contains(body, "user@example.com") {
+		t.Errorf("expected the owner's email in the response, got %q", body)
 	}
 }
 

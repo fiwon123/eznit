@@ -34,8 +34,17 @@ info:
     /v1/logout` ends the one it is sent with, and an expired or ended token
     answers `401`.
 
-    A few routes are deliberately public: the health check, signup, login, and
-    this document.
+    A few reads are deliberately public, so a visitor can look around without
+    an account: the health check, signup, login, this document, the catalogue
+    (`GET /v1/templates`, a public template's detail, its archive and its
+    files) and the shared-file list (`GET /v1/files/shared`, plus the bytes of
+    a file marked public). Those operations carry `security: []`.
+
+    Anonymous is not a bypass: the visibility rule is the same one an account
+    gets, minus the caller's own rows. An anonymous catalogue lists the
+    templates their owners published and nothing else, and a private template
+    or file that is not the caller's answers `404` exactly like an id that does
+    not exist.
 
     ## Known gaps
 
@@ -376,6 +385,10 @@ paths:
       operationId: listSharedFiles
       tags: [files]
       summary: List shared files
+      description: |
+        The files their owners marked public. Answers without a session: the
+        list is the same one an account reads.
+      security: []
       responses:
         "200":
           description: Shared files.
@@ -388,8 +401,6 @@ paths:
                     properties:
                       data:
                         $ref: "#/components/schemas/SharedFileList"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -521,6 +532,11 @@ paths:
       operationId: downloadFile
       tags: [files]
       summary: Download a file's bytes
+      description: |
+        The owner's bytes, or the bytes of a file its owner marked public —
+        the public half answers without a session. A private file that is not
+        the caller's answers `404`, the same as an id that does not exist.
+      security: []
       responses:
         "200":
           description: The bytes, with the stored content type.
@@ -536,8 +552,6 @@ paths:
                 format: binary
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -548,7 +562,9 @@ paths:
       summary: List the templates the caller may use
       description: |
         The public templates plus the caller's own private ones. At most 100
-        are returned.
+        are returned. Answers without a session: an anonymous caller gets the
+        public templates alone.
+      security: []
       parameters:
         - name: kind
           in: query
@@ -574,8 +590,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalServerError"
     post:
@@ -643,8 +657,10 @@ paths:
       tags: [templates]
       summary: Read one template, with everything inside it
       description: |
-        A private template that is not the caller's is reported as `404`: the
-        fact that it exists is not theirs to learn.
+        A public template answers without a session. A private template that is
+        not the caller's is reported as `404`: the fact that it exists is not
+        theirs to learn.
+      security: []
       responses:
         "200":
           description: The template.
@@ -659,8 +675,6 @@ paths:
                         $ref: "#/components/schemas/TemplateDetail"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
     put:
@@ -723,7 +737,10 @@ paths:
       operationId: downloadTemplateArchive
       tags: [templates]
       summary: Download a template as a ZIP
-      description: The archive holds the template's files at their target paths.
+      description: |
+        The archive holds the template's files at their target paths. A public
+        template answers without a session.
+      security: []
       responses:
         "200":
           description: The archive.
@@ -739,8 +756,6 @@ paths:
                 format: binary
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -756,7 +771,9 @@ paths:
       summary: Download one file of a template
       description: |
         The bytes exactly as they are stored: the `content` column for a text
-        file, the bytes on disk for a binary one.
+        file, the bytes on disk for a binary one. A public template answers
+        without a session.
+      security: []
       responses:
         "200":
           description: The file's bytes, with a content type derived from its path.
@@ -772,8 +789,6 @@ paths:
                 format: binary
         "400":
           $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 

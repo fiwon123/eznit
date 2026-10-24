@@ -590,18 +590,47 @@ func TestDeleteTemplateRemovesTheOwnersTemplate(t *testing.T) {
 	}
 }
 
-// A request that never went through the guard is refused: the route is
-// registered without it, and the service fails closed.
-func TestTheServiceRefusesARequestWithoutAUser(t *testing.T) {
-	svc := newTestService(t, newFakeRepository())
+// A request without a user is an anonymous visitor, not an error: the
+// catalogue answers with the public templates and nothing else.
+func TestTheCatalogueTreatsAMissingUserAsAnonymous(t *testing.T) {
+	owner := uuid.New()
 
-	_, appError := svc.ListTemplates(context.Background(), "")
-	if appError == nil {
-		t.Fatal("expected a request without a user to be refused")
+	repo := newFakeRepository(
+		Template{ID: uuid.New(), UserID: owner, Name: "shared", Slug: "shared", Kind: KindGeneric, IsPublic: true},
+		Template{ID: uuid.New(), UserID: owner, Name: "secret", Slug: "secret", Kind: KindGeneric},
+	)
+	svc := newTestService(t, repo)
+
+	catalogue, appError := svc.ListTemplates(context.Background(), "")
+	if appError != nil {
+		t.Fatalf("expected the anonymous catalogue to be served, got error %v", appError)
 	}
 
-	if appError.StatusCode() != http.StatusUnauthorized {
-		t.Errorf("expected status %d, got %d", http.StatusUnauthorized, appError.StatusCode())
+	if catalogue.Total != 1 {
+		t.Fatalf("expected 1 public template, got %d", catalogue.Total)
+	}
+
+	if name := catalogue.Data[0].Name; name != "shared" {
+		t.Errorf("expected the public template %q, got %q", "shared", name)
+	}
+}
+
+// An anonymous caller cannot distinguish another user's private template from
+// an id that does not exist: both are not found.
+func TestTheDetailOfAPrivateTemplateIsNotFoundWithoutAUser(t *testing.T) {
+	owner := uuid.New()
+	templateID := uuid.New()
+
+	repo := newFakeRepository(Template{ID: templateID, UserID: owner, Name: "secret", Slug: "secret", Kind: KindGeneric})
+	svc := newTestService(t, repo)
+
+	_, appError := svc.GetTemplate(context.Background(), templateID)
+	if appError == nil {
+		t.Fatal("expected a private template to be hidden from an anonymous caller")
+	}
+
+	if appError.StatusCode() != http.StatusNotFound {
+		t.Errorf("expected status %d, got %d", http.StatusNotFound, appError.StatusCode())
 	}
 }
 

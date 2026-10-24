@@ -35,7 +35,11 @@ export default function SharedFileCard({ file }: SharedFileCardProps) {
         <h2 className="cardtitle">{name}</h2>
         <span className="badge">shared file</span>
       </header>
-      <p className="cardbody">Shared by {file.owner_email}</p>
+      {/* The API leaves the address off a visitor's catalogue: a public list
+          that carried it would be a list of the instance's accounts. */}
+      <p className="cardbody">
+        {file.owner_email === "" ? "Shared on this instance" : `Shared by ${file.owner_email}`}
+      </p>
       <footer className="cardfoot">
         <button type="button" className="linkbutton" onClick={() => void onDownload()}>
           download
