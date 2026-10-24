@@ -125,8 +125,11 @@ it (see [Web UI](#web-ui)). `make check` does not — the Go gate stays Node-fre
 | `eznit delete` | Delete a file |
 | `eznit logout` | End the session |
 
-Every command except `signup` and `login` needs a session: the API requires
-the token, and the CLI sends the one `login` stored.
+Every command that reads or writes your own rows needs a session: the API
+requires the token, and the CLI sends the one `login` stored. The exceptions
+are `signup`, `login`, and the public reads — the catalogue (`eznit template
+list`, `template show`, `template apply` on a public id) and the shared files,
+which answer a visitor who has never signed up.
 
 ```sh
 eznit signup

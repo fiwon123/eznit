@@ -136,24 +136,122 @@ func storeBinaryFile(t *testing.T, root string, templateID uuid.UUID, fileID uui
 	}
 }
 
-// The catalogue lists the templates a user may use, so it is not public:
-// without a token it is refused.
-func TestListWithoutTokenIsRejected(t *testing.T) {
+// The catalogue is public: without a token it answers with the templates
+// their owners published, and with none of the private ones.
+func TestListWithoutTokenReturnsOnlyThePublicTemplates(t *testing.T) {
 	owner := uuid.New()
 
-	repo := newFakeRepository(Template{ID: uuid.New(), UserID: owner, Name: "shared", Slug: "shared", Kind: KindGeneric, IsPublic: true})
+	repo := newFakeRepository(
+		Template{ID: uuid.New(), UserID: owner, OwnerEmail: "owner@example.com", Name: "shared", Slug: "shared", Kind: KindGeneric, IsPublic: true},
+		Template{ID: uuid.New(), UserID: owner, OwnerEmail: "owner@example.com", Name: "secret", Slug: "secret", Kind: KindGeneric},
+	)
 	router := newTestRouter(t, repo, owner)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/templates/", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
 	}
 
-	if !strings.Contains(rec.Body.String(), "No token provided") {
-		t.Errorf("expected the session guard to reject the request, got %q", rec.Body.String())
+	var envelope types.Envelope[ListResponse]
+	if err := json.NewDecoder(rec.Body).Decode(&envelope); err != nil {
+		t.Fatalf("failed to decode the response: %v", err)
+	}
+
+	if envelope.Data.Total != 1 {
+		t.Fatalf("expected 1 public template, got %d: %s", envelope.Data.Total, rec.Body.String())
+	}
+
+	if name := envelope.Data.Data[0].Name; name != "shared" {
+		t.Errorf("expected the public template %q, got %q", "shared", name)
+	}
+
+	// The address is what the catalogue shows for an account holder; a
+	// visitor's catalogue leaves it out.
+	if email := envelope.Data.Data[0].OwnerEmail; email != "" {
+		t.Errorf("the owner's email %q is in a visitor's catalogue", email)
+	}
+}
+
+// A public template's detail, archive and files answer without a token; a
+// private template is the same 404 as an id that does not exist.
+func TestPublicReadsWithoutAToken(t *testing.T) {
+	owner := uuid.New()
+	publicID := uuid.New()
+	privateID := uuid.New()
+	privateFileID := uuid.New()
+
+	repo := newFakeRepository(
+		Template{ID: publicID, UserID: owner, Name: "shared", Slug: "shared", Kind: KindGeneric, IsPublic: true},
+		Template{ID: privateID, UserID: owner, Name: "secret", Slug: "secret", Kind: KindGeneric},
+	)
+	router, root := newTestRouterWithRoot(t, repo, owner)
+
+	repo.files[publicID] = []TemplateFile{{TemplateID: publicID, Path: "AGENTS.md", Content: "# hello"}}
+	repo.files[privateID] = []TemplateFile{storeBinaryFile(t, root, privateID, privateFileID, "secret.bin", []byte("secret"))}
+
+	tests := []struct {
+		name string
+		path string
+		want int
+	}{
+		{"public detail", "/v1/templates/" + publicID.String(), http.StatusOK},
+		{"private detail", "/v1/templates/" + privateID.String(), http.StatusNotFound},
+		{"missing detail", "/v1/templates/" + uuid.NewString(), http.StatusNotFound},
+		{"public archive", "/v1/templates/" + publicID.String() + "/archive", http.StatusOK},
+		{"private archive", "/v1/templates/" + privateID.String() + "/archive", http.StatusNotFound},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tt.want {
+				t.Errorf("expected status %d, got %d: %s", tt.want, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+// The writes still need a session, and `mine` still needs one too: the public
+// `{id}` route must not shadow it.
+func TestWritesWithoutATokenAreRejected(t *testing.T) {
+	owner := uuid.New()
+	templateID := uuid.New()
+
+	repo := newFakeRepository(Template{ID: templateID, UserID: owner, Name: "mine", Slug: "mine", Kind: KindGeneric})
+	router := newTestRouter(t, repo, owner)
+
+	tests := []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{"publish", http.MethodPost, "/v1/templates/"},
+		{"mine", http.MethodGet, "/v1/templates/mine"},
+		{"update", http.MethodPut, "/v1/templates/" + templateID.String()},
+		{"delete", http.MethodDelete, "/v1/templates/" + templateID.String()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(`{}`))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Errorf("expected status %d, got %d: %s", http.StatusUnauthorized, rec.Code, rec.Body.String())
+			}
+
+			if !strings.Contains(rec.Body.String(), "No token provided") {
+				t.Errorf("expected the session guard to reject the request, got %q", rec.Body.String())
+			}
+		})
 	}
 }
 
@@ -161,7 +259,7 @@ func TestListWithoutTokenIsRejected(t *testing.T) {
 func TestListWithATokenReturnsTheTemplates(t *testing.T) {
 	owner := uuid.New()
 
-	repo := newFakeRepository(Template{ID: uuid.New(), UserID: owner, Name: "shared", Slug: "shared", Kind: KindGeneric, IsPublic: true})
+	repo := newFakeRepository(Template{ID: uuid.New(), UserID: owner, OwnerEmail: "owner@example.com", Name: "shared", Slug: "shared", Kind: KindGeneric, IsPublic: true})
 	router := newTestRouter(t, repo, owner)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/templates/", nil)
@@ -184,6 +282,11 @@ func TestListWithATokenReturnsTheTemplates(t *testing.T) {
 
 	if envelope.Data.Data[0].Name != "shared" {
 		t.Errorf("expected the template %q, got %q", "shared", envelope.Data.Data[0].Name)
+	}
+
+	// A caller with a session still gets the attribution a visitor does not.
+	if email := envelope.Data.Data[0].OwnerEmail; email != "owner@example.com" {
+		t.Errorf("expected the owner's email %q, got %q", "owner@example.com", email)
 	}
 }
 

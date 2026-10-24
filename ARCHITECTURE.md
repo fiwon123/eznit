@@ -87,6 +87,12 @@ A CLI command, end to end:
 3. **`internal/platform/middleware`** runs first on a guarded route: it asks the
    sessions service whether the token is valid, and puts the caller's user id in
    the request context. No token, no handler.
+   A public read — the catalogue, a public template's detail and files, the
+   shared-file list and the bytes of a public file — wears `OptionalUser`
+   instead: a token, when there is one, is resolved the same way, and a request
+   without one reaches the handler as an anonymous caller. The visibility rule
+   does not move: the queries keep `is_public = TRUE OR user_id = caller`, and
+   an anonymous caller matches only the first half.
 4. **`internal/domain/*/handler.go`** decodes the request, checks its shape, and
    calls the service. It writes the answer as `types.Envelope[T]`.
 5. **`internal/domain/*/service.go`** holds the rules: who may read what, how a

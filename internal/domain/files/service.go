@@ -43,6 +43,14 @@ func userIDFromContext(ctx context.Context) (uuid.UUID, bool) {
 	return userID, ok
 }
 
+// userIDOrNil returns the user the guard put in the context, or uuid.Nil when
+// nobody is logged in. The read paths use it: a nil id owns no file, so an
+// anonymous caller is left with the public half of the rule.
+func userIDOrNil(ctx context.Context) uuid.UUID {
+	userID, _ := userIDFromContext(ctx)
+	return userID
+}
+
 // GetFilesForUser lists the caller's own files. Every list route on this
 // resource answers with the caller's own files: a file belongs to the user
 // who uploaded it, so there is no instance-wide list to ask for.
@@ -81,31 +89,36 @@ func (s *service) GetFilesForUser(ctx context.Context) (ListResponse, *errors.Ap
 }
 
 // ListSharedFiles returns all public files for the catalogue.
+//
+// It is public: the rows are the files their owners shared, so a visitor
+// without a session reads the same list an account does.
 func (s *service) ListSharedFiles(ctx context.Context) (SharedListResponse, *errors.AppError) {
-	userID, ok := userIDFromContext(ctx)
-	if !ok {
-		s.logger.Warn("no user in the request context")
-		return SharedListResponse{}, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
-	}
-
-	_ = userID
-
 	files, ok := s.db.ListSharedFiles()
 	if !ok {
 		return SharedListResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to get shared files")
 	}
 
+	// The owner's email is attribution for a caller with a session. This list
+	// answers a visitor too, and an address on a public list is an address
+	// anyone can harvest.
+	withOwnerEmail := userIDOrNil(ctx) != uuid.Nil
+
 	var resp []SharedFileData
 	for _, file := range files {
-		resp = append(resp, SharedFileData{
-			ID:         file.ID,
-			Name:       file.Name,
-			Ext:        file.Ext,
-			Version:    file.Version,
-			IsPublic:   file.IsPublic,
-			Owner:      file.UserID.String(),
-			OwnerEmail: file.OwnerEmail,
-		})
+		entry := SharedFileData{
+			ID:       file.ID,
+			Name:     file.Name,
+			Ext:      file.Ext,
+			Version:  file.Version,
+			IsPublic: file.IsPublic,
+			Owner:    file.UserID.String(),
+		}
+
+		if withOwnerEmail {
+			entry.OwnerEmail = file.OwnerEmail
+		}
+
+		resp = append(resp, entry)
 	}
 
 	return SharedListResponse{
@@ -175,24 +188,24 @@ func (s *service) GetFileForUser(ctx context.Context, id uuid.UUID) (*File, *err
 
 // GetFileForDownload returns a file the caller may download: either owned by
 // the caller or shared publicly.
+//
+// The route is public, so the caller may be anonymous: without a session only
+// the shared half applies, and a private file that is not the caller's answers
+// 404 — the same answer as an id that does not exist.
 func (s *service) GetFileForDownload(ctx context.Context, id uuid.UUID) (*File, *errors.AppError) {
-	userID, ok := userIDFromContext(ctx)
-	if !ok {
-		s.logger.Warn("no user in the request context")
-		return nil, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
+	userID := userIDOrNil(ctx)
+
+	if userID != uuid.Nil {
+		if file, ok := s.db.GetFileForUser(id, userID); ok {
+			return file, nil
+		}
 	}
 
-	file, ok := s.db.GetFileForUser(id, userID)
-	if ok {
-		return file, nil
-	}
-
-	file, ok = s.db.GetSharedFile(id)
+	file, ok := s.db.GetSharedFile(id)
 	if !ok {
 		return nil, errors.NewAppError(http.StatusNotFound, "file not found")
 	}
 
-	_ = userID
 	return file, nil
 }
 
