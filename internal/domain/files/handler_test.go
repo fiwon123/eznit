@@ -1,6 +1,11 @@
 package files
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -104,45 +109,87 @@ func writeFileOnDisk(t *testing.T, content string) string {
 	return path
 }
 
-// The catalogue lists every upload in the instance, so it is not public:
-// without a token it is refused.
+// multipartUpload returns a request body carrying one file field, plus the
+// content type the handler expects for it.
+func multipartUpload(t *testing.T, field, filename, content string) (*bytes.Buffer, string) {
+	t.Helper()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	part, err := writer.CreateFormFile(field, filename)
+	if err != nil {
+		t.Fatalf("failed to create the file field: %v", err)
+	}
+
+	if _, err := io.WriteString(part, content); err != nil {
+		t.Fatalf("failed to write the file field: %v", err)
+	}
+
+	if err := writer.Close(); err != nil {
+		t.Fatalf("failed to close the multipart body: %v", err)
+	}
+
+	return body, writer.FormDataContentType()
+}
+
+// The list answers the caller's own files, so it is not public: without a
+// token both routes are refused.
 func TestListWithoutTokenIsRejected(t *testing.T) {
 	owner := uuid.New()
 
 	repo := newFakeRepository(File{ID: uuid.New(), UserID: owner, Name: "secret", Ext: "txt"})
 	router := newTestRouter(t, repo, t.TempDir(), owner)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/files/", nil)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	for _, path := range []string{"/v1/files/", "/v1/files/me"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
-	}
+			if rec.Code != http.StatusUnauthorized {
+				t.Errorf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+			}
 
-	if !strings.Contains(rec.Body.String(), "No token provided") {
-		t.Errorf("expected the session guard to reject the request, got %q", rec.Body.String())
+			if !strings.Contains(rec.Body.String(), "No token provided") {
+				t.Errorf("expected the session guard to reject the request, got %q", rec.Body.String())
+			}
+		})
 	}
 }
 
-// The owner still gets the catalogue.
-func TestListWithATokenReturnsTheFiles(t *testing.T) {
+// Both list routes answer the caller's own files and nothing else: a file
+// another user uploaded is not in the response, whichever route is asked.
+func TestListReturnsOnlyTheCallersFiles(t *testing.T) {
 	owner := uuid.New()
+	stranger := uuid.New()
 
-	repo := newFakeRepository(File{ID: uuid.New(), UserID: owner, Name: "secret", Ext: "txt"})
+	repo := newFakeRepository(
+		File{ID: uuid.New(), UserID: owner, Name: "mine", Ext: "txt"},
+		File{ID: uuid.New(), UserID: stranger, Name: "theirs", Ext: "txt"},
+	)
 	router := newTestRouter(t, repo, t.TempDir(), owner)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/files/", nil)
-	req.Header.Set("Authorization", "Bearer test-token")
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	for _, path := range []string{"/v1/files/", "/v1/files/me"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("Authorization", "Bearer test-token")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
-	}
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+			}
 
-	if !strings.Contains(rec.Body.String(), "secret") {
-		t.Errorf("expected the file in the response, got %q", rec.Body.String())
+			body := rec.Body.String()
+			if !strings.Contains(body, "mine") {
+				t.Errorf("expected the caller's file in the response, got %q", body)
+			}
+
+			if strings.Contains(body, "theirs") {
+				t.Errorf("another user's file is in the response: %q", body)
+			}
+		})
 	}
 }
 
@@ -247,5 +294,47 @@ func TestDownloadOfTheOwnersFileServesTheContent(t *testing.T) {
 
 	if disposition := rec.Header().Get("Content-Disposition"); disposition != "attachment; filename=secret.txt" {
 		t.Errorf("unexpected Content-Disposition %q", disposition)
+	}
+}
+
+// A failed update answers exactly one body. The handler writes the error and
+// then used to fall through to the success path, so the client got the error
+// status followed by a second JSON document — two payloads, one response
+// (#112). The second Decode is what fails when that `return` goes missing.
+func TestUpdateThatFailsAnswersOneBody(t *testing.T) {
+	owner := uuid.New()
+	stranger := uuid.New()
+	fileID := uuid.New()
+
+	// The caller is not the owner, so the service refuses the replacement.
+	repo := newFakeRepository(File{ID: fileID, UserID: stranger, Name: "theirs", Ext: "txt"})
+	router := newTestRouter(t, repo, t.TempDir(), owner)
+
+	body, contentType := multipartUpload(t, "file", "replacement.txt", "the new bytes")
+
+	req := httptest.NewRequest(http.MethodPut, "/v1/files/"+fileID.String()+"/", body)
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", contentType)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusConflict, rec.Code, rec.Body.String())
+	}
+
+	decoder := json.NewDecoder(strings.NewReader(rec.Body.String()))
+
+	var first map[string]any
+	if err := decoder.Decode(&first); err != nil {
+		t.Fatalf("the body is not a JSON document: %v", err)
+	}
+
+	if _, ok := first["error"]; !ok {
+		t.Errorf("the body is not the error envelope: %v", first)
+	}
+
+	var second json.RawMessage
+	if err := decoder.Decode(&second); !errors.Is(err, io.EOF) {
+		t.Errorf("a second document follows the error: %q", rec.Body.String())
 	}
 }

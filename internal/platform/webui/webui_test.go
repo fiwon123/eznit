@@ -45,6 +45,8 @@ func TestHandler(t *testing.T) {
 		{"an asset is served as itself", "/assets/app.js", http.StatusOK, "console.log"},
 		{"the api keeps its own paths", "/v1/templates", http.StatusTeapot, "the api"},
 		{"an unknown api path keeps the api's answer", "/v1/nope", http.StatusTeapot, "the api"},
+		{"the api reference is the api's", "/docs", http.StatusTeapot, "the api"},
+		{"the api reference's assets are the api's", "/docs/swagger-ui.css", http.StatusTeapot, "the api"},
 	}
 
 	for _, tt := range cases {

@@ -11,10 +11,12 @@ import (
 	"github.com/fiwon123/eznit/pkg/types"
 )
 
-// List Cmd show all files uploaded any user
-// if used me parameter only filed uploaded by user will be listed
+// ListCmd lists the caller's own files: a file belongs to the user who
+// uploaded it, so there is no instance-wide list to ask for.
 type ListCmd struct {
-	Me bool `help:"list all available files"`
+	// Me is kept for the clients that name their own files explicitly. It
+	// selects the same list as the default, now that the wide route is gone.
+	Me bool `help:"list only your own files (the default)"`
 }
 
 func (cmd *ListCmd) Run(g *Globals) error {
@@ -22,8 +24,8 @@ func (cmd *ListCmd) Run(g *Globals) error {
 
 	fmt.Println()
 
-	// Both routes are behind the session guard: the catalogue lists every
-	// upload in the instance, so it is not public.
+	// Both routes are behind the session guard: the list answers the
+	// caller's own files, so it is not public.
 	token, err := getToken()
 	if err != nil {
 		g.logger.Warn("not logged in! ")

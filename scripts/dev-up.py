@@ -7,7 +7,7 @@ The Makefile is a great interface on Linux, macOS and WSL2, but it cannot work
 on native Windows: its preflight and recipes use POSIX ``test -x``/``stat``/
 ``mkdir -p``/``id -u``, and ``make`` there runs under cmd.exe/PowerShell rather
 than a POSIX shell. Windows users therefore had no supported way to start the
-sandbox with anything other than a bare ``docker compose up``.
+sandbox without a POSIX shell.
 
 This script reproduces the Makefile's developer targets in Python, using only
 the standard library, so the same commands run on Linux, macOS, WSL2 and native
@@ -27,9 +27,10 @@ Usage
     python scripts/dev-up.py <command> [options]
 
 Commands:
-    dev-up        Build/start the sandbox (foreground)
+    dev-up        Start the developer loop (foreground logs)
     dev-down      Stop the sandbox (volumes kept)
-    dev-restart   down + up --build in one step
+    dev-restart   down + up in one step
+    dev-build     Rebuild the sandbox images (Dockerfile/entrypoint changes)
     dev-log       Tail the dev container logs
     dev-exec      Shell into the running dev container
     opencode      Run the AI coding agent inside the dev container
@@ -46,6 +47,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -53,7 +55,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-BASE_COMPOSE = ["-f", str(REPO_ROOT / "docker-compose.yml")]
+BASE_COMPOSE = ["--profile", "dev", "-f", str(REPO_ROOT / "docker-compose.yml")]
 AGENT_COMPOSE = [
     *BASE_COMPOSE,
     "-f",
@@ -62,12 +64,17 @@ AGENT_COMPOSE = [
 
 DEFAULT_WAIT_TIMEOUT = 180
 DEV_SERVICE = "dev"
+WEB_SERVICE = "web-dev"
 
-# The services an `up` starts. The sandbox is not standalone here: the API
-# runs against the `db` service on the compose network, so the stack comes up
-# with it. The status checks still watch the `dev` service alone — that is the
-# one this script waits for.
+# The services `ensure_sandbox_running` starts: the toolchain and the database
+# the API needs. It deliberately does not name `web-dev` — `opencode` and
+# `shell` are there for the source, not for a browser.
 DEV_SERVICES = ["dev", "db", "migrate"]
+
+# The marker file the dev entrypoint reads: with it present the sandbox runs
+# `make run_api` instead of sleeping (scripts/dev-entrypoint.sh). Created by
+# `dev-up`, removed by `dev-down`, gitignored per-checkout state.
+DEV_START_MARKER = REPO_ROOT / ".dev" / "sandbox-start"
 
 IS_WINDOWS = os.name == "nt"
 IS_POSIX = not IS_WINDOWS
@@ -166,6 +173,10 @@ def compose_environment(*, with_github: bool) -> dict[str, str]:
     env["HOST_GID"] = host_gid()
     env["HOST_HOME"] = compose_path(host_home())
     env["HOST_PROJECT_DIR"] = compose_path(host_project_dir())
+    # The published ports, the same names the Makefile and docker-compose.yml
+    # use: the port preflight probes exactly what Compose will bind.
+    env["HOST_PORT"] = os.environ.get("HOST_PORT") or "4000"
+    env["WEB_PORT"] = os.environ.get("WEB_PORT") or "5173"
     if with_github:
         token, _source = resolve_gh_token()
         if token:
@@ -328,6 +339,57 @@ def _ps_field(files: list[str], service: str, field: str) -> str:
     return lines[0].strip() if lines else ""
 
 
+def running_services(files: list[str]) -> set[str]:
+    result = run_compose(files, ["ps", "--services", "--status", "running"], capture=True)
+    if result.returncode != 0:
+        return set()
+    return {line.strip() for line in (result.stdout or "").splitlines() if line.strip()}
+
+
+def port_in_use(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.3)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def host_port(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        error(f"{name}={raw!r} is not a port number.")
+        raise SystemExit(1) from None
+
+
+def preflight_ports(files: list[str]) -> bool:
+    """Refuse to start the loop when the host ports belong to someone else.
+
+    `make up` (the product) and `dev-up` publish the same pair, so they are
+    alternatives. A port held by this loop's own containers is not a collision —
+    running `dev-up` twice has to work.
+    """
+    running = running_services(files)
+    if running & {"api", "web"}:
+        error("the product stack is running (api/web) and already holds the host ports.")
+        error("  make up and dev-up are alternatives - stop the product first:")
+        error("      make docker_down")
+        return False
+
+    api_port = host_port("HOST_PORT", 4000)
+    ui_port = host_port("WEB_PORT", 5173)
+    if DEV_SERVICE not in running and port_in_use(api_port):
+        error(f"host port {api_port} is already in use by something that is not this stack.")
+        error("  Free it, or start the loop elsewhere: HOST_PORT=<port> dev-up")
+        return False
+    if WEB_SERVICE not in running and port_in_use(ui_port):
+        error(f"host port {ui_port} is already in use by something that is not this stack.")
+        error("  Free it, or start the loop elsewhere: WEB_PORT=<port> dev-up")
+        return False
+    return True
+
+
 def ensure_sandbox_running(*, agent: bool) -> None:
     """Bring the stack up without gratuitously rebuilding an existing image.
 
@@ -412,23 +474,70 @@ def cmd_dev_up() -> int:
     preflight(require_agent=False)
     agent_note()
     files = AGENT_COMPOSE if agent_available() else BASE_COMPOSE
-    result = run_compose(files, ["up", "--build", *DEV_SERVICES], with_github=True)
-    return result.returncode
+    # Parity with the Makefile: the two entry points want the same host ports,
+    # so this stops before starting half a stack.
+    if not preflight_ports(files):
+        return 1
+
+    api_port = host_port("HOST_PORT", 4000)
+    ui_port = host_port("WEB_PORT", 5173)
+    print()
+    print("  dev-up starts the developer loop in containers:")
+    print(f"    {'UI (Vite)':<14} http://localhost:{ui_port}   hot reload")
+    print(f"    {'API':<14} http://localhost:{api_port}")
+    print("  PostgreSQL and the migrations start first; the UI proxies /v1 to the API.")
+    print('  Ctrl-C stops the log stream - the containers keep running. "dev-down" stops them.')
+    print()
+
+    # The entrypoint reads the marker at container start, so the sandbox is
+    # recreated: a plain `up` leaves an already-running one asleep.
+    #
+    # No `--build`, deliberately: Compose builds an image that does not exist
+    # yet, and building on every start is what made this look like `dev-build`
+    # (BuildKit re-resolves base-image metadata even on a cache hit). A
+    # Dockerfile or entrypoint edit is picked up by `dev-build` (#103).
+    DEV_START_MARKER.parent.mkdir(parents=True, exist_ok=True)
+    DEV_START_MARKER.touch()
+
+    result = run_compose(
+        files,
+        ["up", "-d", "--force-recreate", DEV_SERVICE],
+        with_github=True,
+    )
+    if result.returncode != 0:
+        return result.returncode
+
+    result = run_compose(files, ["up", "-d", WEB_SERVICE], with_github=True)
+    if result.returncode != 0:
+        return result.returncode
+
+    return run_compose(files, ["logs", "-f", DEV_SERVICE, WEB_SERVICE]).returncode
 
 
 def cmd_dev_down() -> int:
     require_docker()
+    DEV_START_MARKER.unlink(missing_ok=True)
+    # The base file is enough: `down` removes the project's containers by label,
+    # and the agent overlay only adds mounts to `dev`.
     return run_compose(BASE_COMPOSE, ["down"]).returncode
 
 
 def cmd_dev_restart() -> int:
-    preflight(require_agent=False)
-    agent_note()
-    files = AGENT_COMPOSE if agent_available() else BASE_COMPOSE
-    down = run_compose(BASE_COMPOSE, ["down"])
-    if down.returncode != 0:
-        return down.returncode
-    result = run_compose(files, ["up", "--build", *DEV_SERVICES], with_github=True)
+    code = cmd_dev_down()
+    if code != 0:
+        return code
+    return cmd_dev_up()
+
+
+def cmd_dev_build() -> int:
+    """Rebuild the two sandbox images, the only path that regenerates them.
+
+    `dev-up` no longer passes `--build` (#103), so an edit to `Dockerfile`,
+    `web/Dockerfile.dev` or an entrypoint script they COPY needs this — the same
+    role `make dev-build` plays on POSIX hosts.
+    """
+    require_docker()
+    result = run_compose(BASE_COMPOSE, ["build", DEV_SERVICE, WEB_SERVICE])
     return result.returncode
 
 
@@ -497,9 +606,10 @@ Usage:
   python scripts/dev-up.py <command> [options]
 
 Commands:
-  dev-up                 Build/start the sandbox in the foreground
-  dev-down               Stop the sandbox (volumes kept)
-  dev-restart            Stop, then up --build
+  dev-up                 Start the dev loop: UI :5173 (Vite, hot reload), API :4000
+  dev-down               Stop the loop (volumes kept)
+  dev-restart            Stop, then start again (does not rebuild)
+  dev-build              Rebuild the sandbox images (dev and web-dev)
   dev-log                Tail dev container logs
   dev-exec               Shell into the running dev container
   opencode [args...]     Run the AI agent inside the dev container
@@ -512,6 +622,7 @@ Environment:
                          or 1000 on Windows where Docker Desktop virtualises it)
   HOST_HOME              Host home path (default: your home directory)
   HOST_PROJECT_DIR       Host repository path (default: this checkout)
+  HOST_PORT / WEB_PORT   Host ports for the API and the UI (4000 / 5173)
   OPENCODE_BIN           Path to a Linux opencode binary
   GH_TOKEN/GITHUB_TOKEN  GitHub credential forwarded into the sandbox
 
@@ -524,6 +635,7 @@ COMMANDS = {
     "dev-up": cmd_dev_up,
     "dev-down": cmd_dev_down,
     "dev-restart": cmd_dev_restart,
+    "dev-build": cmd_dev_build,
     "dev-log": cmd_dev_log,
     "dev-exec": cmd_dev_exec,
     "opencode": cmd_opencode,

@@ -21,8 +21,9 @@ download, update, delete — on a Compose stack a single developer can run.
 - Go, `net/http` + `chi`, `sqlx` + `lib/pq` over PostgreSQL
 - `golang-migrate` for schema changes
 - `kong` for the CLI, `zap` + `log/slog` for logging, `godotenv` for config
-- Docker Compose for the dev sandbox and the local stack (`dev`, `db`,
-  `migrate`; the `api` service is kept as a commented block)
+- Docker Compose for the product (`db`, `migrate`, `api`; the API image is
+  built from `Dockerfile.api`) and for the dev sandbox (`dev`, behind the
+  `dev` profile)
 
 ### Core Architecture
 
@@ -123,7 +124,14 @@ make build     # build both binaries into ./build
 make web_check # lint, format check, typecheck and build the web UI
 make web_build # build the web UI into web/dist
 make web_dev   # run the Vite dev server
+make dev-up    # the dev loop: UI :5173 (Vite, hot reload) + API :4000
+make up        # build + run the product: API :4000, web UI :5173, db, migrations
 ```
+
+The quickest way to see the product needs no host toolchain beyond Docker:
+`make setup && make up` builds the web image (`web/Dockerfile`) and the API
+image (`Dockerfile.api`), runs the migrations once, and serves the UI on
+http://localhost:5173 with the API behind it on http://localhost:4000.
 
 `make check` needs no database, no container and no secret file: it compiles
 the API and the CLI, it does not run them. It fails loudly if the Go toolchain
@@ -133,16 +141,40 @@ files, because `go test` prints `[no test files]` and still exits 0.
 ### Dev sandbox
 
 ```bash
-make setup      # one-time: create .env and the database secret from their examples
-make dev-up     # start the sandbox + the local stack (db, migrate)
-make dev-shell  # a shell inside the sandbox
-make dev-down   # stop it (keeps the volumes)
+make setup       # one-time: create .env and the database secret from their examples
+make dev-up      # the dev loop: UI :5173 (Vite, hot reload) + API :4000, live source
+make dev-shell   # a shell inside the sandbox
+make dev-restart # stop and start the loop again (no rebuild)
+make dev-build   # rebuild the dev and web-dev images (Dockerfile/entrypoint edits)
+make dev-down    # stop it (keeps the volumes)
 ```
 
-`docker compose up` does the same thing without Make, and
-`python scripts/dev-up.py dev-up` is the native-Windows path. The sandbox needs
-the local files `make setup` creates — the database secret is a file secret, and
-Compose refuses to start without it.
+`make dev-up` starts the whole loop and both ports answer when it returns: the
+API runs inside the sandbox (`make run_api`, against the bind-mounted source)
+and the UI is Vite in the `web-dev` service, proxying `/v1` to it. Both come
+from the source, so the loop needs no host Go or Node. A `.tsx` edit reloads
+the browser; a `.go` edit needs the API restarted — there is no Go file watcher.
+
+`dev-up` does not build an image: Compose builds one the first time a service
+needs it, and after that a start is only a recreate (the marker requires one).
+An edit to a `Dockerfile`, `web/Dockerfile.dev` or a script one of them `COPY`s
+needs `make dev-build` — `dev-up` and `dev-restart` will not pick it up.
+
+The services are behind the `dev` Compose profile, so plain
+`docker compose up` is the **product**, not the loop. The no-Make equivalent is
+`mkdir -p .dev && touch .dev/sandbox-start && docker compose up dev web-dev db migrate` —
+naming a profiled service enables its profile, and the marker is what makes the
+sandbox entrypoint run the API instead of sleeping — and
+`python scripts/dev-up.py dev-up` is the native-Windows path. The loop needs
+the local files `make setup` creates — the database secret is a file secret,
+and Compose refuses to start without it.
+
+The two entry points are alternatives and each checks the host ports before it
+starts anything: `make dev-up` refuses while `api`/`web` run (and
+`make up` while `dev`/`web-dev` do), naming the command that stops the other.
+Inside the sandbox the Makefile does not import the host's `.env` — compose
+supplies the in-network `DB_HOST`/`DB_PORT` — so a host-side `DB_HOST` cannot
+point the API at a database that does not exist on the Compose network.
 
 The image creates the directories the compose file mounts into, owned by the
 runtime user: Docker creates a mount destination the image does not contain as
@@ -168,10 +200,16 @@ These are tracked issues, not surprises for a reviewer to find:
 | Gap | Issue | Why it matters |
 | --- | --- | --- |
 | The users and the middleware packages have no tests | — | `make check` compiles and vets them; it executes nothing. `sessions` has a schema test only |
-| The list of every upload is one catalogue for all users | — | A token is required, but any user sees every other user's file names |
+| `GET /v1/users` and `GET /v1/users/{id}` answer with any account's email | #110 | any caller with a session can enumerate the instance's accounts |
+| `PUT` and `DELETE /v1/users/{id}` answer `401` for every caller | #109 | the admin guard is a TODO, so the routes are unreachable |
+| `GET /v1/files/{id}` answers `302` with the storage record, `Path` included | #108 | a client that follows redirects reads nothing, and the body leaks where the bytes live |
+
+The OpenAPI document (`internal/platform/openapi/openapi.yaml`) records these
+three as known gaps instead of promising what the code does not do.
 
 **The files, sessions and templates domains, the CLI, the schema helper, the
-web UI and the path helper have tests; the rest of the repository does not.**
+web UI, the OpenAPI package and the path helper have tests; the rest of the
+repository does not.**
 `go test ./...` prints `[no test files]` for the packages without one, and
 still exits 0. A green `Test` step in CI means
 "the packages with tests passed" — name the packages when you report a
@@ -236,9 +274,11 @@ can set them for you.
 ### Seed data
 
 `make docker_up` runs the migrations against the local database; it does not
-seed anything. (`make docker_up_all` additionally starts the dev sandbox.) The
-first `signup` through the CLI or the API creates the first user. There is no
-admin account and no way to promote one from the CLI yet.
+seed anything. (`make docker_up_all` starts the dev sandbox and the stack,
+excluding the product API — the two both publish port 4000, and the product UI
+on 5173 collides with `make web_dev`.) The first `signup`
+through the CLI or the API creates the first user. There is no admin account
+and no way to promote one from the CLI yet.
 
 ## Agents
 
@@ -365,6 +405,16 @@ feature-branch push. Two things can make a run verify nothing:
 - a `paths:` filter the change does not touch means the workflow does not
   trigger at all; and
 - a job gated behind a label or `if:` comes back `skipped`, not `passed`.
+
+There are three gates on a release pull request: **CI (Go)**, **CI (Web)** and
+**CI (Image)**. The last one builds `Dockerfile.api` and renders
+`docker-compose.yml` — buildability, not behaviour: the container is not
+started, because the API exits without a database.
+
+The **release** workflow is separate: it runs on a `v*` tag push (and on
+manual dispatch, as a dry run that publishes nothing) and publishes the
+archives. It does not gate a change, and a green dry run does not prove the
+publish step — only a real tag does.
 
 **Skipped is not passed.** A run that never happened, or whose jobs were all
 gated out, is not coverage. Do not describe a change as "CI passed" unless a

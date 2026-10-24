@@ -2,7 +2,18 @@
 # file a non-error, so a fresh clone can run `make check`, `make clean` and
 # `make build` without a secret file. The targets that genuinely need the
 # variables check for themselves (see `require_db_vars` below).
+#
+# Not inside the sandbox. There the configuration is the container's: compose
+# sets DB_HOST/DB_PORT/DB_USER/DB_NAME explicitly (the in-network address) and
+# passes the rest through `env_file`, which strips the quotes `.env` is written
+# with. Importing the file here *again* overrides all of that with the host
+# values — and make keeps the quotes, so `DB_HOST="localhost"` reaches the API's
+# DSN as a literal `"localhost"` and the sandbox cannot reach the database.
+# DEV_SANDBOX is set by the `dev` service in docker-compose.yml.
+ifeq ($(DEV_SANDBOX),1)
+else
 -include .env .env.local
+endif
 export
 
 SERVER_NAME := server
@@ -12,6 +23,36 @@ APP_NAME := eznit
 APP_NAME_SHORT := ez
 SCRIPT_NAME := add_to_path
 INJECT_VERSION:= main.Version
+
+# Host ports. WEB_PORT is shared by both entry points: the product's `web`
+# service and the loop's `web-dev` publish the same one. The API port has TWO
+# names, because the two API processes are independent services: the sandbox
+# `dev` publishes `${HOST_PORT}` and the product's `api` publishes
+# `${API_PORT}` (see docker-compose.yml). Both default to 4000.
+#
+# `make up` (the product) and `make dev-up` (the developer loop) therefore want
+# the same pair, whichever names they use, and `preflight-ports` probes exactly
+# what the entry point about to start will bind — that is what turns "the other
+# one is already running", or a listener belonging to neither, into a message
+# instead of a Docker bind error.
+HOST_PORT ?= 4000
+API_PORT ?= 4000
+WEB_PORT ?= 5173
+
+# `.env` is shell syntax, not make syntax, and make does not strip the quotes it
+# is written with — `API_PORT="4000"` (see .env.example) arrives here as the
+# literal `"4000"`. That is harmless inside a recipe, because the shell removes
+# the quotes when it expands the variable, but it is fatal in the *environment*:
+# Compose only unquotes when it parses `.env` itself, so an exported `"4000"`
+# reaches it as a five-character port and every command fails with
+#
+#     invalid hostPort: "4000"
+#
+# including `down` and `ps`. Normalise to what the file meant. Single quotes are
+# stripped too, since Compose strips them.
+HOST_PORT := $(patsubst "%",%,$(patsubst '%',%,$(HOST_PORT)))
+API_PORT := $(patsubst "%",%,$(patsubst '%',%,$(API_PORT)))
+WEB_PORT := $(patsubst "%",%,$(patsubst '%',%,$(WEB_PORT)))
 
 API_FOLDER := ./cmd/api
 CLI_FOLDER := ./cmd/cli
@@ -51,6 +92,7 @@ LINUX_TAR := $(LINUX_CLI)/$(APP_NAME)_$(CLI_NAME)_$(VERSION)_linux.tar.gz
 LINUX_SERVER_BIN := $(BUILD_API)/$(SERVER_NAME)
 LINUX_SERVER_TAR := $(BUILD_API)/$(APP_NAME)_$(SERVER_NAME)_$(VERSION)_linux.tar.gz
 
+WINDOWS_SERVER_BIN := $(BUILD_API)/$(SERVER_NAME).exe
 WINDOWS_SERVER_ZIP := $(BUILD_API)/$(APP_NAME)_$(SERVER_NAME)_$(VERSION)_windows.zip
 
 ## Builds
@@ -83,6 +125,7 @@ build_cli: verify
 # which is what lets the Go gate run on a machine with no Node.
 build_api: web_build verify
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(LINUX_SERVER_BIN) $(API_FOLDER)
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(WINDOWS_SERVER_BIN) $(API_FOLDER)
 
 	chmod -R a+r $(BUILD_API)
 	chmod a+x $(LINUX_SERVER_BIN)
@@ -97,7 +140,7 @@ build_gui: web_build verify
 
 zip: build_cli build_api build_gui
 	zip -j $(WINDOWS_ZIP) $(WINDOWS_BIN) $(SHORT_WINDOWS_BIN) $(WINDOWS_SCRIPT) README.md LICENSE
-	zip -r $(WINDOWS_SERVER_ZIP) $(LINUX_SERVER_BIN) $(MIGRATIONS) $(DOCKER_COMPOSE) $(SCRIPT_MIGRATION) $(SECRETS_EXAMPLE) $(ENV_EXAMPLE) README.md LICENSE
+	zip -r $(WINDOWS_SERVER_ZIP) $(WINDOWS_SERVER_BIN) $(MIGRATIONS) $(DOCKER_COMPOSE) $(SCRIPT_MIGRATION) $(SECRETS_EXAMPLE) $(ENV_EXAMPLE) README.md LICENSE
 
 	tar -czvf $(LINUX_TAR) \
 	          -C $(LINUX_CLI) $(notdir $(LINUX_BIN)) $(notdir $(SHORT_LINUX_BIN)) \
@@ -171,13 +214,63 @@ migrate_force:
 ## Docker
 unexport
 
-.PHONY: docker_up docker_down docker_up_all docker_down_v
+.PHONY: docker_up docker_down docker_up_all docker_down_v up preflight-ports
+
+# Which entry point is starting. Set by the target that depends on
+# `preflight-ports`, and only read there.
+MODE ?= dev
+
+# `make up` and `make dev-up` publish the same host ports, so they are
+# alternatives. This guard runs before either one starts anything, and names the
+# command that clears the way — instead of starting half a stack and failing on
+# `bind: address already in use`.
+#
+# A port held by *this* entry point's own containers is not a collision:
+# `make dev-up` twice in a row must work.
+preflight-ports:
+	@services="$$(docker compose --profile dev ps --services --status running 2>/dev/null || true)"; \
+	running() { printf '%s\n' "$$services" | grep -qx "$$1"; }; \
+	probe() { bash -c "exec 3<>/dev/tcp/127.0.0.1/$$1" 2>/dev/null; }; \
+	die() { echo "ERROR: $$1" >&2; shift; for line in "$$@"; do echo "       $$line" >&2; done; exit 1; }; \
+	if [ "$(MODE)" = "dev" ]; then \
+	    if running api || running web; then \
+	        die "the product stack is running (api/web) and already holds the host ports." \
+	            "make up and make dev-up are alternatives — stop the product first:" \
+	            "    make docker_down"; \
+	    fi; \
+	    if ! running dev && probe "$(HOST_PORT)"; then \
+	        die "host port $(HOST_PORT) is already in use by something that is not this stack." \
+	            "Free it, or start the dev loop elsewhere: HOST_PORT=<port> make dev-up"; \
+	    fi; \
+	    if ! running web-dev && probe "$(WEB_PORT)"; then \
+	        die "host port $(WEB_PORT) is already in use by something that is not this stack." \
+	            "Free it, or start the dev loop elsewhere: WEB_PORT=<port> make dev-up"; \
+	    fi; \
+	else \
+	    if running dev || running web-dev; then \
+	        die "the dev loop is running (dev/web-dev) and already holds the host ports." \
+	            "make up and make dev-up are alternatives — stop the dev loop first:" \
+	            "    make dev-down"; \
+	    fi; \
+	    if ! running api && probe "$(API_PORT)"; then \
+	        die "host port $(API_PORT) is already in use by something that is not this stack." \
+	            "Free it, or run the product elsewhere: API_PORT=<port> make up"; \
+	    fi; \
+	    if ! running web && probe "$(WEB_PORT)"; then \
+	        die "host port $(WEB_PORT) is already in use by something that is not this stack." \
+	            "Free it, or run the product elsewhere: WEB_PORT=<port> make up"; \
+	    fi; \
+	fi
+
+up: MODE = product
+up: preflight-ports ## Build and run the product: API :4000, web UI :5173, db, migrations
+	docker compose up --build db migrate api web
 
 docker_up:
 	docker compose up db migrate
 
 docker_up_all:
-	docker compose up
+	docker compose --profile dev up --build dev db migrate
 
 docker_down:
 	docker compose down
@@ -341,8 +434,9 @@ web_dev: ## Run the web UI dev server on http://localhost:5173
 # Cross-platform note: this Makefile targets POSIX hosts — Linux, macOS and
 # WSL2 — where `make` runs recipes under a POSIX shell. Native Windows users
 # should use `python scripts/dev-up.py dev-up` (or `scripts/dev-up.ps1`), which
-# provides the same targets without a POSIX shell. Everyone can run the project
-# with a plain `docker compose up`, which needs no Make at all.
+# provides the same targets without a POSIX shell. Everyone can run the product
+# with a plain `docker compose up`, which needs no Make at all, and the sandbox
+# with `docker compose up dev db migrate`.
 # ---------------------------------------------------------------------------
 
 # Extra flags for the opencode invocation. `make opencode-auto` /
@@ -365,7 +459,7 @@ HOST_HOME ?= $(HOME)
 # compose, whatever the surrounding sections do with export attributes.
 # Without a named export the sandbox would start as UID/GID 1000 on a Linux
 # host whose uid differs, and the bind mount would end up root-owned.
-export HOST_UID HOST_GID HOST_HOME
+export HOST_UID HOST_GID HOST_HOME HOST_PORT API_PORT WEB_PORT
 
 # --- Optional in-container agent ---------------------------------------------
 # Starting the sandbox never requires opencode. The agent layer is optional so
@@ -382,20 +476,29 @@ OPENCODE_BIN ?= $(HOME)/.opencode/bin/opencode
 OPENCODE_MAGIC := $(shell head -c 4 "$(OPENCODE_BIN)" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n')
 AGENT_AVAILABLE := $(if $(filter 7f454c46,$(OPENCODE_MAGIC)),yes,no)
 
+# --profile dev is explicit on purpose. The dev targets below name services
+# anyway (which enables the profile), but `exec`/`ps` act on an already-running
+# container and are easier to reason about when the profile is plainly on.
 ifeq ($(AGENT_AVAILABLE),yes)
-COMPOSE_UP := docker compose -f docker-compose.yml -f docker-compose.agent.yml
+COMPOSE_UP := docker compose --profile dev -f docker-compose.yml -f docker-compose.agent.yml
 else
-COMPOSE_UP := docker compose
+COMPOSE_UP := docker compose --profile dev
 endif
 
-# The sandbox needs the database: the API talks to the `db` service on the
-# compose network, so the stack comes up with it.
-DEV_SERVICES := dev db migrate
+# The marker file is the dev entrypoint's opt-in (scripts/dev-entrypoint.sh):
+# with it present the sandbox runs `make run_api` instead of sleeping. It is
+# gitignored per-checkout state, created by `dev-up` and removed by `dev-down`.
+DEV_START_MARKER := .dev/sandbox-start
 
 help: ## List the available targets
-	@grep -E '^[a-zA-Z_-]+:.*## ' $(firstword $(MAKEFILE_LIST)) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
-	@printf '\n  \033[36m%-30s\033[0m %s\n' "docker compose up" "run the sandbox with no host prerequisites (any OS)"
+	@grep -E '^[a-zA-Z_-]+:.*## ' $(firstword $(MAKEFILE_LIST)) | sort | awk 'BEGIN{FS=":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@printf '\n  \033[36m%-30s\033[0m %s\n' "docker compose up" "run the product with no host prerequisites (any OS)"
+	@printf '  \033[36m%-30s\033[0m %s\n' "docker compose up dev web-dev db migrate" "the dev loop without Make (needs .dev/sandbox-start)"
 	@printf '  \033[36m%-30s\033[0m %s\n' "scripts/dev-up.py" "native Windows: python scripts/dev-up.py dev-up"
+	@printf '\n  %s\n' "dev-up is the dev loop: UI :5173 (Vite, hot reload) and API :4000, both"
+	@printf '  %s\n' "from the source. make up is the product: same ports, built images."
+	@printf '  %s\n' "dev-up does not rebuild: run make dev-build after a Dockerfile or entrypoint"
+	@printf '  %s\n' "change. dev-restart is dev-down followed by dev-up."
 
 # --- One-time local setup ---------------------------------------------------
 # Creates the two local files the stack needs, from the committed examples:
@@ -476,24 +579,74 @@ opencode-upgrade: ## Upgrade host opencode and refresh the dev sandbox
 # HOST_UID/HOST_GID need no explicit export here: docker-compose.yml defaults
 # them, and the exported values above supply the host's real identity when make
 # is running on the host. Only the GitHub token is resolved at up-time.
-dev-up: preflight ## Start the dev sandbox and the local stack (foreground; Ctrl+C stops it)
-	@GH_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) GITHUB_TOKEN=$$(scripts/resolve-gh-token.sh 2>/dev/null) $(COMPOSE_UP) up --build $(DEV_SERVICES)
+.PHONY: dev-up dev-down dev-restart dev-log dev-build dev-reset
 
-dev-down: ## Stop the dev sandbox and the local stack (keeps volumes)
-	@docker compose down
+# dev-up is the developer loop, all of it: the API runs inside the sandbox
+# against the source, and the UI is the Vite server in `web-dev`, with hot
+# reload. Both ports answer when this returns — which is the whole point of the
+# target, and what it did not do before.
+#
+# Two steps, not one, because of the marker file. The entrypoint reads it when
+# the container *starts*; a plain `up` leaves an already-running sandbox
+# asleep, so `dev` is recreated to make the entrypoint run again.
+#
+# Both steps carry the GitHub token. Compose recreates a container whose
+# configuration differs from the running one, and the token is part of `dev`'s
+# environment — so a token on the first command and not on the second recreated
+# `dev` a second time, restarting the API seconds after it had started. It is
+# resolved once for the same reason: two substitutions can disagree.
+#
+# Neither step passes `--build`, and that is deliberate. Building on every start
+# is what made `dev-up` look like `dev-build`: BuildKit resolves the base-image
+# metadata and prints a full step list even on a cache hit, which cost ~9s per
+# run on the machine this was measured on (#103). Compose still builds an image
+# that does not exist yet when a started service needs it, so a cold checkout is
+# unaffected. What stops being automatic is an edit to a Dockerfile or to a
+# script COPYed into the image — `make dev-build` is that path, and it exists
+# for exactly this reason.
+dev-up: MODE = dev
+dev-up: preflight preflight-ports ## Start the dev loop: UI :5173 (Vite, live reload), API :4000
+	@printf '\n  dev-up starts the developer loop in containers:\n'
+	@printf '    %-14s %s\n' "UI (Vite)" "http://localhost:$(WEB_PORT)   hot reload"
+	@printf '    %-14s %s\n' "API" "http://localhost:$(HOST_PORT)"
+	@printf '  PostgreSQL and the migrations start first; the UI proxies /v1 to the API.\n'
+	@printf '  Ctrl-C stops the log stream — the containers keep running. "make dev-down" stops them.\n\n'
+	@mkdir -p .dev && touch $(DEV_START_MARKER)
+	@set -e; \
+	 token="$$(scripts/resolve-gh-token.sh 2>/dev/null || true)"; \
+	 GH_TOKEN="$$token" GITHUB_TOKEN="$$token" HOST_PORT=$(HOST_PORT) WEB_PORT=$(WEB_PORT) $(COMPOSE_UP) up -d --force-recreate dev; \
+	 GH_TOKEN="$$token" GITHUB_TOKEN="$$token" HOST_PORT=$(HOST_PORT) WEB_PORT=$(WEB_PORT) $(COMPOSE_UP) up -d web-dev
+	@$(COMPOSE_UP) logs -f dev web-dev
+
+dev-down: ## Stop the dev loop and the local stack (keeps volumes)
+	@rm -f $(DEV_START_MARKER)
+	@$(COMPOSE_UP) down
+
+# The two halves are the real targets, run through $(MAKE) so this one cannot
+# drift from them: the marker removal in `dev-down` and the port preflight,
+# recreate and log tail in `dev-up` stay in a single place. Like `dev-up` it
+# ends on the log stream, so Ctrl-C leaves the loop running.
+dev-restart: ## Restart the dev loop: dev-down, then dev-up (does not rebuild)
+	@$(MAKE) --no-print-directory dev-down
+	@$(MAKE) --no-print-directory dev-up
 
 dev-log: ## Tail dev sandbox logs
-	@docker compose logs -f dev
+	@$(COMPOSE_UP) logs -f dev
 
-dev-build: check-identity ## Rebuild the dev image after Dockerfile/dependency changes
-	@docker compose build dev
+# The only path that rebuilds an image. It covers `web-dev` as well as `dev`:
+# since `dev-up` stopped passing `--build` (#103), this is what picks up an edit
+# to `web/Dockerfile.dev` — and it used to skip that image entirely, so such an
+# edit had no rebuild path at all.
+dev-build: check-identity ## Rebuild the dev images (dev and web-dev) after Dockerfile/dependency changes
+	@docker compose --profile dev build dev web-dev
 
 # Deliberately NOT called `reset`: `down --volumes` removes the named volumes,
 # and one of them is the PostgreSQL data volume. This wipes the local database
 # along with the build caches, so the name says so.
 dev-reset: ## Stop everything and wipe the volumes — INCLUDING the local database
 	@echo "This removes the local database volume as well as the build caches." >&2
-	@docker compose down --volumes
+	@rm -f $(DEV_START_MARKER)
+	@$(COMPOSE_UP) down --volumes
 
 shell: dev-shell
 opencode: dev-opencode
@@ -511,6 +664,21 @@ dev-opencode: preflight require-agent ## Run the AI coding agent inside the dev 
 dev-opencode-auto: OPENCODE_ARGS = --auto
 dev-opencode-auto: dev-opencode
 
-# args
+# --- Goals that name no target -----------------------------------------------
+# `make run_api <args>` and `make run_cli <args>` forward their arguments as
+# extra *goals* (that is what `$(filter-out $@,$(MAKECMDGOALS))` in those
+# recipes reads), so this catch-all exists to stop make from failing on them.
+# That is the only case where a goal naming no target is legitimate.
+#
+# Everything else is a typo, and a typo that exits 0 is the worst kind: the
+# caller reads green and goes on to debug state that never changed — which is
+# exactly what `make dev-restart` did while the target was missing (#104). So an
+# unknown goal fails, unless the first goal is one of the two that take
+# arguments.
 %:
-	@:
+	@case "$(firstword $(MAKECMDGOALS))" in \
+	  run_api|run_cli) : ;; \
+	  *) echo "ERROR: no rule to make target '$@'." >&2; \
+	     echo "       'make help' lists the targets." >&2; \
+	     exit 1 ;; \
+	esac

@@ -20,6 +20,7 @@ retrieving your own files, backed by PostgreSQL.
   - [Build the CLI](#build-the-cli)
   - [Commands](#commands)
 - [Web UI](#web-ui)
+- [API reference](#api-reference)
 - [Security status](#security-status)
 - [How to develop](#how-to-develop)
   - [Layout](#layout)
@@ -58,27 +59,48 @@ are gitignored, and `make setup` creates them from the committed examples:
 make setup
 ```
 
-The database password comes from `secrets/db_password.txt`, which Compose
-mounts as a Docker secret and the API reads through `DB_PASSWORD_FILE`. It is
-never an environment variable.
+Without `make`, copy `.env.example` to `.env` and
+`secrets/db_password.txt.example` to `secrets/db_password.txt` by hand. The
+database password is a Docker file secret read through `DB_PASSWORD_FILE`; it
+is never an environment variable.
 
-Then bring up the database and run the migrations:
+Then one command brings up the product:
 
 ```sh
-make docker_up      # or: docker compose up db migrate
+make up             # or: docker compose up
 ```
 
-The API runs from source, not from a container: `make run_api` on the host, or
-inside the dev sandbox (see [How to develop](#how-to-develop)). The host CLI
-talks to it on `http://localhost:4000`.
+That does five things, in order:
 
-> The `api` service in `docker-compose.yml` is kept as a commented block: it
-> runs the **prebuilt** binary from `./build`, which is the path a release
-> bundle takes. Uncomment it when that is what you want.
->
-> In a **release bundle** the same file ships without the sandbox's image
-> source, so start the database with `docker compose up db migrate` — the
-> `dev` service is the development sandbox, and it is not part of the bundle.
+1. builds two images: `web/Dockerfile` (Node builds the UI, nginx serves it) and
+   `Dockerfile.api` (Node builds the UI, Go embeds it in the binary);
+2. starts PostgreSQL and waits until it is healthy;
+3. runs the `migrate` service once (`migrate up` is idempotent);
+4. starts the API on `http://localhost:4000` — API only, because the compose
+   service sets `API_SERVE_WEB=false`;
+5. starts the web UI on `http://localhost:5173`. It proxies `/v1/*` to the API,
+   so the browser still talks to one origin and the API needs no CORS headers.
+
+| Role | Where | Port |
+| --- | --- | --- |
+| Frontend (the app) | `web` service, nginx | **5173** |
+| Backend (the API) | `api` service | **4000** |
+| Database | `db` service | 5432 |
+
+`http://localhost:4000` still serves the UI inside the *released binary* (it
+embeds it); the compose stack keeps the two tiers apart so each port means one
+service.
+
+Uploaded bytes live on the `api-data` volume, so they survive
+`docker compose down` (use `docker compose down -v` to remove them too).
+
+> In a **release bundle** the source is not there, so there is no image to
+> build. Start the database with `docker compose up db migrate` and run the
+> prebuilt `build/api/server` (Windows: `build\api\server.exe`) from the
+> archive; it serves the UI embedded at build time. Plain `docker compose up`
+> is the source-checkout path — in a bundle it would try to build an image the
+> archive does not contain. `make dev-up` and the `dev` sandbox are not part of
+> the bundle either.
 
 ### Build the CLI
 
@@ -97,7 +119,7 @@ it (see [Web UI](#web-ui)). `make check` does not — the Go gate stays Node-fre
 | --- | --- |
 | `eznit signup` | Create an account |
 | `eznit login` | Start a session; the token is stored in `~/.eznit/config.json` (mode 0600) |
-| `eznit list` | List the files uploaded in this instance (add `--me` for your own) |
+| `eznit list` | List your own files (`--me` is an alias for the same list) |
 | `eznit upload` | Upload a file |
 | `eznit download` | Download one of your own files by id |
 | `eznit delete` | Delete a file |
@@ -176,6 +198,23 @@ remote stays the plain HTTPS URL. `EZNIT_REPOS` sets the clone root when
 `eznit logout` removes the session token and leaves the host token in place;
 `eznit repo auth --remove` removes that one.
 
+## API reference
+
+Every `/v1` operation is described in one OpenAPI 3.1 document, served by the
+API itself:
+
+- **`http://localhost:4000/docs`** — Swagger UI, with an **Authorize** button
+  for a session token and "Try it out" on every operation.
+- **`http://localhost:4000/v1/openapi.yaml`** — the document.
+- **`http://localhost:4000/v1/openapi.json`** — the same document as JSON.
+
+The UI assets are embedded in the binary, so the reference works with no
+internet access, and none of these routes needs a session — a client author can
+read the contract before they have a token. The document is committed at
+`internal/platform/openapi/openapi.yaml`. A test fails when it and the router
+disagree, so it describes the API as it is, including the known gaps listed in
+[`AGENTS.md`](AGENTS.md#known-gaps--read-this-before-trusting-a-green-run).
+
 ## Web UI
 
 The web UI lives in `web/`. It reaches the browser two ways:
@@ -185,8 +224,8 @@ The web UI lives in `web/`. It reaches the browser two ways:
   is needed. Rebuilding the UI is enough; the API does not need a restart.
 - **from the binary** — the API and the GUI carry the UI embedded at build
   time (`web/embed.go`), so a released binary serves it with no `web/dist`
-  next to it. `make build_api` and `make build_gui` run `make web_build`
-  first for that reason.
+  next to it. `make build_api`, `make build_gui` and the compose image
+  (`Dockerfile.api`) build the UI first for that reason.
 
 A `web/dist` with no `index.html` — a fresh clone, where the folder holds only
 the committed placeholder — counts as "no UI": the API serves the API only.
@@ -197,22 +236,36 @@ the committed placeholder — counts as "no UI": the API serves the API only.
 | `make web_dev` | Run the Vite dev server on `http://localhost:5173`; `/v1` is proxied to `http://localhost:4000` |
 | `make web_build` | Build the static assets into `web/dist` |
 | `make web_check` | Lint, format check, typecheck and build the web UI (fails on any error) |
+| `make dev-up` | Start the dev loop: UI `:5173` (Vite, hot reload), API `:4000` |
+| `make dev-restart` | Restart the loop: `dev-down`, then `dev-up` (no rebuild) |
+| `make dev-build` | Rebuild the `dev` and `web-dev` images after a Dockerfile or entrypoint change |
+| `make up` | Build and run the product stack: UI on `:5173`, API on `:4000` |
 
-Run it locally:
+The quickest way to see it needs no Node on the host — the images build the UI:
 
 ```sh
 make setup
-make docker_up          # start Postgres + run migrations
-make run_api            # start the API (it serves web/dist if present)
-make web_install
-make web_build          # or make web_dev for hot reload
+make up                 # UI http://localhost:5173 — API http://localhost:4000
 ```
 
-For hot reload during development, run the Vite dev server in one terminal
-(`make web_dev`) and the API in another (`make run_api`). The dev server
-proxies API calls to the API on `:4000`. Sign up or log in through the CLI or
-the API, put the session token in `localStorage` as `eznit.token` in the
-browser, or use the login page.
+For the development loop, with hot reload — one command, no host Go or Node:
+
+```sh
+make setup
+make dev-up             # UI http://localhost:5173 + API http://localhost:4000
+```
+
+Both ports answer when it returns: the API runs inside the sandbox against the
+source (`make run_api`), and the UI is Vite in the `web-dev` service, proxying
+`/v1` to it. Editing a `.tsx` file reloads the browser; a `.go` file needs the
+API restarted (`make dev-restart`, or `make run_api` again inside
+`make dev-shell`).
+
+Host tools still work: `make run_api` and `make web_dev` are the same two
+processes outside containers.
+
+Sign up or log in through the CLI or the API, put the session token in
+`localStorage` as `eznit.token` in the browser, or use the login page.
 
 Node is pinned in `mise.toml` (the CI reads it via `node-version-file`).
 
@@ -245,14 +298,7 @@ GUI_API_URL=http://localhost:4000 ./build/eznit-gui
 
 ## Security status
 
-This is a self-hosted tool, and it is not hardened. The known gaps are tracked
-as issues rather than left for you to discover:
-
-| Gap | Issue |
-| --- | --- |
-| The catalogue lists every user's file names to any user with a session | — |
-
-Also true today:
+This is a self-hosted tool, and it is not hardened. What is true today:
 
 - **The coverage is partial.** The files domain, the CLI and the path helper
   have tests; the users, sessions, middleware and platform packages have
@@ -310,13 +356,55 @@ prints `[no test files]` and still exits 0.
 The commands above need a Go toolchain on the host. The sandbox removes that
 requirement: it is a container with Go **1.27.3** — the version in `go.mod`,
 the same one CI uses — and the workspace is bind-mounted into it, so the files
-you edit are the same files.
+you edit are the same files. The frontend has the same arrangement in
+`web-dev`: the Node from `mise.toml`, running Vite against the same bind mount.
 
 ```sh
-make dev-up     # start the sandbox + PostgreSQL + the migrations
+make dev-up     # the loop: UI :5173 (Vite, hot reload) + API :4000
 make dev-shell  # a shell inside the sandbox
 make dev-down   # stop it (keeps the volumes)
 ```
+
+`make dev-up` starts four things: PostgreSQL, the migrations, the sandbox with
+`make run_api` in it, and the Vite dev server. Both HTTP ports answer when it
+returns, and an edit on the host is visible in the other one immediately — the
+Go process recompiles on its next start (there is no file watcher: restart the
+API after a Go change), and Vite reloads the browser on a web change.
+
+`dev-up` does not rebuild an image, so a start is a start: nothing is compiled
+into an image layer, and it reads the same on the second run as on the first.
+Compose still builds the images the first time they are needed. An edit to a
+`Dockerfile`, `web/Dockerfile.dev`, or a script one of them `COPY`s is the one
+change the loop cannot pick up by itself — `make dev-build` rebuilds both
+images, and `make dev-restart` is `dev-down` followed by `dev-up`.
+
+| Role | Where | Port |
+| --- | --- | --- |
+| Frontend (the app) | `web-dev` service, Vite | **5173** |
+| Backend (the API) | `dev` service, `make run_api` | **4000** |
+
+| What you want | Commands | Ports |
+| --- | --- | --- |
+| the product, in containers | `make up` | UI `:5173`, API `:4000` |
+| the dev loop, against the source | `make dev-up` | UI `:5173`, API `:4000` |
+| the same loop with host toolchains | `make run_api` + `make web_dev` | API `:4000`, UI `:5173` |
+
+The two entry points are alternatives: `make up` and `make dev-up` publish the
+same two ports, so each refuses to start while the other one holds them, and
+names the command that clears the way (`make docker_down` or `make dev-down`)
+instead of failing on `bind: address already in use`.
+
+`Ctrl-C` stops the log stream and leaves the loop running — `make dev-down` is
+what stops it. The marker file `.dev/sandbox-start` (gitignored) is how the
+entrypoint knows to start the API rather than sleep; `dev-up` creates it and
+`dev-down` removes it, so a bare `docker compose up dev db migrate` is still a
+quiet sandbox with a shell.
+
+Inside the sandbox the configuration comes from the container, not from `.env`:
+compose sets `DB_HOST=db` and `DB_PORT=5432` because that is the in-network
+address, and the Makefile deliberately does not import the host's `.env` there.
+The database password stays a file secret the container reads from
+`/run/secrets/db_password`.
 
 The sandbox waits for the stack: compose starts PostgreSQL, waits for it to
 be healthy, runs the migrations, and only then starts the sandbox. A
@@ -326,15 +414,26 @@ unmigrated database.
 Everything also works without Make:
 
 ```sh
-docker compose up                              # the sandbox and the stack
-python scripts/dev-up.py dev-up                # native Windows
+mkdir -p .dev && touch .dev/sandbox-start      # makes the sandbox run the API
+docker compose up dev web-dev db migrate       # the whole loop
+python scripts/dev-up.py dev-up                # native Windows: same thing
 ```
 
 | Platform | How to run the dev flow |
 | --- | --- |
-| Linux, macOS | `make dev-up`, or `docker compose up` |
-| WSL2 | `make dev-up`, or `docker compose up` (the host is Linux) |
-| Windows (native) | `python scripts/dev-up.py dev-up`, or `docker compose up` |
+| Linux, macOS | `make dev-up` |
+| WSL2 | `make dev-up` (the host is Linux) |
+| Windows (native) | `python scripts/dev-up.py dev-up`, or `docker compose up dev web-dev db migrate` after creating the marker |
+
+`make dev-build` and `python scripts/dev-up.py dev-build` are the rebuild path
+on each: recreating the containers, which `dev-up` and `dev-restart` both do, is
+not a rebuild, and only an image change needs one.
+
+The `dev` and `web-dev` services are behind the `dev` Compose profile: plain
+`docker compose up` is the **product** (see [Run the stack](#run-the-stack)),
+and naming one of them explicitly enables the profile. `make dev-up` does
+exactly that, and creates the `.dev/sandbox-start` marker that tells the
+sandbox entrypoint to start the API instead of sleeping for a shell.
 
 The sandbox shares the Compose network with PostgreSQL, so the API started
 inside it (`make run_api`) reaches the database at `db:5432` with the stock
@@ -390,6 +489,25 @@ connection string.
    compiles, it does not call anything
 3. If the change is user-visible in the CLI, read the output — a CLI has no
    screenshot, and its output is the artifact
+
+### Releasing
+
+A release is a `v*` tag on `main`. `.github/workflows/release.yml` refuses a tag
+that does not point at a commit on `main`, builds the archives with
+`make build VERSION=<tag>` — the same target a developer runs — and publishes
+them with `gh release create`:
+
+| Asset | Contents |
+| --- | --- |
+| `eznit_cli_<version>_windows.zip` | `eznit.exe`, `ez.exe`, `add_to_path.ps1`, README, LICENSE |
+| `eznit_cli_<version>_linux.tar.gz` | `eznit`, `ez`, `add_to_path.sh`, README, LICENSE |
+| `eznit_server_<version>_windows.zip` | the API server for Windows, the migrations, the Compose files and the example config |
+| `eznit_server_<version>_linux.tar.gz` | the API server for Linux, the migrations, the Compose files and the example config |
+| `checksums.txt` | SHA-256 of every archive |
+
+The workflow can also be run by hand (`workflow_dispatch`): that run builds the
+same archives and keeps them on the run, and publishes nothing. Only a tag
+publishes.
 
 ## Troubleshooting
 
@@ -448,14 +566,38 @@ make dev-reset     # docker compose down --volumes
 make dev-up
 ```
 
-`make dev-reset` also drops the `postgres-data` volume — that is why it is not
-called `reset` — so the migrations run again on the next `make dev-up`.
+`make dev-reset` also drops the `postgres-data` and `api-data` volumes — the
+database and the uploaded files — which is why it is not called `reset`. The
+migrations run again on the next `make dev-up`.
 
-**`bind: address already in use` on port 4000**
+**`bind: address already in use` on port 4000 or 5173**
 
-The sandbox publishes 4000 so the host CLI can reach the API inside it. If the
-API runs on the host instead, publish a different host port:
-`HOST_PORT=4001 docker compose up`.
+The product and the dev loop publish the same two ports, and they are
+alternatives. Both entry points now check before they start anything and say
+which one is running, instead of failing halfway with Docker's message:
+
+```sh
+make docker_down      # stop the product, then: make dev-up
+make dev-down         # stop the dev loop, then: make up
+```
+
+When the port belongs to something that is not this stack (a `make run_api` in
+another terminal, a second checkout), move one of them:
+
+```sh
+HOST_PORT=4001 make dev-up                     # the sandbox API
+WEB_PORT=5174 make dev-up                      # the dev UI (HMR follows it)
+API_PORT=4001 docker compose up                # the product API
+WEB_PORT=5174 docker compose up                # the product UI
+```
+
+**The UI loads on `:5173` but every request fails**
+
+The Vite dev server proxies `/v1` to the API, so an API that is not running
+looks like a broken UI: the page renders and the data does not. Check the API
+first — `curl -s -o /dev/null -w '%{http_code}\n' localhost:4000/v1/healthcheck`
+— then the sandbox log for a compile error (`make dev-log`). With
+`make dev-up` the log stream is attached, so the error is usually on screen.
 
 ## License
 

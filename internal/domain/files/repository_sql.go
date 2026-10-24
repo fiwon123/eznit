@@ -13,7 +13,7 @@ import (
 // every read at run time: sqlx cannot scan a column the struct does not hold,
 // and the repository would report "not found" for a file that is there.
 // files/schema_test.go checks it against the struct and the migrations.
-const fileColumns = "id, user_id, name, ext, path, version, content_type, created_at, updated_at"
+const fileColumns = "id, user_id, name, ext, path, version, content_type, is_public, created_at, updated_at"
 
 // Files Repository implementation
 type sqlRepository struct {
@@ -29,25 +29,9 @@ func NewRepository(db *sqlx.DB, logger *logger.Config) *sqlRepository {
 	}
 }
 
-// Get a list of files, newest first and bounded: the list is a catalogue of
-// every upload, so it must not read the whole table on every call.
-func (r *sqlRepository) GetFiles(limit int) ([]File, bool) {
-	r.logger.Debug("getting files")
-
-	var files []File
-
-	err := r.db.Select(&files, "SELECT "+fileColumns+" FROM files ORDER BY created_at DESC LIMIT $1", limit)
-	if err != nil {
-		r.logger.Error("get files query", slog.Any("error", err))
-		return []File{}, false
-	}
-
-	r.logger.Debug("files has been found")
-
-	return files, true
-}
-
-// Get a list of files data for user by user id
+// Get a list of files data for user by user id. The read is filtered by the
+// owner in the query: a file belongs to the user who uploaded it, so no
+// caller lists another user's rows in the first place.
 func (r *sqlRepository) GetFilesForUser(userID uuid.UUID) ([]File, bool) {
 	r.logger.Debug("getting files for user: ", slog.String("userID", userID.String()))
 
@@ -101,6 +85,44 @@ func (r *sqlRepository) GetFileForUser(id uuid.UUID, userID uuid.UUID) (*File, b
 	r.logger.Debug("file has been found")
 
 	return &file, true
+}
+
+// GetSharedFile returns a file if it is public (any authenticated caller may
+// download a shared file). It does not check ownership.
+func (r *sqlRepository) GetSharedFile(id uuid.UUID) (*File, bool) {
+	r.logger.Debug("getting shared file: ", slog.String("id", id.String()))
+
+	var file File
+
+	query := "SELECT " + fileColumns + " FROM files WHERE id=$1 AND is_public=TRUE"
+
+	err := r.db.Get(&file, query, id)
+	if err != nil {
+		r.logger.Error("get shared file", slog.Any("error", err))
+		return nil, false
+	}
+
+	r.logger.Debug("shared file has been found")
+
+	return &file, true
+}
+
+// ListSharedFiles returns all public files with their owner's email for the
+// catalogue.
+func (r *sqlRepository) ListSharedFiles() ([]SharedFileWithOwner, bool) {
+	r.logger.Debug("listing shared files")
+
+	var files []SharedFileWithOwner
+
+	query := "SELECT f.id, f.user_id, f.name, f.ext, f.path, f.version, f.content_type, f.is_public, f.created_at, f.updated_at, u.email AS owner_email FROM files f JOIN users u ON u.id = f.user_id WHERE f.is_public = TRUE ORDER BY f.updated_at DESC"
+
+	err := r.db.Select(&files, query)
+	if err != nil {
+		r.logger.Error("list shared files", slog.Any("error", err))
+		return []SharedFileWithOwner{}, false
+	}
+
+	return files, true
 }
 
 // Storage file using file model
@@ -205,6 +227,24 @@ func (r *sqlRepository) UpdateFile(file File) bool {
 	r.logger.Debug("file updated!")
 
 	return true
+}
+
+// SetFilePublic toggles sharing for a file owned by the caller.
+func (r *sqlRepository) SetFilePublic(id uuid.UUID, userID uuid.UUID, isPublic bool) bool {
+	r.logger.Debug("setting file public", slog.String("id", id.String()), slog.Bool("isPublic", isPublic))
+
+	res, err := r.db.Exec("UPDATE files SET is_public=$3, updated_at=NOW() WHERE id=$1 AND user_id=$2", id, userID, isPublic)
+	if err != nil {
+		r.logger.Error("set file public", slog.Any("error", err))
+		return false
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return false
+	}
+
+	return rows > 0
 }
 
 func (r *sqlRepository) IsUserOwner(id uuid.UUID, userID uuid.UUID) bool {

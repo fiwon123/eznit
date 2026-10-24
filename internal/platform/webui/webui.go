@@ -3,7 +3,8 @@
 // The UI is a single page application: its routes live in the browser, so a
 // path like /templates/<id> has to answer with index.html and not with a 404.
 // The API keeps its own paths, so anything under /v1 goes to it untouched —
-// including the 404 it gives for an unknown API path.
+// including the 404 it gives for an unknown API path — and so does /docs, the
+// reference the API serves.
 //
 // The handler works on an fs.FS instead of a directory, because the web UI
 // reaches the process two ways: from web/dist on disk while developing, and
@@ -32,16 +33,25 @@ func HasIndex(fsys fs.FS) bool {
 	return err == nil && !info.IsDir()
 }
 
+// apiPath reports whether the API owns a path.
+//
+// Everything under /v1 is the API's. So is /docs, where the API serves its own
+// OpenAPI reference (internal/platform/openapi) — the UI has no page there, and
+// letting the SPA fallback answer it would hide the reference behind the app.
+func apiPath(p string) bool {
+	return strings.HasPrefix(p, "/v1/") || p == "/docs" || strings.HasPrefix(p, "/docs/")
+}
+
 // Handler serves fsys in front of api.
 //
-// A request under /v1 is the API's; every other request is the UI's. A path
-// that names a file in fsys gets that file, and anything else gets index.html
-// for the browser to route.
+// A request under /v1 is the API's, and so is the documentation the API serves
+// at /docs; every other request is the UI's. A path that names a file in fsys
+// gets that file, and anything else gets index.html for the browser to route.
 func Handler(fsys fs.FS, api http.Handler) http.Handler {
 	files := http.FileServerFS(fsys)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/v1/") {
+		if apiPath(r.URL.Path) {
 			api.ServeHTTP(w, r)
 			return
 		}

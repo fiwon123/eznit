@@ -8,9 +8,9 @@ import (
 	"github.com/fiwon123/eznit/pkg/logger"
 )
 
-// The catalogue lists every upload in the instance, so the route is behind
-// the session guard: the CLI has to send the token with the request, for
-// the whole list as well as for the caller's own files.
+// The list answers the caller's own files, so the route is behind the session
+// guard: the CLI has to send the token with the request, whether it asks for
+// the default list or names `/me` explicitly.
 func TestSendListRequestSendsTheSessionToken(t *testing.T) {
 	var gotAuthorization string
 	var gotPath string
@@ -37,6 +37,6 @@ func TestSendListRequestSendsTheSessionToken(t *testing.T) {
 	}
 
 	if gotPath != "/v1/files" {
-		t.Errorf("expected the catalogue route, got %q", gotPath)
+		t.Errorf("expected the list route, got %q", gotPath)
 	}
 }

@@ -48,8 +48,8 @@ func TestTheRoutesAreMountedAndGuarded(t *testing.T) {
 		method string
 		path   string
 	}{
-		{"the file catalogue", http.MethodGet, "/v1/files"},
-		{"the caller's files", http.MethodGet, "/v1/files/me"},
+		{"the file list", http.MethodGet, "/v1/files"},
+		{"the caller's files alias", http.MethodGet, "/v1/files/me"},
 		{"an upload", http.MethodPost, "/v1/files"},
 		{"a download", http.MethodGet, "/v1/files/1f0c1a9e-0000-0000-0000-000000000000/content"},
 		{"the template catalogue", http.MethodGet, "/v1/templates"},

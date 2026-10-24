@@ -13,9 +13,6 @@ type fakeRepository struct {
 	// history holds the rows StorageFileHistory was asked for, so a test can
 	// assert an update adds a version instead of rewriting the ones before it.
 	history []File
-	// lastLimit is the limit the last GetFiles call was made with, so a
-	// test can assert the route asked for a bounded list.
-	lastLimit int
 }
 
 // newFakeRepository returns a repository holding the given files.
@@ -25,21 +22,6 @@ func newFakeRepository(files ...File) *fakeRepository {
 		repo.files[file.ID] = file
 	}
 	return repo
-}
-
-func (r *fakeRepository) GetFiles(limit int) ([]File, bool) {
-	r.lastLimit = limit
-
-	all := make([]File, 0, len(r.files))
-	for _, file := range r.files {
-		all = append(all, file)
-	}
-
-	if limit > 0 && len(all) > limit {
-		all = all[:limit]
-	}
-
-	return all, true
 }
 
 func (r *fakeRepository) GetFilesForUser(userID uuid.UUID) ([]File, bool) {
@@ -99,6 +81,34 @@ func (r *fakeRepository) DeleteFileHistoryForUser(id uuid.UUID, userID uuid.UUID
 
 func (r *fakeRepository) UpdateFile(file File) bool {
 	r.files[file.ID] = file
+	return true
+}
+
+func (r *fakeRepository) GetSharedFile(id uuid.UUID) (*File, bool) {
+	file, ok := r.files[id]
+	if !ok || !file.IsPublic {
+		return nil, false
+	}
+	return &file, true
+}
+
+func (r *fakeRepository) ListSharedFiles() ([]SharedFileWithOwner, bool) {
+	var out []SharedFileWithOwner
+	for _, file := range r.files {
+		if file.IsPublic {
+			out = append(out, SharedFileWithOwner{File: file, OwnerEmail: "user@example.com"})
+		}
+	}
+	return out, true
+}
+
+func (r *fakeRepository) SetFilePublic(id uuid.UUID, userID uuid.UUID, isPublic bool) bool {
+	file, ok := r.files[id]
+	if !ok || file.UserID != userID {
+		return false
+	}
+	file.IsPublic = isPublic
+	r.files[id] = file
 	return true
 }
 

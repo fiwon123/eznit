@@ -1,0 +1,131 @@
+name: Release
+
+# Publishes the downloadable archives on a `v*` tag.
+#
+# Policy (`.opencode/instructions/workflow.md`, step 7): the tag must point at a
+# commit that is on `main`. A tag cut from a side branch fails this run instead
+# of shipping an unreleased commit. CI (Go) and CI (Web) already gate the
+# release pull request, so this workflow builds and publishes; it does not
+# repeat those gates.
+#
+# `workflow_dispatch` runs the same build and keeps the archives on the run --
+# it never publishes a release. That is the way to exercise this pipeline
+# without a tag: the publish step itself is only proven by a real release.
+#
+# The archives come from `make build`, the same target a developer runs
+# locally, so the release artifacts and the documented build cannot drift into
+# two different packaging stories. `VERSION` is overridden with the tag.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The tag points at a commit; `git describe` and the main guard both
+          # need the history and tags, so a shallow clone would not do.
+          fetch-depth: 0
+
+      # A tag on a side branch would publish a commit that never passed the
+      # release pull request. Refusing here makes the mistake loud instead of
+      # shipping it.
+      - name: Refuse a tag that is not on main
+        if: github.event_name == 'push'
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::tag $GITHUB_REF_NAME points at $GITHUB_SHA, which is not on main"
+            exit 1
+          fi
+          echo "$GITHUB_REF_NAME ($GITHUB_SHA) is on main"
+
+      - name: Resolve the version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            version="$GITHUB_REF_NAME"
+          else
+            # A dispatch has no tag to name the run. `git describe` gives the
+            # nearest tag and the distance from it, which is enough to tell
+            # two dry runs apart.
+            version="$(git describe --tags --always)"
+          fi
+          version="${version//\//-}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          # Same pin the Go gate uses: go.mod, not a second copy here.
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          # mise.toml holds the pin, exactly as in ci.web.yml.
+          node-version-file: 'mise.toml'
+          cache: npm
+          cache-dependency-path: 'web/package-lock.json'
+
+      - name: Install the web dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Build the archives
+        run: make build VERSION="${{ steps.version.outputs.version }}"
+
+      # A download nobody can verify is only assumed intact. Hash every
+      # archive, in a deterministic order, into one file next to them.
+      - name: Write the checksums
+        run: |
+          cd build
+          find . -type f \( -name '*.zip' -o -name '*.tar.gz' \) -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > checksums.txt
+          cat checksums.txt
+
+      # A dry run keeps the archives on the workflow run and stops there.
+      - name: Upload the archives to the run
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: eznit-${{ steps.version.outputs.version }}
+          path: |
+            build/**/*.zip
+            build/**/*.tar.gz
+            build/checksums.txt
+          if-no-files-found: error
+
+      - name: Publish the release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            build/cli/windows/*.zip \
+            build/cli/linux/*.tar.gz \
+            build/api/*.zip \
+            build/api/*.tar.gz \
+            build/checksums.txt \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag
+
+# WHAT THIS DOES NOT PROVE: the publish step runs only on a tag push, so a
+# green `workflow_dispatch` run verifies the build, the packaging and the
+# checksums -- not `gh release create`. Until a real tag runs that step, the
+# publication path is unverified, and a skipped step is not a passed step.

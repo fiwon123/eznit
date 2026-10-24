@@ -1,0 +1,1494 @@
+openapi: 3.1.0
+
+info:
+  title: eznit API
+  version: "v1"
+  summary: Self-hosted file storage — users, files, templates and commands.
+  description: |
+    The HTTP API behind the `eznit` CLI and the web UI. Every operation lives
+    under `/v1`; the routes outside it are the UI's.
+
+    ## Responses
+
+    A JSON response is the same envelope everywhere:
+
+    | field | when | meaning |
+    | --- | --- | --- |
+    | `status_code` | always | the HTTP status, repeated in the body |
+    | `data` | a request that returns something | the payload |
+    | `message` | a request that changes something | what happened |
+    | `error` | a request that failed | why |
+    | `timestamp` | always | RFC 3339, server time |
+
+    `data` is present when the operation returns a payload and absent when it
+    returns only a message. A list resource answers the list even when it is
+    empty: every list answers `[]`, never `null`.
+
+    A download (`/content`, `/archive`) is not an envelope: it is the bytes,
+    with `Content-Disposition` naming the file.
+
+    ## Authentication
+
+    `POST /v1/login` returns a token. Send it on every other operation as
+    `Authorization: Bearer <token>`. The token is a session row: `GET
+    /v1/logout` ends the one it is sent with, and an expired or ended token
+    answers `401`.
+
+    A few routes are deliberately public: the health check, signup, login, and
+    this document.
+
+    ## Known gaps
+
+    This document describes the API **as it behaves today**, including the
+    routes below, which do not behave well yet:
+
+    - `PUT` and `DELETE /v1/users/{id}` sit behind an admin guard that is still
+      a TODO, so they answer `401` for everybody (#109).
+    - `GET /v1/users` and `GET /v1/users/{id}` answer with any account's email
+      (#110).
+
+    Neither is a contract to build on; they are recorded so a client author is
+    not surprised by them.
+
+servers:
+  - url: /
+    description: The process that serves this document.
+
+tags:
+  - name: health
+    description: Is the process up?
+  - name: users
+    description: Accounts and sessions.
+  - name: files
+    description: The caller's uploaded files.
+  - name: templates
+    description: Shareable project skeletons — files, commands and variables.
+  - name: commands
+    description: The caller's reusable command library.
+
+security:
+  - session: []
+
+paths:
+  /v1/healthcheck:
+    get:
+      operationId: healthcheck
+      tags: [health]
+      summary: Report that the process is up
+      description: Answers without touching the database.
+      security: []
+      responses:
+        "200":
+          description: The process is serving requests.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /v1/signup:
+    post:
+      operationId: signup
+      tags: [users]
+      summary: Create an account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignupRequest"
+      responses:
+        "200":
+          description: The account was created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: That email already has an account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/login:
+    post:
+      operationId: login
+      tags: [users]
+      summary: Exchange credentials for a session token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: A live session token.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: The body could not be decoded, or the password is wrong.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No account has that email.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/logout:
+    get:
+      operationId: logout
+      tags: [users]
+      summary: End the session this token belongs to
+      responses:
+        "200":
+          description: The session is no longer active.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: The caller has no token to end.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List every account
+      description: |
+        Answers every registered account's email, not only the caller's. This is
+        a known gap, described here so it is not mistaken for a contract.
+      responses:
+        "200":
+          description: Every account.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/UserData"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/users/{id}:
+    parameters:
+      - $ref: "#/components/parameters/UserID"
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Read one account
+      responses:
+        "200":
+          description: The account.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/UserData"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateUser
+      tags: [users]
+      summary: Replace an account
+      description: |
+        The admin guard in front of this route is a TODO and answers `401` for
+        every caller. The body is described for the route it will be.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: The account was replaced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Always, today — the admin guard is not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No account with that id — the answer once the guard is implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Delete an account
+      description: |
+        The admin guard in front of this route is a TODO and answers `401` for
+        every caller.
+      responses:
+        "200":
+          description: The account was deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Always, today — the admin guard is not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/files:
+    get:
+      operationId: listFiles
+      tags: [files]
+      summary: List the caller's files
+      responses:
+        "200":
+          description: The caller's files, newest first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/FileList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    post:
+      operationId: uploadFile
+      tags: [files]
+      summary: Upload a file
+      description: |
+        The bytes are stored on disk; the row is the index. A file is owned by
+        the caller, and its name comes from the multipart part's filename. The
+        request body is capped at 32 MiB.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: The file was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: No `file` part, or the body is over the limit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/files/me:
+    get:
+      operationId: listMyFiles
+      tags: [files]
+      summary: List the caller's files (alias of `/v1/files`)
+      description: Kept for the clients that name the caller's files explicitly.
+      responses:
+        "200":
+          description: The caller's files.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/FileList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/files/shared:
+    get:
+      operationId: listSharedFiles
+      tags: [files]
+      summary: List shared files
+      responses:
+        "200":
+          description: Shared files.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/SharedFileList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/files/{id}:
+    parameters:
+      - $ref: "#/components/parameters/FileID"
+    get:
+      operationId: getFile
+      tags: [files]
+      summary: Read one file's record
+      responses:
+        "200":
+          description: The file record.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/FileData"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateFile
+      tags: [files]
+      summary: Replace a file's bytes
+      description: |
+        Stores the new bytes as the next version and keeps the previous one in
+        `files_history`. The body is capped at 32 MiB.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: The new version was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: No `file` part, the body is over the limit, or the file does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: The caller does not own the file.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    delete:
+      operationId: deleteFile
+      tags: [files]
+      summary: Delete a file
+      responses:
+        "200":
+          description: The file and its stored versions were deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: The id is not a UUID, or the file does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/files/{id}/share:
+    parameters:
+      - $ref: "#/components/parameters/FileID"
+    post:
+      operationId: shareFile
+      tags: [files]
+      summary: Share or unshare a file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShareRequest"
+      responses:
+        "200":
+          description: Sharing updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: The file does not exist or is not owned by the caller.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/files/{id}/content:
+    parameters:
+      - $ref: "#/components/parameters/FileID"
+    get:
+      operationId: downloadFile
+      tags: [files]
+      summary: Download a file's bytes
+      responses:
+        "200":
+          description: The bytes, with the stored content type.
+          headers:
+            Content-Disposition:
+              description: Names the file as it was uploaded.
+              schema:
+                type: string
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/templates:
+    get:
+      operationId: listTemplates
+      tags: [templates]
+      summary: List the templates the caller may use
+      description: |
+        The public templates plus the caller's own private ones. At most 100
+        are returned.
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          description: Only templates for this AI terminal.
+          schema:
+            $ref: "#/components/schemas/TemplateKind"
+      responses:
+        "200":
+          description: The catalogue.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/TemplateList"
+        "400":
+          description: "`kind` is not one of the accepted kinds."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    post:
+      operationId: publishTemplate
+      tags: [templates]
+      summary: Publish a template
+      description: |
+        The request carries the whole template: its files, the variables it
+        asks for, and references to commands in the caller's library. The body
+        is capped at 32 MiB, a template holds at most 200 files, 50 variables
+        and 50 commands, and a text file is capped at 256 KiB.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishRequest"
+      responses:
+        "200":
+          description: The template as stored.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/TemplateDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/templates/mine:
+    get:
+      operationId: listMyTemplates
+      tags: [templates]
+      summary: List the caller's own templates
+      description: The private ones included.
+      responses:
+        "200":
+          description: The caller's templates.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/TemplateList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/templates/{id}:
+    parameters:
+      - $ref: "#/components/parameters/TemplateID"
+    get:
+      operationId: getTemplate
+      tags: [templates]
+      summary: Read one template, with everything inside it
+      description: |
+        A private template that is not the caller's is reported as `404`: the
+        fact that it exists is not theirs to learn.
+      responses:
+        "200":
+          description: The template.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/TemplateDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateTemplate
+      tags: [templates]
+      summary: Replace a template
+      description: |
+        An update replaces the whole template — the same body as a publish —
+        and bumps its version.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishRequest"
+      responses:
+        "200":
+          description: The template as stored.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/TemplateDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    delete:
+      operationId: deleteTemplate
+      tags: [templates]
+      summary: Delete a template
+      responses:
+        "200":
+          description: The template, its rows and its bytes were deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/templates/{id}/archive:
+    parameters:
+      - $ref: "#/components/parameters/TemplateID"
+    get:
+      operationId: downloadTemplateArchive
+      tags: [templates]
+      summary: Download a template as a ZIP
+      description: The archive holds the template's files at their target paths.
+      responses:
+        "200":
+          description: The archive.
+          headers:
+            Content-Disposition:
+              description: Always `attachment; filename=template.zip`.
+              schema:
+                type: string
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/templates/{id}/files/{fileID}/content:
+    parameters:
+      - $ref: "#/components/parameters/TemplateID"
+      - $ref: "#/components/parameters/TemplateFileID"
+    get:
+      operationId: downloadTemplateFile
+      tags: [templates]
+      summary: Download one file of a template
+      description: |
+        The bytes exactly as they are stored: the `content` column for a text
+        file, the bytes on disk for a binary one.
+      responses:
+        "200":
+          description: The file's bytes, with a content type derived from its path.
+          headers:
+            Content-Disposition:
+              description: Names the file by its base name.
+              schema:
+                type: string
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/commands:
+    get:
+      operationId: listCommands
+      tags: [commands]
+      summary: List the caller's command library
+      responses:
+        "200":
+          description: The caller's commands.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/CommandList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    post:
+      operationId: createCommand
+      tags: [commands]
+      summary: Add a command to the library
+      description: |
+        A text command sends `content`; a binary one sends `content_base64`. A
+        command is capped at 10 MiB (256 KiB when text), and the library holds
+        at most 500.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommandRequest"
+      responses:
+        "201":
+          description: The command as stored.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/CommandData"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: The name is taken, or the library is full.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/commands/{id}:
+    parameters:
+      - $ref: "#/components/parameters/CommandID"
+    get:
+      operationId: getCommand
+      tags: [commands]
+      summary: Read one command
+      responses:
+        "200":
+          description: The command.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/CommandData"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateCommand
+      tags: [commands]
+      summary: Replace a command
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommandRequest"
+      responses:
+        "200":
+          description: The command as stored.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DataResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/CommandData"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Another command already has that name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteCommand
+      tags: [commands]
+      summary: Delete a command
+      responses:
+        "200":
+          description: The command was deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: A template still references the command.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  securitySchemes:
+    session:
+      type: http
+      scheme: bearer
+      description: |
+        The token `POST /v1/login` returns. Send it as
+        `Authorization: Bearer <token>`.
+
+  parameters:
+    UserID:
+      name: id
+      in: path
+      required: true
+      description: The account's identifier.
+      schema:
+        type: string
+        format: uuid
+    FileID:
+      name: id
+      in: path
+      required: true
+      description: The file's identifier.
+      schema:
+        type: string
+        format: uuid
+    TemplateID:
+      name: id
+      in: path
+      required: true
+      description: The template's identifier.
+      schema:
+        type: string
+        format: uuid
+    TemplateFileID:
+      name: fileID
+      in: path
+      required: true
+      description: The template file's identifier.
+      schema:
+        type: string
+        format: uuid
+    CommandID:
+      name: id
+      in: path
+      required: true
+      description: The command's identifier.
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: The body, a path identifier or a field could not be used; `error` names the reason.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: No token, or a token that is not a live session.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: No such record, or it is not visible to the caller.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalServerError:
+      description: The server failed; `error` says where.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    MessageResponse:
+      type: object
+      description: A request that changed something, and what happened.
+      required: [status_code, message, timestamp]
+      properties:
+        status_code:
+          type: integer
+          example: 200
+        message:
+          type: string
+          example: user created!
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      description: A request that failed, and why.
+      required: [status_code, error, timestamp]
+      properties:
+        status_code:
+          type: integer
+          example: 401
+        error:
+          type: string
+          example: No token provided
+        timestamp:
+          type: string
+          format: date-time
+
+    DataResponse:
+      type: object
+      description: |
+        A request that returned something. `data` is omitted when the payload is
+        an empty list, so a client must treat a missing `data` as empty.
+      required: [status_code, timestamp]
+      properties:
+        status_code:
+          type: integer
+          example: 200
+        timestamp:
+          type: string
+          format: date-time
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    LoginResponse:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: The session token, sent as a bearer token from now on.
+
+    SignupRequest:
+      type: object
+      required: [email, password, confirm_password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        confirm_password:
+          type: string
+          format: password
+          description: Must equal `password`.
+
+    UpdateUserRequest:
+      type: object
+      description: The path `id` wins over the body's.
+      required: [email, password]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    UserData:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    FileData:
+      type: object
+      description: One file, as the list shows it.
+      required: [id, name, ext, version, is_public]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: The file name without its extension.
+        ext:
+          type: string
+          description: The extension without the dot; empty when there is none.
+        version:
+          type: integer
+          minimum: 1
+          description: Increments on every replacement.
+        is_public:
+          type: boolean
+
+    FileList:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileData"
+        total:
+          type: integer
+
+    SharedFileData:
+      type: object
+      required: [id, name, ext, version, is_public, owner, owner_email]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: The file name without its extension.
+        ext:
+          type: string
+          description: The extension without the dot; empty when there is none.
+        version:
+          type: integer
+          minimum: 1
+        is_public:
+          type: boolean
+        owner:
+          type: string
+        owner_email:
+          type: string
+          format: email
+
+    SharedFileList:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SharedFileData"
+        total:
+          type: integer
+
+    ShareRequest:
+      type: object
+      required: [is_public]
+      properties:
+        is_public:
+          type: boolean
+
+    FileRecord:
+      type: object
+      description: |
+        The storage row. It carries no JSON tags, so its keys are the Go field
+        names.
+      required: [ID, UserID, Name, Ext, Path, Version, ContentType, IsPublic, CreatedAt, UpdatedAt]
+      properties:
+        ID:
+          type: string
+          format: uuid
+        UserID:
+          type: string
+          format: uuid
+        Name:
+          type: string
+        Ext:
+          type: string
+        Path:
+          type: string
+          description: Where the bytes live on disk.
+        Version:
+          type: integer
+        ContentType:
+          type: string
+        IsPublic:
+          type: boolean
+        CreatedAt:
+          type: string
+          format: date-time
+        UpdatedAt:
+          type: string
+          format: date-time
+
+    TemplateKind:
+      type: string
+      enum: [opencode, codex, copilot, cursor, windsurf, generic]
+
+    FileKind:
+      type: string
+      enum: [text, binary]
+
+    TemplateFileData:
+      type: object
+      description: |
+        One file of a template: `content` when it is text, `content_base64` when
+        it is binary.
+      required: [id, path, kind, size, is_executable]
+      properties:
+        id:
+          type: string
+          format: uuid
+        path:
+          type: string
+          description: Where the file is written inside the project.
+        kind:
+          $ref: "#/components/schemas/FileKind"
+        size:
+          type: integer
+          description: The size in bytes when the file was published.
+        content:
+          type: string
+          description: The text, for a text file.
+        content_base64:
+          type: string
+          format: byte
+          description: The bytes as base64, for a binary file.
+        is_executable:
+          type: boolean
+
+    TemplateVariableData:
+      type: object
+      required: [id, key, prompt, default_value, required, position]
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          description: Upper-case name, written into files as `{{KEY}}`.
+        prompt:
+          type: string
+        default_value:
+          type: string
+        required:
+          type: boolean
+        position:
+          type: integer
+
+    TemplateCommandData:
+      type: object
+      description: A command of the owner's library, at the path it is written to.
+      required: [command_id, target_path, name, kind, size, is_executable]
+      properties:
+        command_id:
+          type: string
+          format: uuid
+        target_path:
+          type: string
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/FileKind"
+        size:
+          type: integer
+        content:
+          type: string
+        content_base64:
+          type: string
+          format: byte
+        is_executable:
+          type: boolean
+
+    TemplateData:
+      type: object
+      required: [id, name, slug, description, kind, version, is_public, owner, owner_email, file_count, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+          description: Lower-case letters, digits and dashes; unique per owner.
+        description:
+          type: string
+        kind:
+          $ref: "#/components/schemas/TemplateKind"
+        version:
+          type: integer
+        is_public:
+          type: boolean
+        owner:
+          type: string
+        owner_email:
+          type: string
+          format: email
+        file_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TemplateDetail:
+      description: A template with everything inside it.
+      allOf:
+        - $ref: "#/components/schemas/TemplateData"
+        - type: object
+          required: [files, variables, commands]
+          properties:
+            files:
+              type: array
+              items:
+                $ref: "#/components/schemas/TemplateFileData"
+            variables:
+              type: array
+              items:
+                $ref: "#/components/schemas/TemplateVariableData"
+            commands:
+              type: array
+              items:
+                $ref: "#/components/schemas/TemplateCommandData"
+
+    TemplateList:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateData"
+        total:
+          type: integer
+
+    PublishFile:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          description: Where the file is written; absolute paths and `..` are refused.
+        kind:
+          $ref: "#/components/schemas/FileKind"
+        content:
+          type: string
+          description: The text, for a text file.
+        content_base64:
+          type: string
+          format: byte
+          description: The bytes as base64, for a binary file.
+        is_executable:
+          type: boolean
+
+    PublishCommand:
+      type: object
+      required: [command_id, target_path]
+      properties:
+        command_id:
+          type: string
+          format: uuid
+          description: A command in the publisher's library.
+        target_path:
+          type: string
+
+    PublishVariable:
+      type: object
+      required: [key, prompt]
+      properties:
+        key:
+          type: string
+          description: Upper-case name; written into files as `{{KEY}}`.
+        prompt:
+          type: string
+        default_value:
+          type: string
+        required:
+          type: boolean
+
+    PublishRequest:
+      type: object
+      description: The whole template, on a publish and on an update alike.
+      required: [name, files]
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        slug:
+          type: string
+          description: Generated from the name when it is empty.
+        description:
+          type: string
+          maxLength: 1000
+        kind:
+          $ref: "#/components/schemas/TemplateKind"
+        is_public:
+          type: boolean
+        files:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/PublishFile"
+        commands:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/PublishCommand"
+        variables:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/PublishVariable"
+
+    CommandData:
+      type: object
+      description: |
+        One command. `content` is set for a text command, `content_base64` for
+        a binary one.
+      required: [id, name, kind, size, is_executable, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/FileKind"
+        size:
+          type: integer
+        content:
+          type: string
+        content_base64:
+          type: string
+          format: byte
+        is_executable:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CommandRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 64
+        kind:
+          $ref: "#/components/schemas/FileKind"
+          description: Defaults to `text`.
+        content:
+          type: string
+          description: The text, for a text command.
+        content_base64:
+          type: string
+          format: byte
+          description: The bytes as base64, for a binary command.
+        is_executable:
+          type: boolean
+          default: true
+          description: Omitted means `true`.
+
+    CommandList:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommandData"
+        total:
+          type: integer

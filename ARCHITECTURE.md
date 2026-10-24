@@ -10,6 +10,7 @@ that drive it, see [README.md](README.md).
 | Piece | Entry point | What it is | Listens |
 | --- | --- | --- | --- |
 | API | `cmd/api` | The HTTP API, and the web UI in front of it | `:4000` |
+| Web tier | `web/Dockerfile` + `web/nginx.conf` | The built UI behind nginx, proxying `/v1` to the API (compose only) | `:5173` |
 | CLI | `cmd/cli` → `internal/cli` | `kong` command line client, one file per command | — |
 | GUI | `cmd/gui` | Opens a browser on the bundled UI, with the API in-process or proxied | `:8765` |
 | Web UI | `web/src` | React + TypeScript + Vite, built to `web/dist` | — |
@@ -17,6 +18,19 @@ that drive it, see [README.md](README.md).
 The API and the GUI both carry the built UI inside the binary (`web/embed.go`);
 the API also serves a `web/dist` folder when one exists. That is why one origin
 serves both the pages and `/v1`, and why the API needs no CORS headers.
+
+The compose stack splits that in two: the `web` service serves the same built
+UI on `:5173` and proxies `/v1` to the `api` service, so the browser still sees
+one origin and still needs no CORS. The `api` service sets `API_SERVE_WEB=false`
+so `:4000` stays the API only; the released binary keeps the embedded UI and
+needs neither the proxy nor the second port.
+
+The developer loop is the same split with a different pair of processes:
+`make dev-up` runs the API from the source inside the `dev` sandbox (Go 1.27.3)
+and the UI as Vite in `web-dev` (Node 24.22.1), both over the bind mount. The
+same two ports, the same `/v1` proxy, the same `API_SERVE_WEB=false` — so a bug
+that is caused by the two tiers is reproducible in either mode. Neither
+container holds the other's toolchain, and neither needs one on the host.
 
 The API's router is built by `internal/platform/api`, and both binaries use it:
 the API serves it directly, and the GUI either mounts it on its own listener
@@ -37,6 +51,7 @@ internal/gitprovider/  git-host clients (GitHub today) behind one interface;
                     holds no credential — the token is an argument
 internal/platform/  cross-domain infrastructure
                     api/         the /v1 router, built once for both binaries
+                    openapi/     the OpenAPI document, its JSON twin, and Swagger UI at /docs
                     middleware/  session guard (Authorization: Bearer <token>)
                     sql/         database connection and the DSN from the environment
                     webui/       the SPA handler both binaries serve the UI with
@@ -46,10 +61,14 @@ pkg/                shared code with no project rules in it
                     logger/   zap through log/slog, rotating files (lumberjack)
                     types/    Envelope[T], the response wrapper
 web/                the React UI; embed.go embeds the build into the binaries
+                    Dockerfile   the web tier image (Node builds, nginx serves)
+                    Dockerfile.dev  the Vite dev server, the `web-dev` service
+                    nginx.conf   SPA fallback and the /v1 proxy
 db/migrations/      golang-migrate SQL, one .up/.down pair per change
 scripts/            migrations runner, dev sandbox helpers, path setup
 Dockerfile          the dev sandbox image (Go 1.27.3, gh, zip)
-docker-compose.yml  db, migrate, and the optional dev sandbox (api is commented)
+Dockerfile.api      the application image: Node builds the UI, Go embeds it
+docker-compose.yml  the product (db, migrate, api, web) and the developer loop (profile: dev: dev, web-dev)
 ```
 
 `internal/` is where the project rules live; `pkg/` is reusable and knows
@@ -132,6 +151,39 @@ that pulls it in. A command a template references cannot be deleted while the
 reference exists: `ON DELETE RESTRICT` keeps a published template from quietly
 losing a file. A template may only reference commands of its own owner, and
 the service checks it before the reference is stored.
+
+## The API reference
+
+`internal/platform/openapi/` holds the contract and the UI over it:
+
+- `openapi.yaml` is the document: OpenAPI 3.1, every `/v1` operation, the
+  response envelope, the multipart bodies and the bearer scheme. It is
+  committed, reviewed like code, and embedded in the binary.
+- `openapi.go` serves it — `GET /v1/openapi.yaml`, the same document as JSON at
+  `GET /v1/openapi.json`, and Swagger UI at `/docs`.
+- `index.html` is the UI page. Its JavaScript and stylesheet come from
+  `github.com/swaggo/files/v2`, which embeds the Swagger UI distribution in the
+  binary, so nothing on `/docs` reaches the network: the reference works on a
+  host with no internet access.
+
+The routes are public on purpose — a client author reads the contract before
+they have a token. They expose the route table and the schemas, never a row, a
+file or a token. `internal/platform/webui` passes `/docs` to the API, because
+the SPA fallback would otherwise answer it with the app.
+
+The document is the source of truth, not a by-product of comments. Three tests
+keep it honest:
+
+- `internal/platform/api/openapi_test.go` walks the router with `chi.Walk` and
+  fails when an operation is in one and not the other, in either direction;
+- the same file compares each DTO schema with its struct's json tags, and the
+  `FileRecord` schema with the field names the storage model actually sends;
+- `internal/platform/openapi/openapi_test.go` resolves every `$ref`, checks
+  each operation has an id, a summary, a success response and its path
+  parameters, and asserts the UI page references no network URL.
+
+Adding an endpoint means adding it to `openapi.yaml` in the same pull request;
+the gate fails otherwise.
 
 ## Data model
 
@@ -241,6 +293,7 @@ dispatch only. Feature pull requests are gated locally.
 | You are adding… | Start at |
 | --- | --- |
 | an endpoint | `internal/domain/<resource>/handler.go` (+ `dto.go`) |
+| the documentation of an endpoint | `internal/platform/openapi/openapi.yaml` — the drift gate fails until it matches |
 | a rule ("only the owner may…") | the same package's `service.go`, with a test |
 | a query or a column read | `repository_sql.go`; name the columns, never `SELECT *` |
 | a table or a constraint | a new `db/migrations/NNNNNN_*.up.sql`/`.down.sql` pair |
@@ -254,14 +307,12 @@ dispatch only. Feature pull requests are gated locally.
 These are the places where the code does not match the shape above. They are
 tracked, not forgotten:
 
-- **`API_PORT` is not read.** The API listens on `:4000`, hardcoded; the
-  variable exists in `.env.example` and matters only to the commented `api`
-  service in `docker-compose.yml`.
+- **`API_PORT` is read by the API but only changes the bind port.** It defaults
+  to `4000` (what the CLI, the GUI and the docs expect), and the compose file
+  also uses it for the published host port. It is not a way to move the service
+  behind a proxy without changing the proxy target.
 - **Several packages have no tests.** `internal/domain/users`,
   `internal/platform/middleware`, `pkg/errors`, `pkg/logger` and `pkg/types`
   are compiled and vetted, not exercised. `internal/domain/sessions` has a
   schema test (its reads match its struct and the migrations), not a
   behaviour test.
-- **The file catalogue is not owner-scoped.** `GET /v1/files` returns every
-  upload in the instance to any logged-in caller; `GET /v1/files/me` is the
-  scoped one. See "Security status" in [README.md](README.md#security-status).

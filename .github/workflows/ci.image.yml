@@ -1,0 +1,63 @@
+name: CI (Image)
+
+# Checks the files that make `docker compose up` the product:
+#
+#   - Dockerfile.api builds (Node builds the UI, Go embeds it, the runtime
+#     layer assembles);
+#   - web/Dockerfile builds the frontend image and its nginx config passes
+#     `nginx -t`; and
+#   - docker-compose.yml parses and merges, with the `dev` profile included.
+#
+# It runs on release pull requests (`dev` -> `main`) and manual dispatch, like
+# the other gates. Feature branches are gated locally by `make check` and
+# `make web_check`.
+#
+# WHAT THIS DOES NOT PROVE: that the container starts and serves requests.
+# There is no database in this job and the API exits without one, so a green
+# run here is buildability and configuration, not behaviour. The compose flow
+# is verified by running it against a database.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    # The job name is the status check's name. See the note in ci.go.yml: a
+    # required check that names something else never matches.
+    name: CI (Image)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the application image
+        run: docker build --file Dockerfile.api --tag eznit-api:ci .
+
+      - name: Build the web image
+        run: docker build --file web/Dockerfile --tag eznit-web:ci web
+
+      # Syntax only: the config is checked outside the Compose network, so the
+      # `api` upstream is faked with a host entry. This proves nginx accepts
+      # the file, not that the proxy wiring works.
+      - name: Check the nginx configuration
+        run: docker run --rm --add-host api:127.0.0.1 eznit-web:ci nginx -t
+
+      # `config` renders the merged file, so a broken service definition or an
+      # interpolation error fails here instead of at the first `up`. The
+      # secret is a file, and the file is gitignored -- create it from the
+      # committed placeholder, which is what a fresh checkout has to do too.
+      - name: Check the compose file
+        run: |
+          cp secrets/db_password.txt.example secrets/db_password.txt
+          cp .env.example .env
+          docker compose config --quiet

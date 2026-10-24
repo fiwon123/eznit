@@ -119,3 +119,62 @@ func TestWebDistFolder(t *testing.T) {
 		t.Errorf("webDistFolder() = %q, want %q", got, "/srv/eznit/web")
 	}
 }
+
+func TestAPIPort(t *testing.T) {
+	t.Setenv("API_PORT", "")
+	if got := apiPort(); got != 4000 {
+		t.Errorf("apiPort() = %d, want %d", got, 4000)
+	}
+
+	t.Setenv("API_PORT", "8080")
+	if got := apiPort(); got != 8080 {
+		t.Errorf("apiPort() = %d, want %d", got, 8080)
+	}
+
+	t.Setenv("API_PORT", "not-a-number")
+	if got := apiPort(); got != 4000 {
+		t.Errorf("apiPort() = %d, want %d", got, 4000)
+	}
+
+	t.Setenv("API_PORT", "0")
+	if got := apiPort(); got != 4000 {
+		t.Errorf("apiPort() = %d, want %d", got, 4000)
+	}
+
+	t.Setenv("API_PORT", "70000")
+	if got := apiPort(); got != 4000 {
+		t.Errorf("apiPort() = %d, want %d", got, 4000)
+	}
+}
+
+func TestWebUIEnabled(t *testing.T) {
+	t.Setenv("API_SERVE_WEB", "")
+	if !webUIEnabled() {
+		t.Error("webUIEnabled() = false, want true by default")
+	}
+
+	t.Setenv("API_SERVE_WEB", "false")
+	if webUIEnabled() {
+		t.Error("webUIEnabled() = true, want false")
+	}
+
+	t.Setenv("API_SERVE_WEB", "0")
+	if webUIEnabled() {
+		t.Error("webUIEnabled() = true, want false")
+	}
+
+	t.Setenv("API_SERVE_WEB", "true")
+	if !webUIEnabled() {
+		t.Error("webUIEnabled() = false, want true")
+	}
+
+	t.Setenv("API_SERVE_WEB", "1")
+	if !webUIEnabled() {
+		t.Error("webUIEnabled() = false, want true")
+	}
+
+	t.Setenv("API_SERVE_WEB", "not-a-bool")
+	if !webUIEnabled() {
+		t.Error("webUIEnabled() = false, want true when unparsable")
+	}
+}

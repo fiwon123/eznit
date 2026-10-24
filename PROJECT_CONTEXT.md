@@ -24,10 +24,10 @@ empty field here means a placeholder somewhere else.
 | Database | PostgreSQL, `sqlx` + `lib/pq` |
 | Migrations | `golang-migrate/migrate` (SQL files in `db/migrations/`) |
 | CLI | `alecthomas/kong` |
-| Web UI | React + TypeScript + Vite, served by the API from `web/dist` |
+| Web UI | React + TypeScript + Vite, served by nginx on `:5173` or by the API from `web/dist` on `:4000` |
 | Logging | `go.uber.org/zap` via `log/slog`, rotating files with `lumberjack` |
 | Config | `joho/godotenv` |
-| Containers | Docker Compose — the dev sandbox (`dev`) and the local stack (`db`, `migrate`; `api` is kept as a commented block) |
+| Containers | Docker Compose — the product (`db`, `migrate`, `api` from `Dockerfile.api`, `web` from `web/Dockerfile`) and the dev sandbox (`dev`, behind the `dev` profile) |
 
 ## Architecture
 
@@ -72,9 +72,10 @@ index; the path column is what `download` opens.
 | `make web_build` | Build the web UI into `web/dist` |
 | `make web_dev` | Run the Vite dev server |
 | `make setup` | One-time: create `.env` and the database secret from their examples |
+| `make up` | Build + run the product: API `:4000`, web UI `:5173`, db, migrations |
 | `make docker_up` | Bring up db + the migrations |
-| `make docker_up_all` | Bring up db + the migrations + the dev sandbox |
-| `make dev-up` | Start the dev sandbox (pinned Go toolchain) with the stack |
+| `make docker_up_all` | Bring up db + the migrations + the dev sandbox (not the API) |
+| `make dev-up` | The developer loop: UI `:5173` (Vite, hot reload), API `:4000`, from the source |
 
 ## Environment
 

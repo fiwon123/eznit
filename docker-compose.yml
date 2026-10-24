@@ -1,9 +1,24 @@
-# Dev sandbox + local stack — one file, no host prerequisites.
+# The application and the dev sandbox — one file, no host prerequisites.
 #
-# `docker compose up` works on this file alone, on any OS, with **no host-side
-# prerequisites beyond Docker itself**: no Make, no Python, no opencode, no gh.
+# Two entry points, one stack:
+#
+#   docker compose up   the product: PostgreSQL, the migrations, the API on
+#                       :4000, and the web UI served by nginx on :5173. The
+#                       UI proxies /v1 to the API (one origin), so the API
+#                       keeps its session and download flows unchanged.
+#
+#   make dev-up         the developer loop: PostgreSQL, the migrations, the
+#                       sandbox where `make run_api`, `make check` and
+#                       `make dev-opencode` run against the source, and the
+#                       `web-dev` Vite server for the UI. The API runs in the
+#                       sandbox and the UI on 5173 proxies /v1 to it, so the
+#                       loop needs no host Go or Node install. The `dev` and
+#                       `web-dev` services are behind the `dev` profile; naming
+#                       one on the command line enables that profile.
+#
 # Every host-derived value below has an inline default, so nothing has to be
-# exported first.
+# exported first. The two local files (`make setup` creates them) still have to
+# exist: the database password is a file secret, not an environment value.
 #
 # Host-only mounts (the gh/opencode config dirs, `~/.gitconfig`) deliberately do
 # NOT live here. Compose treats a missing bind-mount source as fatal on Windows
@@ -12,22 +27,19 @@
 # live in `docker-compose.agent.yml`, merged only by the developer entry points
 # and only when the host can actually provide them.
 #
-# This file replaces the old `docker-compose.yaml`, which held only the local
-# stack. The stack is unchanged — `db`, `migrate` and the file secret are the
-# same — and the sandbox joins it here instead of living in a second file that
-# could drift away from this one.
-#
-# The `api` service is kept as a commented block at the bottom: it runs the
-# PREBUILT binary from ./build, which is the path a release bundle takes. It is
-# commented out because the development flow does not use it — the API runs
-# from source inside the sandbox (`make run_api`), where it is rebuilt with the
-# change instead of from a stale binary. Uncomment it to run the prebuilt
-# binary; the block is kept valid so it still parses when you do.
+# A release bundle has no source and no Dockerfile: it runs the PREBUILT binary
+# from ./build instead of the `api` service below. `docker compose up db
+# migrate` never builds anything, and the binary serves the UI embedded in it.
 
 name: eznit
 
 services:
   dev:
+    # The developer sandbox only. Plain `docker compose up` is the product
+    # (`api` + `db` + `migrate`); the sandbox is opt-in because it is a shell
+    # for a pinned toolchain, not the application. `make dev-up` names this
+    # service, and Compose enables the profile of an explicitly named service.
+    profiles: ["dev"]
     build:
       context: .
       dockerfile: Dockerfile
@@ -36,7 +48,8 @@ services:
         HOST_GID: ${HOST_GID:-1000}
     # Host identity defaults to UID/GID 1000, which is correct for Docker
     # Desktop (macOS/Windows virtualise bind-mount ownership). A Linux user
-    # whose uid differs overrides it: `HOST_UID="$(id -u)" docker compose up`.
+    # whose uid differs overrides it:
+    # `HOST_UID="$(id -u)" docker compose up dev db migrate`.
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     extra_hosts:
       # Docker Desktop injects this name itself; plain Linux Docker does not,
@@ -75,6 +88,16 @@ services:
       # The password stays a file secret, the same way the API container reads
       # it — never an environment variable.
       - DB_PASSWORD_FILE=/run/secrets/db_password
+      # One frontend origin, like the product: the UI is the `web-dev` service
+      # (Vite, with hot reload) and :4000 stays the API only. Left to .env, the
+      # sandbox would also serve a stale web/dist build on 4000, so the browser
+      # could talk to two different UIs depending on the port it opened.
+      - API_SERVE_WEB=false
+      # Tells the Makefile inside the container not to import the host's .env
+      # over the configuration below (see the top of the Makefile). Without it,
+      # a host-side `DB_HOST="localhost"` wins and the API never finds the
+      # database on the Compose network.
+      - DEV_SANDBOX=1
     # The local configuration, when it exists: API_UPLOADS and API_LOGS are
     # relative paths, so they resolve inside the bind mount and the files are
     # the ones the host sees. `required: false` keeps a clean clone loadable —
@@ -155,29 +178,129 @@ services:
       - ./scripts/run_migrate.sh:/scripts/run_migrate.sh:ro
     entrypoint: ["/scripts/run_migrate.sh"]
     command: []
+    # A one-shot, not a service: `up` starts it, it applies what is missing
+    # (`migrate up` is idempotent) and exits 0. The API waits for that exit, so
+    # a failed migration leaves the API down instead of running it against an
+    # unmigrated schema.
+    restart: "no"
     depends_on:
       db:
         condition: service_healthy
 
-  # api:
-  #   image: alpine:3.23
-  #   env_file:
-  #     - path: ./.env
-  #       required: true
-  #   environment:
-  #     DB_PASSWORD_FILE: /run/secrets/db_password
-  #   secrets:
-  #     - db_password
-  #   command: ./api/server
-  #   ports:
-  #     - "${API_PORT:-4000}:4000"
-  #   volumes:
-  #     - ./build/api/server:/api/server:ro
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #     migrate:
-  #       condition: service_completed_successfully
+  web:
+    # The frontend. It builds its own image from web/Dockerfile (Node builds
+    # the UI, nginx serves it), and proxies /v1 to the API — so the browser sees
+    # one origin on 5173. Set API_SERVE_WEB=false on the API when using this
+    # service so :4000 stays the API only.
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "${WEB_PORT:-5173}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web-dev:
+    # The developer frontend: the Vite dev server, not the nginx image the
+    # product builds. It exists for the same reason the sandbox does — so the
+    # loop needs no toolchain on the host — and it gives the UI hot reload,
+    # which a static nginx image cannot.
+    #
+    # It is a separate service rather than a second process inside `dev` so the
+    # two have independent logs, lifetimes and exits. `make dev-up` starts both.
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: web/Dockerfile.dev
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    ports:
+      # The host port the browser opens. Override it when 5173 is taken; the
+      # HMR client port follows automatically (see the environment below).
+      - "${WEB_PORT:-5173}:5173"
+    environment:
+      # npm and Vite both want a writable HOME. The image's own account is not
+      # necessarily the host uid, and /tmp is writable by every uid.
+      - HOME=/tmp
+      # Inside the Compose network the API is the `dev` service, not loopback:
+      # `make run_api` listens on 4000 there. Vite's proxy uses this.
+      - VITE_API_TARGET=http://dev:4000
+      # The websocket the browser opens points at the host port, which is not
+      # the container port when WEB_PORT is overridden.
+      - VITE_HMR_CLIENT_PORT=${WEB_PORT:-5173}
+    volumes:
+      # The source, so an edit on the host reloads the browser.
+      - .:/workspace:cached
+      # Dependencies live in a named volume, NOT in the bind mount: the host's
+      # node_modules are installed for the host Node, and sharing them would
+      # mix two toolchains. The image pre-creates this path so Docker does not
+      # create it root-owned (see web/Dockerfile.dev).
+      - web_node_modules:/workspace/web/node_modules
+    depends_on:
+      # The proxy target is the sandbox API, so starting the UI before it only
+      # produces connection errors in the browser.
+      dev:
+        condition: service_started
+    restart: unless-stopped
+
+  api:
+    # The application. It builds its own image, so `docker compose up` needs
+    # Docker and nothing else -- no Go, no Node, no prebuilt binary.
+    #
+    # When the `web` service fronts it, API_SERVE_WEB=false keeps the API on
+    # :4000 with no UI attached (the single origin is the web tier). The
+    # released binary still serves the embedded UI by default.
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      args:
+        VERSION: ${VERSION:-dev}
+    ports:
+      # Same port the host CLI and the Vite dev server expect. Override it when
+      # it is taken: `API_PORT=4001 docker compose up`.
+      - "${API_PORT:-4000}:4000"
+    environment:
+      # In-network addresses, explicitly: `env_file` is deliberately not used
+      # here. The gitignored .env belongs to the developer loop (host paths,
+      # a host-tuned database port); the application container has to reach
+      # the database over the compose network and keep its data on /data.
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER:-root}
+      DB_NAME: ${DB_NAME:-eznit}
+      # The password stays a file secret, the same way the sandbox and the
+      # migration read it -- never an environment variable.
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      API_UPLOADS: /data/uploads
+      API_LOGS: /data/logs
+      # The web tier proxies /v1, so the API does not need to serve the UI.
+      API_SERVE_WEB: "false"
+    secrets:
+      - db_password
+    volumes:
+      # Uploaded bytes are the product. Without this they live in the container
+      # layer and disappear on `docker compose down`.
+      - api-data:/data
+    # Come back after a Docker restart, and after a crash, without a rebuild.
+    restart: unless-stopped
+    healthcheck:
+      # /v1/healthcheck answers without touching the database, so this says
+      # "the process answers", not "the database is up". It is what makes
+      # `docker compose ps` distinguish "starting" from "serving".
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:4000/v1/healthcheck || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 secrets:
   db_password:
@@ -185,5 +308,9 @@ secrets:
 
 volumes:
   postgres-data:
+  api-data:
   gomodcache:
   gocache:
+  # The `web-dev` dependencies: container-installed, kept across `dev-down`, and
+  # deliberately separate from the host's web/node_modules.
+  web_node_modules:

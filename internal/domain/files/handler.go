@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 
+	"encoding/json"
+
 	"github.com/fiwon123/eznit/internal/platform/middleware"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
@@ -37,12 +39,19 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 		r.Group(func(r chi.Router) {
 			r.Use(h.guard.AuthUser)
 
-			// The catalogue lists every upload in the instance, so it
-			// needs a session like every other route on this resource.
+			// The list answers the caller's own files, and it needs a
+			// session like every other route on this resource.
 			r.Get("/", h.getFilesHandler)
 			r.Post("/", h.uploadHandler)
-			r.Get("/me", h.getFilesForUserHandler)
 
+			// Shared files for the catalogue (any authenticated user may
+			// list them).
+			r.Get("/shared", h.listSharedFilesHandler)
+
+			// An alias of the list above, kept for the clients that name
+			// the caller's files explicitly: the web UI and
+			// `eznit list --me`.
+			r.Get("/me", h.getFilesHandler)
 		})
 
 		r.Route("/{id}", func(r chi.Router) {
@@ -50,14 +59,14 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 			r.Group(func(r chi.Router) {
 				r.Use(h.guard.AuthUser)
 
-				// The download is a read of somebody's file: it needs the
-				// same session as every other route on this resource, and
-				// the service resolves it for the caller, so a token for
-				// another user's file does not download it.
+				// The download allows the owner or any authenticated caller
+				// for a shared file.
 				r.Get("/content", h.downloadHandler)
+				// Return a safe record (no path) instead of the storage row.
 				r.Get("/", h.getFileHandler)
 				r.Put("/", h.updateHandler)
 				r.Delete("/", h.deleteHandler)
+				r.Post("/share", h.shareHandler)
 			})
 		})
 	})
@@ -67,8 +76,10 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 	})
 }
 
-func (h *Handler) getFilesForUserHandler(w http.ResponseWriter, r *http.Request) {
-	h.logger.Debug("getFilesForUserHandler")
+// getFilesHandler lists the caller's own files. Both list routes land
+// here: `/` and its `/me` alias.
+func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {
+	h.logger.Debug("getFilesHandler")
 
 	dataResp, appError := h.service.GetFilesForUser(r.Context())
 	if appError != nil {
@@ -79,10 +90,10 @@ func (h *Handler) getFilesForUserHandler(w http.ResponseWriter, r *http.Request)
 	helper.SendDataJson(w, http.StatusOK, dataResp)
 }
 
-func (h *Handler) getFilesHandler(w http.ResponseWriter, r *http.Request) {
-	h.logger.Debug("getFilesHandler")
+func (h *Handler) listSharedFilesHandler(w http.ResponseWriter, r *http.Request) {
+	h.logger.Debug("listSharedFilesHandler")
 
-	dataResp, appError := h.service.GetFiles(r.Context())
+	dataResp, appError := h.service.ListSharedFiles(r.Context())
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
@@ -102,13 +113,21 @@ func (h *Handler) getFileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dataResp, appError := h.service.GetFile(r.Context(), parseID)
+	file, appError := h.service.GetFileForDownload(r.Context(), parseID)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}
 
-	helper.SendDataJson(w, http.StatusFound, dataResp)
+	dataResp := FileData{
+		ID:       file.ID,
+		Name:     file.Name,
+		Ext:      file.Ext,
+		Version:  file.Version,
+		IsPublic: file.IsPublic,
+	}
+
+	helper.SendDataJson(w, http.StatusOK, dataResp)
 }
 
 func (h *Handler) uploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -144,7 +163,7 @@ func (h *Handler) downloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fileData, appError := h.service.GetFileForUser(r.Context(), parseID)
+	fileData, appError := h.service.GetFileForDownload(r.Context(), parseID)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
@@ -222,6 +241,33 @@ func (h *Handler) updateHandler(w http.ResponseWriter, r *http.Request) {
 	message, appError := h.service.UpdateFile(r.Context(), file, header, parseID, userID)
 	if appError != nil {
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
+		return
+	}
+
+	helper.SendMessageJson(w, http.StatusOK, message)
+}
+
+func (h *Handler) shareHandler(w http.ResponseWriter, r *http.Request) {
+	id := extractFileID(r)
+	h.logger.Debug("shareHandler ", slog.String("id", id))
+
+	parseID, err := uuid.Parse(id)
+	if err != nil {
+		h.logger.Warn("failed to parse file id", slog.String("error", err.Error()))
+		helper.SendErrorJson(w, http.StatusBadRequest, "invalid file id")
+		return
+	}
+
+	var req ShareRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		helper.SendErrorJson(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	message, appError := h.service.ShareFile(r.Context(), parseID, req.IsPublic)
+	if appError != nil {
+		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
+		return
 	}
 
 	helper.SendMessageJson(w, http.StatusOK, message)
