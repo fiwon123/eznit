@@ -1,35 +1,54 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#1e40af;stop-opacity:1" />
+      <stop offset="0%" style="stop-color:#0f172a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#020617;stop-opacity:1" />
     </linearGradient>
     <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#60a5fa;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="0%" style="stop-color:#06b6d4;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#6366f1;stop-opacity:1" />
     </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
   
-  <!-- Background circle/square -->
+  <!-- Background -->
   <rect width="512" height="512" rx="112" fill="url(#bg)"/>
   
-  <!-- File stack representation -->
-  <g fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
-    <!-- Back file -->
-    <path d="M 180 170 L 320 170 L 332 182 L 332 342 L 180 342 Z" opacity="0.6"/>
-    <path d="M 192 182 L 344 182 L 356 194 L 356 354 L 192 354 Z" opacity="0.8"/>
-    <!-- Front file -->
-    <path d="M 204 194 L 368 194 L 368 366 L 204 366 Z"/>
-    <!-- Fold -->
-    <path d="M 332 194 L 368 194 L 332 158 Z" fill="#ffffff"/>
+  <!-- Grid pattern for tech feel -->
+  <g opacity="0.08" stroke="#3b82f6" stroke-width="1">
+    <line x1="128" y1="0" x2="128" y2="512"/>
+    <line x1="256" y1="0" x2="256" y2="512"/>
+    <line x1="384" y1="0" x2="384" y2="512"/>
+    <line x1="0" y1="128" x2="512" y2="128"/>
+    <line x1="0" y1="256" x2="512" y2="256"/>
+    <line x1="0" y1="384" x2="512" y2="384"/>
   </g>
   
-  <!-- Download arrow overlay -->
-  <g transform="translate(256, 280)">
-    <circle cx="0" cy="0" r="48" fill="url(#accent)" opacity="0.95"/>
-    <g fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M 0 -16 L 0 20"/>
-      <polyline points="-14,6 0,20 14,6"/>
-    </g>
+  <!-- Monolithic 'E' with modern geometric design -->
+  <g>
+    <!-- Outer frame -->
+    <path d="M 156 156 L 356 156 L 356 196 L 206 196 L 206 236 L 336 236 L 336 276 L 206 276 L 206 316 L 356 316 L 356 356 L 156 356 Z" 
+          fill="none" stroke="url(#accent)" stroke-width="20" stroke-linecap="square" stroke-linejoin="miter" filter="url(#glow)"/>
+    
+    <!-- Digital dots -->
+    <circle cx="156" cy="156" r="6" fill="#06b6d4"/>
+    <circle cx="356" cy="156" r="6" fill="#3b82f6"/>
+    <circle cx="356" cy="356" r="6" fill="#6366f1"/>
+    <circle cx="156" cy="356" r="6" fill="#06b6d4"/>
+  </g>
+  
+  <!-- Subtle connector lines -->
+  <g stroke="url(#accent)" stroke-width="2" opacity="0.4">
+    <line x1="156" y1="156" x2="140" y2="140"/>
+    <line x1="356" y1="156" x2="372" y2="140"/>
+    <line x1="356" y1="356" x2="372" y2="372"/>
+    <line x1="156" y1="356" x2="140" y2="372"/>
   </g>
 </svg>
