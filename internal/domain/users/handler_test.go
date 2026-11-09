@@ -165,9 +165,27 @@ func TestTheLoginRouteDoesNotRevealWhetherAnEmailIsRegistered(t *testing.T) {
 		bodies = append(bodies, recorder.Body.String())
 	}
 
-	if bodies[0] != bodies[1] {
-		t.Errorf("the two failures answer differently: %q and %q", bodies[0], bodies[1])
+	// Compare the fields that could tell the two failures apart, not the
+	// timestamp: it is wall-clock time and differs whenever the requests
+	// straddle a second boundary, which made this test flaky (#170).
+	var failures []loginFailure
+	for _, body := range bodies {
+		var failure loginFailure
+		if err := json.Unmarshal([]byte(body), &failure); err != nil {
+			t.Fatalf("decode the failure body: %v", err)
+		}
+		failures = append(failures, failure)
 	}
+	if failures[0] != failures[1] {
+		t.Errorf("the two failures answer differently: %+v and %+v", failures[0], failures[1])
+	}
+}
+
+// loginFailure is the part of a failed login an observer can use to tell which
+// half of the pair was wrong — everything except the timestamp.
+type loginFailure struct {
+	StatusCode int    `json:"status_code"`
+	Error      string `json:"error"`
 }
 
 // The pair that matches still gets a token through the route, not only in the
