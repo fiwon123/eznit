@@ -7,11 +7,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/fiwon123/eznit/internal/platform/storage"
 	"github.com/fiwon123/eznit/pkg/errors"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
@@ -525,7 +525,7 @@ func (s *service) TemplateArchive(ctx context.Context, id uuid.UUID) ([]ArchiveE
 
 // templateStorageDir is where every binary file of a template lives.
 func (s *service) templateStorageDir(templateID uuid.UUID) string {
-	return filepath.Join(s.uploadFolder, "templates", templateID.String())
+	return storage.TemplateDir(s.uploadFolder, templateID)
 }
 
 // storagePathOf is where a binary file lives, relative to the upload root.
@@ -535,12 +535,12 @@ func (s *service) templateStorageDir(templateID uuid.UUID) string {
 // path separator there. The file's own directory is its id, so two files with
 // the same name in different folders cannot collide.
 func storagePathOf(templateID, fileID uuid.UUID, filePath string) string {
-	return path.Join("templates", templateID.String(), fileID.String(), path.Base(filePath))
+	return storage.TemplateStoragePath(templateID, fileID, filePath)
 }
 
 // absoluteStoragePath is the location a row points at, on this machine.
-func (s *service) absoluteStoragePath(storagePath string) string {
-	return filepath.Join(s.uploadFolder, filepath.FromSlash(storagePath))
+func (s *service) absoluteStoragePath(storedPath string) string {
+	return storage.AbsolutePath(s.uploadFolder, storedPath)
 }
 
 // writeBinaryFiles writes the bytes of the binary files of a template.
