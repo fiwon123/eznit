@@ -73,7 +73,11 @@ writes the files. A private template needs a session to export; a public one
 does not.
 
 `template init --kind` accepts `opencode`, `codex`, `copilot`, `cursor`,
-`windsurf` or `generic` (default `generic`).
+`windsurf`, `generic`, `bash`, `zsh`, `fish` and `powershell` (default
+`generic`). The shell kinds write `shell/bashrc.sh`, `shell/zshrc.sh`,
+`shell/config.fish` and `shell/profile.ps1`: commented snippets you source from
+your own rc/profile, so writing them changes nothing until you uncomment an
+example. A shell starter writes only its shell file, not `AGENTS.md`.
 
 **Limits** (enforced by the server): 256 KiB per text file and 4 MiB of text per
 template; 10 MiB per binary file and 32 MiB per template counting both.

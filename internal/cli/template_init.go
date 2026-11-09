@@ -20,7 +20,7 @@ const fence = "```"
 // into the binary, so `eznit template init` works on a machine that has
 // never seen eznit.
 type TemplateInitCmd struct {
-	Kind   string `help:"the terminal the starter targets" enum:"opencode,codex,copilot,cursor,windsurf,generic" default:"generic"`
+	Kind   string `help:"the terminal or shell the starter targets" enum:"opencode,codex,copilot,cursor,windsurf,generic,bash,zsh,fish,powershell" default:"generic"`
 	Target string `help:"the folder to write into" default:"."`
 	Force  bool   `help:"overwrite the files that are already there"`
 }
@@ -86,12 +86,28 @@ func starterVariables() []templates.TemplateVariableData {
 	}
 }
 
-// starterTemplate returns the files the starter writes for a terminal.
+// starterTemplate returns the files the starter writes for a terminal or a
+// shell.
+//
+// A shell starter is about the shell, not an AI terminal: it writes the file
+// the shell reads and nothing else. The AI starters share AGENTS.md, because
+// it is the file they all read.
 //
 // The starter is a template like any other: the same substitution, the same
 // rules about where a file may land. It just happens to be built into the
 // binary instead of fetched from the catalogue.
 func starterTemplate(kind string) []templateFile {
+	switch kind {
+	case templates.KindBash:
+		return []templateFile{{Path: "shell/bashrc.sh", Content: starterBash}}
+	case templates.KindZsh:
+		return []templateFile{{Path: "shell/zshrc.sh", Content: starterZsh}}
+	case templates.KindFish:
+		return []templateFile{{Path: "shell/config.fish", Content: starterFish}}
+	case templates.KindPowershell:
+		return []templateFile{{Path: "shell/profile.ps1", Content: starterPowershell}}
+	}
+
 	files := []templateFile{
 		{
 			Path:    "AGENTS.md",
@@ -345,4 +361,58 @@ description: Project rules for the AI editor
 - Conventional commits: ` + "`feat:`" + `, ` + "`fix:`" + `, ` + "`refactor:`" + `, ` + "`docs:`" + `, ` + "`test:`" + `, ` + "`chore:`" + `, ` + "`ci:`" + `
 - Read the surrounding code before writing new code
 - Run the project's check target before committing
+`
+
+// The shell starters. A file a tool writes into a project must not change the
+// user's shell unasked, so each starter is comments and examples: the user
+// sources it, and uncomments what they want. The header carries the project
+// identity the other starters write too.
+
+// starterBash is the bash starter.
+const starterBash = `# {{PROJECT_NAME}} — {{PROJECT_DESCRIPTION}}
+#
+# A {{LANGUAGE}} project.
+#
+# Source this from ~/.bashrc to keep it in every shell:
+#   . "$HOME/Projects/{{PROJECT_NAME}}/shell/bashrc.sh"
+#
+# Add project shortcuts below; for example:
+# alias pj='cd "$HOME/Projects/{{PROJECT_NAME}}"'
+`
+
+// starterZsh is the zsh starter.
+const starterZsh = `# {{PROJECT_NAME}} — {{PROJECT_DESCRIPTION}}
+#
+# A {{LANGUAGE}} project.
+#
+# Source this from ~/.zshrc to keep it in every shell:
+#   . "$HOME/Projects/{{PROJECT_NAME}}/shell/zshrc.sh"
+#
+# Add project shortcuts below; for example:
+# alias pj='cd "$HOME/Projects/{{PROJECT_NAME}}"'
+`
+
+// starterFish is the fish starter: fish spells aliases and variables its own
+// way, so it gets its own file rather than a reworded bash one.
+const starterFish = `# {{PROJECT_NAME}} — {{PROJECT_DESCRIPTION}}
+#
+# A {{LANGUAGE}} project.
+#
+# Source this from ~/.config/fish/config.fish to keep it in every shell:
+#   source "$HOME/Projects/{{PROJECT_NAME}}/shell/config.fish"
+#
+# Add project shortcuts below; for example:
+# alias pj 'cd "$HOME/Projects/{{PROJECT_NAME}}"'
+`
+
+// starterPowershell is the PowerShell starter.
+const starterPowershell = `# {{PROJECT_NAME}} — {{PROJECT_DESCRIPTION}}
+#
+# A {{LANGUAGE}} project.
+#
+# Dot-source this from $PROFILE to keep it in every shell:
+#   . "$HOME\Projects\{{PROJECT_NAME}}\shell\profile.ps1"
+#
+# Add project shortcuts below; for example:
+# function pj { Set-Location "$HOME\Projects\{{PROJECT_NAME}}" }
 `

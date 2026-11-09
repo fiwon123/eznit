@@ -581,6 +581,10 @@ func TestStarterTemplateForEveryKind(t *testing.T) {
 		{templates.KindCursor, ".cursor/rules/project.mdc"},
 		{templates.KindWindsurf, ".windsurf/rules/project.md"},
 		{templates.KindOpencode, ".opencode/agents/build.md"},
+		{templates.KindBash, "shell/bashrc.sh"},
+		{templates.KindZsh, "shell/zshrc.sh"},
+		{templates.KindFish, "shell/config.fish"},
+		{templates.KindPowershell, "shell/profile.ps1"},
 	}
 
 	for _, tt := range cases {
@@ -598,6 +602,52 @@ func TestStarterTemplateForEveryKind(t *testing.T) {
 
 			if !found {
 				t.Errorf("expected the starter to hold %q, got %v", tt.want, paths)
+			}
+		})
+	}
+}
+
+// A shell starter is about the shell: it writes the file the shell sources
+// and nothing else, with the project's placeholders in it.
+func TestShellStarterWritesOnlyItsShellFile(t *testing.T) {
+	cases := []struct {
+		kind string
+		path string
+		want string // a fragment only that shell's file has
+	}{
+		{templates.KindBash, "shell/bashrc.sh", "~/.bashrc"},
+		{templates.KindZsh, "shell/zshrc.sh", "~/.zshrc"},
+		{templates.KindFish, "shell/config.fish", "~/.config/fish/config.fish"},
+		{templates.KindPowershell, "shell/profile.ps1", "$PROFILE"},
+	}
+
+	values := map[string]string{
+		"PROJECT_NAME":        "eznit",
+		"PROJECT_DESCRIPTION": "self-hosted setup",
+		"LANGUAGE":            "Go",
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.kind, func(t *testing.T) {
+			files := starterTemplate(tt.kind)
+
+			if len(files) != 1 {
+				t.Fatalf("expected one file, got %v", templateFilePaths(files))
+			}
+			if files[0].Path != tt.path {
+				t.Errorf("path = %q, want %q", files[0].Path, tt.path)
+			}
+
+			content := substitute(files[0].Content, values)
+
+			if strings.Contains(content, "{{") {
+				t.Errorf("a placeholder was not filled in:\n%s", content)
+			}
+			if !strings.Contains(content, "eznit") {
+				t.Errorf("the project name is missing:\n%s", content)
+			}
+			if !strings.Contains(content, tt.want) {
+				t.Errorf("the file does not name %q:\n%s", tt.want, content)
 			}
 		})
 	}

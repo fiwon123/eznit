@@ -5,9 +5,10 @@ instructions, editor rules, skills, scripts, project scaffolding. Publishing it
 makes one copy the source of truth; applying it is the setup step.
 
 You do not need a template to start: `eznit template init` writes a built-in
-starter offline. Publishing and applying through the API need a running eznit
-instance; an **offline bundle** needs neither (see
-[Take it with you](#-take-it-with-you-no-server)).
+starter offline, for an AI terminal or for a shell (`--kind bash` writes
+`shell/bashrc.sh`, and so on for zsh, fish and PowerShell). Publishing and
+applying through the API need a running eznit instance; an **offline bundle**
+needs neither (see [Take it with you](#-take-it-with-you-no-server)).
 
 ## 🗂️ What goes in a template
 

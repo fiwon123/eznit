@@ -49,10 +49,20 @@ whatever you put in it is written exactly where you asked:
 | fish | `shell/config.fish`, linked or copied into `~/.config/fish/` |
 | PowerShell | `shell/profile.ps1`, dot-sourced from `$PROFILE` |
 
-The starter that `eznit template init` writes targets an AI terminal, not a
-shell; shell starter kinds are planned
-([#186](https://github.com/fiwon123/eznit/issues/186)). Until then, put the
-snippet in the folder yourself and publish it like any other file.
+`eznit template init --kind` writes the shell starter too:
+
+| Kind | Writes |
+| --- | --- |
+| `bash` | `shell/bashrc.sh` |
+| `zsh` | `shell/zshrc.sh` |
+| `fish` | `shell/config.fish` |
+| `powershell` | `shell/profile.ps1` |
+
+Each is a commented snippet — the project identity in a header, an example of
+how to source it, and an example alias or function. It does nothing until you
+uncomment it, which is deliberate: a tool that edits `~/.bashrc` unasked is a
+tool people stop running. A shell starter writes only its shell file, not
+`AGENTS.md`.
 
 Applying a template **never** edits a file in your home directory unless you
 point `--target` there, and it refuses to overwrite an existing file without

@@ -22,6 +22,11 @@ machine next to it is solving the wrong problem.
   ([#185](https://github.com/fiwon123/eznit/issues/185), v0.15.0). A script maps
   to `Exec`; `Steps` win on import, as they do in crower. Aliases, env, shell,
   cwd and timeout are reported and not kept; binary commands cannot be exported.
+- **Shell starters** — `eznit template init --kind bash|zsh|fish|powershell`
+  writes `shell/bashrc.sh`, `shell/zshrc.sh`, `shell/config.fish` or
+  `shell/profile.ps1`: commented snippets you source yourself
+  ([#186](https://github.com/fiwon123/eznit/issues/186), v0.16.0). Templates can
+  still carry any shell file, starter or not.
 - `eznit template init` writes a starter with no server and no account.
 - The command library keeps a script once and pulls it into templates by id.
 - A GitHub token on your machine lists and clones repositories; the token never
@@ -36,11 +41,8 @@ and no server. The plan is to send a template bundle over it, so a second
 machine (a laptop, a tablet, a machine on the same network) receives a setup
 without either side running eznit's API.
 
-## 🐚 More shells and OSes — not implemented
+## 🐚 More OSes and hosts — not implemented
 
-- **Shell starter kinds** — `eznit template init --kind bash|zsh|fish|powershell`
-  ([#186](https://github.com/fiwon123/eznit/issues/186)). Templates can carry
-  shell files today; only the built-in starter is missing.
 - **macOS archives** — `darwin/amd64` and `darwin/arm64` CLI and server bundles
   ([#187](https://github.com/fiwon123/eznit/issues/187)).
 - **GitLab and Bitbucket** clone providers next to GitHub

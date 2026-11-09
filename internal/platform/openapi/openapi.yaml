@@ -595,7 +595,7 @@ paths:
         - name: kind
           in: query
           required: false
-          description: Only templates for this AI terminal.
+          description: Only templates for this terminal or shell.
           schema:
             $ref: "#/components/schemas/TemplateKind"
       responses:
@@ -1269,7 +1269,7 @@ components:
 
     TemplateKind:
       type: string
-      enum: [opencode, codex, copilot, cursor, windsurf, generic]
+      enum: [opencode, codex, copilot, cursor, windsurf, generic, bash, zsh, fish, powershell]
 
     FileKind:
       type: string
