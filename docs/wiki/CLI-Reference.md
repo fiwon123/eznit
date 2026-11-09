@@ -89,6 +89,8 @@ one copy is updated once.
 | `eznit command list` | — | List your library |
 | `eznit command show <name-or-id>` | — | Show one command |
 | `eznit command remove <name-or-id>` | — | Remove a command; refused while a template still pulls it in |
+| `eznit command export --crower <file>` | `--force` | Write the library to a crower TOML pack |
+| `eznit command import --crower <file>` | `--replace` | Read a crower TOML pack into the library |
 
 ```sh
 eznit command add scripts/fmt.sh --name fmt
@@ -96,6 +98,15 @@ eznit template publish . --commands <command-id>=scripts/fmt.sh
 ```
 
 A name is unique per user, not globally.
+
+**Crower packs.** The pack is [crower](https://github.com/fiwon123/crower)'s
+TOML: one table per command, keyed by name. eznit stores a script, so the
+mapping is narrow and reported: the script becomes `Exec` on export; on import
+`Steps` win over `Exec` when present (that is how crower runs them), otherwise
+`Exec` becomes the script. Aliases, env, shell, cwd and timeout have no eznit
+column — the pack keeps them, the import names them, and nothing is guessed. A
+binary command cannot be exported: it is named, not dropped. Import is additive;
+`--replace` updates a name that is already there.
 
 ## 🐙 Git hosts
 
