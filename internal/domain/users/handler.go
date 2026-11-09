@@ -3,10 +3,16 @@ package users
 import (
 	"encoding/json"
 	"log/slog"
+	"math"
+	"net"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
 	"github.com/fiwon123/eznit/internal/platform/middleware"
+	"github.com/fiwon123/eznit/internal/platform/ratelimit"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/go-chi/chi/v5"
@@ -15,19 +21,32 @@ import (
 
 // User Handler is responsible to handle incoming request after middleware
 type Handler struct {
-	service *Service
-	session *sessions.Service
-	guard   *middleware.Guard
-	logger  *logger.Config
+	service   *Service
+	session   *sessions.Service
+	guard     *middleware.Guard
+	logger    *logger.Config
+	rateLimit RateLimitPolicy
+}
+
+// RateLimitPolicy is the auth throttling the handler applies. A nil Limiter
+// disables it (tests, or RATE_LIMIT_ENABLED=false).
+type RateLimitPolicy struct {
+	Limiter        *ratelimit.Limiter
+	TrustProxy     bool
+	LoginPerIP     int
+	LoginPerEmail  int
+	SignupPerIP    int
+	SignupPerEmail int
 }
 
 // Retunr a new User Handler
-func NewHandler(service *Service, session *sessions.Service, guard *middleware.Guard, logger *logger.Config) *Handler {
+func NewHandler(service *Service, session *sessions.Service, guard *middleware.Guard, logger *logger.Config, rateLimit RateLimitPolicy) *Handler {
 	return &Handler{
-		service: service,
-		session: session,
-		guard:   guard,
-		logger:  logger,
+		service:   service,
+		session:   session,
+		guard:     guard,
+		logger:    logger,
+		rateLimit: rateLimit,
 	}
 }
 
@@ -60,6 +79,12 @@ func (h *Handler) loginHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		h.logger.Warn("failed to decode: ", slog.Any("error", err))
 		helper.SendErrorJson(w, http.StatusBadRequest, "Failed to decode request")
+		return
+	}
+
+	if retry, limited := h.tooMany(r, "login", request.Email, h.rateLimit.LoginPerIP, h.rateLimit.LoginPerEmail); limited {
+		h.logger.Warn("login rate limited")
+		writeTooMany(w, retry)
 		return
 	}
 
@@ -108,6 +133,12 @@ func (h *Handler) signupHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		h.logger.Warn("failed to decode: ", slog.Any("error", err))
 		helper.SendErrorJson(w, http.StatusBadRequest, "Failed to decode request")
+		return
+	}
+
+	if retry, limited := h.tooMany(r, "signup", request.Email, h.rateLimit.SignupPerIP, h.rateLimit.SignupPerEmail); limited {
+		h.logger.Warn("signup rate limited")
+		writeTooMany(w, retry)
 		return
 	}
 
@@ -226,4 +257,73 @@ func (h *Handler) updateUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	helper.SendMessageJson(w, http.StatusOK, message)
 
+}
+
+// tooMany reports whether the request is over either the per-IP or the
+// per-address limit. It counts the request on both keys and returns the longer
+// of the two waits, so Retry-After is not optimistic. The address is the one
+// that was submitted, whether or not an account exists — so throttling reveals
+// nothing about an address.
+func (h *Handler) tooMany(r *http.Request, action, email string, perIP, perEmail int) (time.Duration, bool) {
+	if h.rateLimit.Limiter == nil {
+		return 0, false
+	}
+
+	ip := clientIP(r, h.rateLimit.TrustProxy)
+	var wait time.Duration
+	limited := false
+
+	for _, c := range []struct {
+		key   string
+		limit int
+	}{
+		{action + ":ip:" + ip, perIP},
+		{action + ":email:" + normalizeEmail(email), perEmail},
+	} {
+		ok, retry := h.rateLimit.Limiter.Allow(c.key, c.limit)
+		if !ok {
+			limited = true
+			if retry > wait {
+				wait = retry
+			}
+		}
+	}
+
+	return wait, limited
+}
+
+// writeTooMany answers 429 with a Retry-After of whole seconds, at least one.
+func writeTooMany(w http.ResponseWriter, retry time.Duration) {
+	seconds := int(math.Ceil(retry.Seconds()))
+	if seconds < 1 {
+		seconds = 1
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(seconds))
+	helper.SendErrorJson(w, http.StatusTooManyRequests, "too many attempts, try again later")
+}
+
+// clientIP is the caller's address. Behind a trusted proxy the forwarded header
+// is used; otherwise RemoteAddr, which a direct client cannot forge.
+func clientIP(r *http.Request, trustProxy bool) string {
+	if trustProxy {
+		if ip := strings.TrimSpace(r.Header.Get("X-Real-IP")); ip != "" {
+			return ip
+		}
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			if first := strings.TrimSpace(strings.Split(xff, ",")[0]); first != "" {
+				return first
+			}
+		}
+	}
+
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// normalizeEmail collapses the address so " A@B " and "a@b" share a counter.
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }

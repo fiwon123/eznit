@@ -46,6 +46,29 @@ With `GUI_API_URL` set, the GUI is a window in front of an existing API. With no
 one file is the whole product. With neither, the window opens and every `/v1`
 call answers `503` naming the variable to set.
 
+## 🔒 Auth rate limiting
+
+`signup` and `login` are throttled per IP and per submitted address; over the
+limit answers `429` with a `Retry-After` header. The limiter is in-process — the
+API and the GUI each enforce their own — so it is a per-instance guard, not a
+distributed one.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `RATE_LIMIT_ENABLED` | `true` | turn the throttle on or off |
+| `RATE_LIMIT_WINDOW` | `15m` | the window every limit is counted over |
+| `RATE_LIMIT_LOGIN_IP` | `20` | login attempts per IP per window |
+| `RATE_LIMIT_LOGIN_EMAIL` | `10` | login attempts per address per window |
+| `RATE_LIMIT_SIGNUP_IP` | `10` | signups per IP per window |
+| `RATE_LIMIT_SIGNUP_EMAIL` | `5` | signups per address per window |
+| `TRUST_PROXY` | `false` | trust `X-Real-IP` / `X-Forwarded-For` for the client IP |
+
+`TRUST_PROXY` is off in code. The compose product sets it on for the `api` and
+`dev` services because the web tier is the browser's entry and sets `X-Real-IP`.
+Leave it off when `:4000` is reachable directly: a direct client can forge the
+header and dodge the per-IP limit (the per-address limit still applies, because
+the address is in the request body).
+
 ## 🌐 Ports
 
 | Role | Product (`make up`) | Dev loop (`make dev-up`) |

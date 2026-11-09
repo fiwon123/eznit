@@ -93,6 +93,15 @@ services:
       # sandbox would also serve a stale web/dist build on 4000, so the browser
       # could talk to two different UIs depending on the port it opened.
       - API_SERVE_WEB=false
+      # Auth rate limiting. The sandbox API is behind the Vite web-dev proxy,
+      # which is the browser's entry, so it trusts the forwarded address.
+      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
+      - TRUST_PROXY=${TRUST_PROXY:-true}
+      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-15m}
+      - RATE_LIMIT_LOGIN_IP=${RATE_LIMIT_LOGIN_IP:-20}
+      - RATE_LIMIT_LOGIN_EMAIL=${RATE_LIMIT_LOGIN_EMAIL:-10}
+      - RATE_LIMIT_SIGNUP_IP=${RATE_LIMIT_SIGNUP_IP:-10}
+      - RATE_LIMIT_SIGNUP_EMAIL=${RATE_LIMIT_SIGNUP_EMAIL:-5}
       # Tells the Makefile inside the container not to import the host's .env
       # over the configuration below (see the top of the Makefile). Without it,
       # a host-side `DB_HOST="localhost"` wins and the API never finds the
@@ -279,6 +288,17 @@ services:
       API_LOGS: /data/logs
       # The web tier proxies /v1, so the API does not need to serve the UI.
       API_SERVE_WEB: "false"
+      # Auth rate limiting. The web tier is the browser's entry and sets
+      # X-Real-IP, so the product trusts the forwarded address here. Set
+      # TRUST_PROXY=false if :4000 is reachable directly, because a direct
+      # client can forge the header.
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-15m}
+      RATE_LIMIT_LOGIN_IP: ${RATE_LIMIT_LOGIN_IP:-20}
+      RATE_LIMIT_LOGIN_EMAIL: ${RATE_LIMIT_LOGIN_EMAIL:-10}
+      RATE_LIMIT_SIGNUP_IP: ${RATE_LIMIT_SIGNUP_IP:-10}
+      RATE_LIMIT_SIGNUP_EMAIL: ${RATE_LIMIT_SIGNUP_EMAIL:-5}
     secrets:
       - db_password
     volumes:
