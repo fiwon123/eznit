@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
+	"github.com/fiwon123/eznit/internal/platform/storage"
 	apperrors "github.com/fiwon123/eznit/pkg/errors"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
@@ -286,14 +286,14 @@ func (s *Service) DeleteUser(ctx context.Context, req DeleteRequest, callerID uu
 // failure the caller can act on — it is logged and the delete stands, the way
 // the templates and commands domains already handle their own storage.
 func (s *Service) removeAccountStorage(userID uuid.UUID, owner OwnerStorage) {
-	folders := []string{filepath.Join(s.uploadFolder, userID.String())}
+	folders := []string{storage.UserDir(s.uploadFolder, userID)}
 
 	for _, id := range owner.TemplateIDs {
-		folders = append(folders, filepath.Join(s.uploadFolder, "templates", id.String()))
+		folders = append(folders, storage.TemplateDir(s.uploadFolder, id))
 	}
 
 	for _, id := range owner.CommandIDs {
-		folders = append(folders, filepath.Join(s.uploadFolder, "commands", id.String()))
+		folders = append(folders, storage.CommandDir(s.uploadFolder, id))
 	}
 
 	for _, folder := range folders {

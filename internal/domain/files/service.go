@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
+	"github.com/fiwon123/eznit/internal/platform/storage"
 	"github.com/fiwon123/eznit/pkg/errors"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
@@ -266,7 +266,7 @@ func (s *service) StorageFile(ctx context.Context, file multipart.File, header *
 		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
 	}
 	version := 1
-	finalPath := filepath.Join(s.uploadFolder, userID.String(), fileID.String(), strconv.Itoa(version)+"_"+fileName)
+	finalPath := storage.FilePath(s.uploadFolder, userID, fileID, version, fileName)
 
 	// The name is validated and the path is built from it, so the write
 	// lands inside the upload root. The check is here anyway: it is the
@@ -383,7 +383,7 @@ func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *m
 	ext := filepath.Ext(fileName)
 
 	cleanName := strings.ReplaceAll(fileName, ext, "")
-	finalPath := filepath.Join(s.uploadFolder, fileInfo.UserID.String(), fileInfo.ID.String(), strconv.Itoa(newVersion)+"_"+fileName)
+	finalPath := storage.FilePath(s.uploadFolder, fileInfo.UserID, fileInfo.ID, newVersion, fileName)
 
 	if !helper.PathIsInside(s.uploadFolder, finalPath) {
 		s.logger.Error("the storage path is outside the upload folder", slog.String("path", finalPath))

@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/fiwon123/eznit/internal/platform/storage"
 	"github.com/fiwon123/eznit/pkg/errors"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
@@ -341,17 +342,17 @@ func (s *service) decodeBinary(encoded string) ([]byte, *errors.AppError) {
 // upload root, with forward slashes so the row reads the same on every
 // machine.
 func storagePathOf(command Command) string {
-	return "commands/" + command.ID.String() + "/" + command.Name
+	return storage.CommandStoragePath(command.ID, command.Name)
 }
 
 // absoluteStoragePath is the location a row points at, on this machine.
-func (s *service) absoluteStoragePath(storagePath string) string {
-	return filepath.Join(s.uploadFolder, filepath.FromSlash(storagePath))
+func (s *service) absoluteStoragePath(storedPath string) string {
+	return storage.AbsolutePath(s.uploadFolder, storedPath)
 }
 
 // commandStorageDir is the directory of one command's bytes.
 func (s *service) commandStorageDir(id uuid.UUID) string {
-	return filepath.Join(s.uploadFolder, "commands", id.String())
+	return storage.CommandDir(s.uploadFolder, id)
 }
 
 // writeBinaryFile writes the bytes of a binary command. A text command has
