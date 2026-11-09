@@ -40,24 +40,28 @@ info:
     files) and the shared-file list (`GET /v1/files/shared`, plus the bytes of
     a file marked public). Those operations carry `security: []`.
 
+    The two public account operations do not answer whether an address has an
+    account: a signup for a taken address gets the same `200` as a new one (and
+    creates nothing), and a login answers one `401 invalid credentials` whether
+    the address is unknown or the password is wrong. The server log keeps the
+    difference; the response does not.
+
     Anonymous is not a bypass: the visibility rule is the same one an account
     gets, minus the caller's own rows. An anonymous catalogue lists the
     templates their owners published and nothing else, and a private template
     or file that is not the caller's answers `404` exactly like an id that does
     not exist.
 
-    ## Known gaps
+    ## Administrators
 
-    This document describes the API **as it behaves today**, including the
-    routes below, which do not behave well yet:
+    Three operations manage other accounts: the account list, and the update
+    and delete of one account. They require an administrator, and a caller
+    whose account is not one gets `403`.
 
-    - `PUT` and `DELETE /v1/users/{id}` sit behind an admin guard that is still
-      a TODO, so they answer `401` for everybody (#109).
-    - `GET /v1/users` and `GET /v1/users/{id}` answer with any account's email
-      (#110).
-
-    Neither is a contract to build on; they are recorded so a client author is
-    not surprised by them.
+    The first account created on an instance is its admin; every account after
+    it is an ordinary user. An operator promotes another account with
+    `UPDATE users SET is_admin = true WHERE email = '<address>';` — there is no
+    route that grants it, on purpose.
 
 servers:
   - url: /
@@ -99,6 +103,10 @@ paths:
       operationId: signup
       tags: [users]
       summary: Create an account
+      description: |
+        Answers `200` whether the account was created or the address already had
+        one — the response does not say which, and an address that is taken is
+        left untouched. The server log keeps the difference.
       security: []
       requestBody:
         required: true
@@ -108,19 +116,13 @@ paths:
               $ref: "#/components/schemas/SignupRequest"
       responses:
         "200":
-          description: The account was created.
+          description: The account was created, or the address already had one.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "409":
-          description: That email already has an account.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -129,6 +131,9 @@ paths:
       operationId: login
       tags: [users]
       summary: Exchange credentials for a session token
+      description: |
+        A pair that does not match answers one `401 invalid credentials`,
+        whether the address has no account or the password is wrong.
       security: []
       requestBody:
         required: true
@@ -149,13 +154,13 @@ paths:
                       data:
                         $ref: "#/components/schemas/LoginResponse"
         "400":
-          description: The body could not be decoded, or the password is wrong.
+          description: The body could not be decoded.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: No account has that email.
+        "401":
+          description: The address and the password did not match an account.
           content:
             application/json:
               schema:
@@ -192,8 +197,9 @@ paths:
       tags: [users]
       summary: List every account
       description: |
-        Answers every registered account's email, not only the caller's. This is
-        a known gap, described here so it is not mistaken for a contract.
+        An administrator's view: every registered account's email. A caller
+        whose account is not an admin gets `403`, so a session cannot enumerate
+        the instance's accounts.
       responses:
         "200":
           description: Every account.
@@ -210,6 +216,8 @@ paths:
                           $ref: "#/components/schemas/UserData"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -219,10 +227,14 @@ paths:
     get:
       operationId: getUser
       tags: [users]
-      summary: Read one account
+      summary: Read the caller's own account
+      description: |
+        Answers the caller's own record. Any other id answers `404`, exactly
+        like an id that does not exist: whether an account exists is not
+        something a session gets to probe.
       responses:
         "200":
-          description: The account.
+          description: The caller's account.
           content:
             application/json:
               schema:
@@ -238,13 +250,16 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
     put:
       operationId: updateUser
       tags: [users]
       summary: Replace an account
       description: |
-        The admin guard in front of this route is a TODO and answers `401` for
-        every caller. The body is described for the route it will be.
+        An administrator's operation: it replaces the account's email and
+        password. The admin flag itself is not part of the body — no route
+        grants it.
       requestBody:
         required: true
         content:
@@ -261,17 +276,11 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
-          description: Always, today — the admin guard is not implemented.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
-          description: No account with that id — the answer once the guard is implemented.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
     delete:
@@ -279,8 +288,15 @@ paths:
       tags: [users]
       summary: Delete an account
       description: |
-        The admin guard in front of this route is a TODO and answers `401` for
-        every caller.
+        An administrator's operation. The account is deleted as a whole: its
+        sessions, its files and their history, its templates (with their files,
+        variables and command references) and its commands go with it, and the
+        bytes those rows named are removed from disk.
+
+        Two deletes are refused with `409`: the account the caller is signed in
+        with, and an account whose command a template still pulls in — the
+        schema keeps that reference `RESTRICT` so a published template does not
+        quietly lose a script, the same rule `DELETE /v1/commands/{id}` follows.
       responses:
         "200":
           description: The account was deleted.
@@ -291,13 +307,19 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
-          description: Always, today — the admin guard is not implemented.
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The caller is signed in with this account, or a template still pulls in a command it owns.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /v1/files:
     get:
@@ -997,6 +1019,12 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     Unauthorized:
       description: No token, or a token that is not a live session.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: The caller has a live session, but the account is not an administrator.
       content:
         application/json:
           schema:

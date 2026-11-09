@@ -214,13 +214,16 @@ gh pr create \
   ```bash
   git checkout dev
   git pull origin dev
-  git push origin dev
   gh pr create \
     --title "release: <milestone-name>" \
     --body "Release PR for milestone: <milestone-name>" \
     --label "release" \
     --base main
   ```
+  **Do not push `dev`.** Merged pull requests advance it on the remote;
+  `git pull` is all the local branch needs. A direct push is refused by branch
+  protection on `dev` and `main`, and `enforce_admins` is on — the bypass is not
+  available, so a step that needs it fails instead of working.
 - CI runs automatically on this PR
 - **This PR closes no issues.** Every issue in the milestone was closed when its
   PR merged to `dev` (step 6), so `Closes #N` here would be a no-op at best.
@@ -233,8 +236,15 @@ gh pr create \
 - **Ask user to confirm merge**: "CI passed. Ready to merge dev to main?"
 - Only merge after user confirms:
   ```bash
-  gh pr merge <pr-number> --squash
+  gh pr merge <pr-number> --merge
   ```
+
+  **Merge, do not squash.** A merge commit puts `dev`'s commits on `main`, so
+  `dev` is an ancestor and the next release PR is computed from its tip. A
+  squash leaves the two diverged at the old merge-base, and the back-merge that
+  used to repair that was a direct push to `dev` — the bypass this rule exists
+  to prevent. If the repository refuses merge commits, fix that setting rather
+  than reintroducing the back-merge.
 
   **Never add `--delete-branch` to a release merge.** The release PR's head
   branch is `dev` itself, so `--delete-branch` deletes the integration branch
@@ -245,7 +255,7 @@ gh pr create \
   - **Comment on the issue**: `gh issue comment <issue-number> --body "Released in <commit-sha>"`
   - **Comment on the PR**: `gh pr comment <pr-number> --body "Released — thanks!"`
 - **Publish the artifacts** — when the project ships a downloadable binary, the
-  tag is what publishes it. Tag the tip of `main` (the squash merge commit) and
+  tag is what publishes it. Tag the tip of `main` (the release merge commit) and
   push the tag:
   ```bash
   git fetch origin main
@@ -261,15 +271,11 @@ gh pr create \
     jobs were all gated out, leaves the tag with no assets — confirm the
     release page shows the archives before telling anyone to download them.
   - A project that ships no binary skips this step entirely.
-- **Merge `main` back into `dev`** — a squash merge leaves `dev` and `main`
-  diverged at the old merge-base, so the *next* release PR would re-list every
-  file from this one:
-  ```bash
-  git checkout dev
-  git pull origin dev
-  git merge origin/main -m "Merge remote-tracking branch 'origin/main' into dev"
-  git push origin dev
-  ```
+- **No back-merge, and never push `dev`.** With a merge-commit release, `dev`
+  is already an ancestor of `main`; there is nothing to bring back. Do not merge
+  `origin/main` into `dev` and do not push `dev` — both are PR-only, admins are
+  not exempt, and a direct push is refused. If a divergence ever appears, repair
+  it through a pull request, not a push.
 - **Verify `dev` survived** — an empty output means the integration branch is
   gone and everything that targets it is broken:
   ```bash

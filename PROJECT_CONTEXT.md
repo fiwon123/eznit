@@ -11,13 +11,13 @@ empty field here means a placeholder somewhere else.
 - **Repository**: https://github.com/fiwon123/eznit
 - **License**: MIT (see `LICENSE`)
 - **Status**: pre-1.0. The API, the CLI and the web UI work end to end
-  against a local Compose stack. The test suite is **partial**: 15 packages
-  have tests (`cmd/{api,gui}`, `internal/cli`, the domain packages,
-  `internal/platform/*`, `pkg/helper`, `web`) and five have none (`cmd/cli`,
-  `internal/domain/users`, `pkg/{errors,logger,types}`) — a green `go test`
+  against a local Compose stack. The test suite is **partial**: every package
+  except four has tests (`cmd/{api,gui}`, `internal/cli`, the domain packages,
+  `internal/platform/*`, `pkg/helper`, `web`, `internal/tools/winres`), and
+  `cmd/cli` and `pkg/{errors,logger,types}` have none — a green `go test`
   covers what ran, not the rest, and `make check` prints the packages with no
-  test files at the end of a green run. Several routes are known-insecure; see
-  "Known gaps" in `AGENTS.md` before deploying this anywhere but a laptop.
+  test files at the end of a green run. The API's known-insecure routes are
+  closed; see "Known gaps" in `AGENTS.md`.
 
 ## Stack
 
@@ -55,7 +55,8 @@ that returns an HTTP status, is a layering break.
 
 ## Data model
 
-- `users` — id, email, password (hashed), timestamps
+- `users` — id, email, password (hashed), timestamps, is_admin (the first
+  account created is the instance's admin)
 - `files` — id, user_id, name, ext, content_type, path, version
 - `files_history` — file_id, path, version (one row per stored version)
 - `sessions` — token (primary key), user_id, expires_at, is_active

@@ -57,6 +57,8 @@ func TestTheGuardedRoutesRejectAVisitor(t *testing.T) {
 		{"the caller's own templates", http.MethodGet, "/v1/templates/mine"},
 		{"the command library", http.MethodGet, "/v1/commands"},
 		{"the user list", http.MethodGet, "/v1/users"},
+		{"an account update", http.MethodPut, "/v1/users/1f0c1a9e-0000-0000-0000-000000000000"},
+		{"an account delete", http.MethodDelete, "/v1/users/1f0c1a9e-0000-0000-0000-000000000000"},
 	}
 
 	for _, tt := range tests {

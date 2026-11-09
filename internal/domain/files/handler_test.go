@@ -88,7 +88,7 @@ func newTestRouter(t *testing.T, repo Repository, uploadFolder string, userID uu
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
 
-	guard := middleware.NewGuard(sessions.NewService(newFakeSessionsRepository(session), log), log)
+	guard := middleware.NewGuard(sessions.NewService(newFakeSessionsRepository(session), log), nil, log)
 	handler := NewHandler(NewService(repo, uploadFolder, log), guard, log)
 
 	router := chi.NewRouter()
