@@ -61,6 +61,49 @@ func (g *Guard) AuthUser(next http.Handler) http.Handler {
 	})
 }
 
+// OptionalUser is the guard a public read wears: the request goes through
+// either way, and a session, when it carries one, is put in the context the
+// same way AuthUser puts it there.
+//
+// It is what makes a public route widen for its caller instead of narrowing
+// for everyone: the catalogue answers anonymous visitors, and a caller with a
+// session also sees their own private rows.
+//
+// A token the API does not accept is treated as no token. Granting nothing is
+// the safe failure here — the route is public, so the worst an unverified
+// caller gets is the visitor view — and it keeps a stale token in a browser
+// from turning the public catalogue into an error page. A write still wears
+// AuthUser and answers 401.
+func (g *Guard) OptionalUser(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+
+		if !g.session.IsValid(token) {
+			g.logger.Warn("Invalid token on a public route. Serving the visitor view")
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		userID, ok := g.session.GetUserIDByToken(token)
+		if !ok {
+			g.logger.Warn("Unauthorized on a public route. Serving the visitor view")
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		g.logger.Debug("Authorized User on a public route", slog.String("userID", userID.String()))
+		ctx := context.WithValue(r.Context(), "user_id", userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 // Check if user is a admin and has permissions to make request
 func (g *Guard) AuthAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

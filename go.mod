@@ -3,13 +3,13 @@ module github.com/fiwon123/eznit
 go 1.27.3
 
 require (
-	github.com/alecthomas/kong v1.16.1
+	github.com/alecthomas/kong v1.17.0
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/google/uuid v1.6.0
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.12.3
-	github.com/swaggo/files/v2 v2.0.0
+	github.com/swaggo/files/v2 v2.0.2
 	go.uber.org/zap v1.28.0
 	go.uber.org/zap/exp v0.3.0
 	golang.org/x/crypto v0.58.0

@@ -65,3 +65,33 @@ updates:
       - "ci"
     commit-message:
       prefix: "ci"
+
+  # Web UI dependencies. The web gate (`make web_check`) reads
+  # web/package-lock.json, and `npm ci` refuses a lockfile that disagrees with
+  # package.json — so a bump that misses one of the two fails the gate rather
+  # than landing silently.
+  - package-ecosystem: "npm"
+    directory: "/web"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "web"
+    commit-message:
+      prefix: "deps"
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      tooling:
+        patterns:
+          - "vite"
+          - "typescript"
+          - "oxlint"
+          - "oxfmt"
+          - "@vitejs/*"

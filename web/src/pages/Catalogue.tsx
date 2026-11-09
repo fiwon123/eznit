@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ApiError, listSharedFiles, listTemplates, messageOf } from "../api";
+import { getToken, listSharedFiles, listTemplates, messageOf } from "../api";
 import SharedFileCard from "../components/SharedFileCard";
 import TemplateCard from "../components/TemplateCard";
 import { KINDS } from "../types";
@@ -11,9 +11,12 @@ import type { SharedFileData, TemplateData } from "../types";
 // state is derived from it instead of being set from inside the effect.
 interface CatalogueResult {
   kind: string;
+  // The session the answer belongs to: the catalogue widens to the caller's
+  // own private templates when there is one, so an answer from before a log-in
+  // or a log-out is not the answer for this page.
+  session: string | null;
   templates: TemplateData[];
   error: string | null;
-  status: number | null;
 }
 
 // A stable empty list: a fresh [] on every render would make the useMemo
@@ -21,6 +24,11 @@ interface CatalogueResult {
 const NO_TEMPLATES: TemplateData[] = [];
 
 export default function Catalogue() {
+  // The catalogue is public, so a visitor with no token reads it. The token
+  // is read at render time: it only changes the nudge at the top, because a
+  // logged-in caller additionally sees their own private templates.
+  const token = getToken();
+
   const [kind, setKind] = useState<string>("");
   const [query, setQuery] = useState<string>("");
   const [result, setResult] = useState<CatalogueResult | null>(null);
@@ -34,16 +42,11 @@ export default function Catalogue() {
       try {
         const response = await listTemplates(kind);
         if (!cancelled) {
-          setResult({ kind, templates: response.data, error: null, status: null });
+          setResult({ kind, session: token, templates: response.data, error: null });
         }
       } catch (cause: unknown) {
         if (!cancelled) {
-          setResult({
-            kind,
-            templates: [],
-            error: messageOf(cause),
-            status: cause instanceof ApiError ? cause.status : null,
-          });
+          setResult({ kind, session: token, templates: [], error: messageOf(cause) });
         }
       }
     };
@@ -53,7 +56,7 @@ export default function Catalogue() {
     return () => {
       cancelled = true;
     };
-  }, [kind]);
+  }, [kind, token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,10 +83,10 @@ export default function Catalogue() {
     };
   }, []);
 
-  const current = result !== null && result.kind === kind ? result : null;
+  const current =
+    result !== null && result.kind === kind && result.session === token ? result : null;
   const templates = current === null ? NO_TEMPLATES : current.templates;
   const error = current === null ? null : current.error;
-  const status = current === null ? null : current.status;
   const loading = current === null;
 
   // The search runs on the browser: the API filters by kind, and the text a
@@ -135,13 +138,14 @@ export default function Catalogue() {
         </label>
       </div>
 
-      {status === 401 ? (
+      {token === null ? (
         <p className="notice">
-          The catalogue is behind a session. <Link to="/login">Log in</Link> to see the templates.
+          You are browsing as a visitor, which shows the public templates and shared files.{" "}
+          <Link to="/login">Log in</Link> to publish a template or to see your own private ones.
         </p>
       ) : null}
 
-      {error !== null && status !== 401 ? <p className="error">{error}</p> : null}
+      {error !== null ? <p className="error">{error}</p> : null}
 
       {loading ? <p className="empty">Loading the catalogue…</p> : null}
 

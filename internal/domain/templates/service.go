@@ -68,22 +68,34 @@ var variableKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
 
 // userIDFromContext returns the user the guard put in the context. The guard
 // is the only thing that sets it, so a missing value means the request never
-// went through the guard — the route is registered without it. The caller is
-// rejected instead of the request panicking on the type assertion, so a
-// misregistered route fails closed.
+// went through the guard — the route is registered without it, or the route is
+// public and the caller is anonymous. A write path uses this and rejects the
+// caller: a misregistered write must fail closed. A read path uses
+// userIDOrNil, because reading the public catalogue is the point.
 func userIDFromContext(ctx context.Context) (uuid.UUID, bool) {
 	userID, ok := ctx.Value("user_id").(uuid.UUID)
 	return userID, ok
 }
 
-// ListTemplates returns the catalogue: the public templates and the caller's
-// own. An empty kind means every kind.
+// userIDOrNil returns the user the guard put in the context, or uuid.Nil when
+// nobody is logged in.
+//
+// The visibility rule is "public, or the caller's own". A nil id belongs to no
+// user, so `user_id = $1` matches no row and an anonymous caller is left with
+// the public half — which is exactly what a visitor should see. The rule stays
+// in the query; this only decides who the caller is.
+func userIDOrNil(ctx context.Context) uuid.UUID {
+	userID, _ := userIDFromContext(ctx)
+	return userID
+}
+
+// ListTemplates returns the catalogue: the public templates and, when the
+// caller has a session, their own. An empty kind means every kind.
+//
+// It is public: an anonymous visitor reads the same catalogue, filtered to the
+// templates their owners published.
 func (s *service) ListTemplates(ctx context.Context, kind string) (ListResponse, *errors.AppError) {
-	userID, ok := userIDFromContext(ctx)
-	if !ok {
-		s.logger.Warn("no user in the request context")
-		return ListResponse{}, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
-	}
+	userID := userIDOrNil(ctx)
 
 	s.logger.Debug("ListTemplates", slog.String("kind", kind))
 
@@ -96,7 +108,10 @@ func (s *service) ListTemplates(ctx context.Context, kind string) (ListResponse,
 		return ListResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to get templates")
 	}
 
-	return listResponse(templates), nil
+	// The owner's email is attribution for a caller with a session. This
+	// catalogue answers a visitor, and a public list that carries the address
+	// is a list anyone can harvest.
+	return listResponse(templates, userID != uuid.Nil), nil
 }
 
 // ListTemplatesForUser returns only the caller's own templates, the private
@@ -115,18 +130,21 @@ func (s *service) ListTemplatesForUser(ctx context.Context) (ListResponse, *erro
 		return ListResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to get templates")
 	}
 
-	return listResponse(templates), nil
+	return listResponse(templates, true), nil
 }
 
 // listResponse turns the templates into the catalogue the client sees. The
 // file count is not read from a column: it is the number of files the
 // repository holds for each template, read with the templates themselves, so
 // the catalogue and the detail page cannot disagree.
-func listResponse(templates []Template) ListResponse {
+//
+// withOwnerEmail is the caller's, not the template's: the owner is always
+// named by id, and an anonymous catalogue leaves the address out.
+func listResponse(templates []Template, withOwnerEmail bool) ListResponse {
 	resp := make([]TemplateData, 0, len(templates))
 
 	for _, template := range templates {
-		resp = append(resp, TemplateData{
+		entry := TemplateData{
 			ID:          template.ID,
 			Name:        template.Name,
 			Slug:        template.Slug,
@@ -135,11 +153,16 @@ func listResponse(templates []Template) ListResponse {
 			Version:     template.Version,
 			IsPublic:    template.IsPublic,
 			Owner:       template.UserID.String(),
-			OwnerEmail:  template.OwnerEmail,
 			FileCount:   template.FileCount,
 			CreatedAt:   template.CreatedAt,
 			UpdatedAt:   template.UpdatedAt,
-		})
+		}
+
+		if withOwnerEmail {
+			entry.OwnerEmail = template.OwnerEmail
+		}
+
+		resp = append(resp, entry)
 	}
 
 	return ListResponse{
@@ -154,11 +177,7 @@ func listResponse(templates []Template) ListResponse {
 // as the caller is concerned: the same answer for "no such template" and for
 // "somebody else's private template", so an id cannot be probed.
 func (s *service) GetTemplate(ctx context.Context, id uuid.UUID) (*TemplateDetail, *errors.AppError) {
-	userID, ok := userIDFromContext(ctx)
-	if !ok {
-		s.logger.Warn("no user in the request context")
-		return nil, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
-	}
+	userID := userIDOrNil(ctx)
 
 	s.logger.Debug("GetTemplate", slog.String("id", id.String()))
 
@@ -172,7 +191,18 @@ func (s *service) GetTemplate(ctx context.Context, id uuid.UUID) (*TemplateDetai
 		return nil, errors.NewAppError(http.StatusNotFound, "template not found")
 	}
 
-	return s.detail(template)
+	detail, appError := s.detail(template)
+	if appError != nil {
+		return nil, appError
+	}
+
+	// The address is attribution for a caller with a session, as in the
+	// catalogue: this detail answers a visitor too.
+	if userID == uuid.Nil {
+		detail.OwnerEmail = ""
+	}
+
+	return detail, nil
 }
 
 // detail reads the files and the variables of a template and assembles it.
@@ -389,11 +419,7 @@ func (s *service) DeleteTemplate(ctx context.Context, id uuid.UUID) (string, *er
 // A private template that is not the caller's is reported as not found: the
 // fact that it exists is not theirs to learn.
 func (s *service) visibleFiles(ctx context.Context, id uuid.UUID) ([]TemplateFile, *errors.AppError) {
-	userID, ok := userIDFromContext(ctx)
-	if !ok {
-		s.logger.Warn("no user in the request context")
-		return nil, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
-	}
+	userID := userIDOrNil(ctx)
 
 	s.logger.Debug("visibleFiles", slog.String("id", id.String()))
 
@@ -612,11 +638,7 @@ func (s *service) contentOfCommand(command TemplateCommand) ([]byte, error) {
 
 // visibleCommands returns the commands of a template the caller may see.
 func (s *service) visibleCommands(ctx context.Context, id uuid.UUID) ([]TemplateCommand, *errors.AppError) {
-	userID, ok := userIDFromContext(ctx)
-	if !ok {
-		s.logger.Warn("no user in the request context")
-		return nil, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
-	}
+	userID := userIDOrNil(ctx)
 
 	template, ok := s.db.GetTemplate(id)
 	if !ok {

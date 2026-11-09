@@ -25,5 +25,5 @@
     "unicorn/prefer-dom-node-text-content": "error",
     "react/react-in-jsx-scope": "off"
   },
-  "ignorePatterns": ["dist", "node_modules"]
+  "ignorePatterns": ["dist", "node_modules", "scripts"]
 }

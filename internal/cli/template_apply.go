@@ -24,11 +24,10 @@ type TemplateApplyCmd struct {
 
 // Run applies the template.
 func (cmd *TemplateApplyCmd) Run(g *Globals) error {
-	token, err := getToken()
-	if err != nil {
-		g.logger.Warn("not logged in. ")
-		return nil
-	}
+	// Applying a public template writes files on this machine and asks the
+	// server nothing else, so it needs no account. A session only widens
+	// what can be read — the caller's own private templates.
+	token, _ := getToken()
 
 	detail, ok := cmd.template(g, token)
 	if !ok {

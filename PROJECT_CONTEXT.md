@@ -11,9 +11,13 @@ empty field here means a placeholder somewhere else.
 - **Repository**: https://github.com/fiwon123/eznit
 - **License**: MIT (see `LICENSE`)
 - **Status**: pre-1.0. The API, the CLI and the web UI work end to end
-  against a local Compose stack. There are **no automated tests yet**, and
-  several routes are known-insecure — see "Known gaps" in `AGENTS.md` before
-  deploying this anywhere but a laptop.
+  against a local Compose stack. The test suite is **partial**: 15 packages
+  have tests (`cmd/{api,gui}`, `internal/cli`, the domain packages,
+  `internal/platform/*`, `pkg/helper`, `web`) and five have none (`cmd/cli`,
+  `internal/domain/users`, `pkg/{errors,logger,types}`) — a green `go test`
+  covers what ran, not the rest, and `make check` prints the packages with no
+  test files at the end of a green run. Several routes are known-insecure; see
+  "Known gaps" in `AGENTS.md` before deploying this anywhere but a laptop.
 
 ## Stack
 
@@ -65,9 +69,12 @@ index; the path column is what `download` opens.
 | Command | What it is for |
 | --- | --- |
 | `make check` | The local verification gate: gofmt, vet, test, build |
+| `make vuln` | Reachable-vulnerability scan (needs network; not part of `check`) |
 | `make run_api` | Run the API against the configured database |
 | `make run_cli` | Run the CLI |
-| `make build` | Build both binaries into `./build` |
+| `make build` | Build the local binaries into `./build` |
+| `make release` | Build one-folder archives for every platform into `./build/dist` |
+| `make verify-release` | Check the archives: layout, names, PE resources and provenance |
 | `make web_check` | Lint, format check, typecheck and build the web UI |
 | `make web_build` | Build the web UI into `web/dist` |
 | `make web_dev` | Run the Vite dev server |
@@ -76,6 +83,7 @@ index; the path column is what `download` opens.
 | `make docker_up` | Bring up db + the migrations |
 | `make docker_up_all` | Bring up db + the migrations + the dev sandbox (not the API) |
 | `make dev-up` | The developer loop: UI `:5173` (Vite, hot reload), API `:4000`, from the source |
+| `make dev-restart` | Stop and start the loop again (no rebuild) |
 
 ## Environment
 

@@ -36,7 +36,8 @@ export default function Login({ onAuthenticated }: LoginProps) {
       <div className="pagehead">
         <h1>Log in</h1>
         <p className="lead">
-          The catalogue is behind a session. The token stays in this browser and nowhere else.
+          The catalogue is public; a session lets you publish templates, upload files and see your
+          own private ones. The token stays in this browser and nowhere else.
         </p>
       </div>
 

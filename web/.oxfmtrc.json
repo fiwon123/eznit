@@ -13,5 +13,5 @@
   "endOfLine": "lf",
   "insertFinalNewline": true,
   "objectWrap": "preserve",
-  "ignorePatterns": ["dist/**", "node_modules/**"]
+  "ignorePatterns": ["dist/**", "node_modules/**", "scripts/**"]
 }

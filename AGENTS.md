@@ -120,7 +120,9 @@ make check     # gofmt, vet, test, build — the local verification gate
 make vuln      # reachable-vulnerability scan (needs network; not part of check)
 make run_api   # run the API against the configured database
 make run_cli   # run the CLI
-make build     # build both binaries into ./build
+make build     # the local binaries into ./build
+make release   # one-folder archives for every platform into ./build/dist
+make verify-release  # check the archives: layout, names, PE, provenance
 make web_check # lint, format check, typecheck and build the web UI
 make web_build # build the web UI into web/dist
 make web_dev   # run the Vite dev server
@@ -413,8 +415,10 @@ started, because the API exits without a database.
 
 The **release** workflow is separate: it runs on a `v*` tag push (and on
 manual dispatch, as a dry run that publishes nothing) and publishes the
-archives. It does not gate a change, and a green dry run does not prove the
-publish step — only a real tag does.
+archives. It waits on a `windows-latest` smoke test that runs the CLI before
+anything is published, and builds its notes from the PRs merged into `dev`
+(squash merges make `--generate-notes` miss them). It does not gate a change,
+and a green dry run does not prove the publish step — only a real tag does.
 
 **Skipped is not passed.** A run that never happened, or whose jobs were all
 gated out, is not coverage. Do not describe a change as "CI passed" unless a

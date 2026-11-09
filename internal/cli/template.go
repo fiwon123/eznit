@@ -40,8 +40,11 @@ type TemplateShowCmd struct {
 
 // Run lists the catalogue.
 func (cmd *TemplateListCmd) Run(g *Globals) error {
-	token, err := getToken()
-	if err != nil {
+	// The catalogue is public: a machine that has never logged in reads the
+	// published templates. `--mine` is not — it answers the caller's own
+	// templates, private ones included — so that flag still needs a session.
+	token, _ := getToken()
+	if cmd.Mine && token == "" {
 		g.logger.Warn("not logged in. ")
 		return nil
 	}
@@ -87,11 +90,9 @@ func (cmd *TemplateListCmd) Run(g *Globals) error {
 
 // Run shows one template.
 func (cmd *TemplateShowCmd) Run(g *Globals) error {
-	token, err := getToken()
-	if err != nil {
-		g.logger.Warn("not logged in. ")
-		return nil
-	}
+	// A public template can be read without an account; the token only
+	// widens the view to the caller's own private ones.
+	token, _ := getToken()
 
 	id := strings.TrimSpace(cmd.ID)
 
@@ -226,7 +227,11 @@ func sendTemplatesRequest(baseURL string, mine bool, kind string, token string, 
 		return nil, false
 	}
 
-	req.Header.Set("Authorization", "Bearer "+token)
+	// The catalogue answers without a session; the header goes along only
+	// when there is one, so the same request works logged out.
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -266,7 +271,11 @@ func sendTemplateRequest(baseURL string, id uuid.UUID, token string, g *Globals)
 		return nil, false
 	}
 
-	req.Header.Set("Authorization", "Bearer "+token)
+	// A public template is readable without a session; a private one only
+	// answers a caller who sends the token that owns it.
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 
 	client := &http.Client{
 		Timeout: 10 * time.Second,

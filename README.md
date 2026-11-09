@@ -1,13 +1,17 @@
 <div align="center">
 
+<img src="assets/logo.svg" alt="eznit logo" width="120" height="120" />
+
 # eznit
 
-Self-hosted file storage. A Go API and a CLI client for uploading, listing and
-retrieving your own files, backed by PostgreSQL.
+**Self-hosted file storage you control**
+
+A Go API, CLI client, and web UI for uploading, listing, and retrieving your own files, backed by PostgreSQL.
 
 [![License: MIT](https://img.shields.io/github/license/fiwon123/eznit)](LICENSE)
 [![Go version](https://img.shields.io/github/go-mod/go-version/fiwon123/eznit?logo=go&logoColor=white)](go.mod)
 [![CI (Go)](https://github.com/fiwon123/eznit/actions/workflows/ci.go.yml/badge.svg)](https://github.com/fiwon123/eznit/actions/workflows/ci.go.yml)
+[![Pre-release](https://img.shields.io/badge/status-pre--1.0-orange)](https://github.com/fiwon123/eznit)
 
 </div>
 
@@ -27,6 +31,7 @@ retrieving your own files, backed by PostgreSQL.
   - [Migrations](#migrations)
   - [Checking your change](#checking-your-change)
 - [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
 - [License](#license)
 
 ## About
@@ -96,22 +101,24 @@ Uploaded bytes live on the `api-data` volume, so they survive
 
 > In a **release bundle** the source is not there, so there is no image to
 > build. Start the database with `docker compose up db migrate` and run the
-> prebuilt `build/api/server` (Windows: `build\api\server.exe`) from the
-> archive; it serves the UI embedded at build time. Plain `docker compose up`
-> is the source-checkout path — in a bundle it would try to build an image the
+> prebuilt `eznit-server` (Windows: `eznit-server.exe`) from the archive; it
+> serves the UI embedded at build time. Plain `docker compose up` is the
+> source-checkout path — in a bundle it would try to build an image the
 > archive does not contain. `make dev-up` and the `dev` sandbox are not part of
-> the bundle either.
+> the bundle either. The bundle carries `RUNNING.md` with the same steps.
 
 ### Build the CLI
 
 ```sh
-make build        # both binaries into ./build (and the web UI, which they embed)
+make build        # the local binaries into ./build (and the web UI they embed)
 ./build/cli/eznit --help
+make release      # one-folder archives for every platform into ./build/dist
 ```
 
 Node is needed here even for the Go binaries: `make build_api` and
 `make build_gui` build the web UI first, because both binaries carry a copy of
 it (see [Web UI](#web-ui)). `make check` does not — the Go gate stays Node-free.
+`make release` builds the UI once and packages it with both families.
 
 ### Commands
 
@@ -125,8 +132,11 @@ it (see [Web UI](#web-ui)). `make check` does not — the Go gate stays Node-fre
 | `eznit delete` | Delete a file |
 | `eznit logout` | End the session |
 
-Every command except `signup` and `login` needs a session: the API requires
-the token, and the CLI sends the one `login` stored.
+Every command that reads or writes your own rows needs a session: the API
+requires the token, and the CLI sends the one `login` stored. The exceptions
+are `signup`, `login`, and the public reads — the catalogue (`eznit template
+list`, `template show`, `template apply` on a public id) and the shared files,
+which answer a visitor who has never signed up.
 
 ```sh
 eznit signup
@@ -217,6 +227,15 @@ disagree, so it describes the API as it is, including the known gaps listed in
 
 ## Web UI
 
+| | Dark | Light |
+|---|---|---|
+| **Catalogue** | ![catalogue, dark](docs/screenshots/catalogue-dark.png) | ![catalogue, light](docs/screenshots/catalogue-light.png) |
+| **Log in** | ![log in, dark](docs/screenshots/login-dark.png) | ![log in, light](docs/screenshots/login-light.png) |
+| **Sign up** | ![sign up, dark](docs/screenshots/signup-dark.png) | ![sign up, light](docs/screenshots/signup-light.png) |
+
+Captured by `make screenshots` against a running stack; see
+[docs/screenshots/README.md](docs/screenshots/README.md) to regenerate them.
+
 The web UI lives in `web/`. It reaches the browser two ways:
 
 - **from disk** — the API serves `web/dist` when it holds a build, so a
@@ -290,10 +309,10 @@ static file server's 404.
 
 ```sh
 # one file, with the database configuration from .env
-./build/eznit-gui
+./build/gui/eznit-gui
 
 # or: a window in front of an API that is already running
-GUI_API_URL=http://localhost:4000 ./build/eznit-gui
+GUI_API_URL=http://localhost:4000 ./build/gui/eznit-gui
 ```
 
 ## Security status
@@ -494,16 +513,34 @@ connection string.
 
 A release is a `v*` tag on `main`. `.github/workflows/release.yml` refuses a tag
 that does not point at a commit on `main`, builds the archives with
-`make build VERSION=<tag>` — the same target a developer runs — and publishes
-them with `gh release create`:
+`make release VERSION=<tag>` — the same target a developer runs — and publishes
+them with `gh release create`. Before publishing, a `windows-latest` job unpacks
+the Windows CLI archive and runs `eznit -v` and `ez -v`; `publish` needs it, so
+a binary that cannot start fails the release instead of shipping. The notes are
+built from the pull requests merged into `dev`: every feature PR is
+squash-merged, so `--generate-notes` would see the release commit and miss them.
+
+`make release` stages one folder per archive and compresses **the folder**, so a
+download extracts into a folder named after it instead of scattering files into
+the directory you ran the command in. `PLATFORMS` defaults to `windows/amd64`,
+`windows/arm64`, `linux/amd64` and `linux/arm64`; the platform is in the
+archive name, never in the binary name.
 
 | Asset | Contents |
 | --- | --- |
-| `eznit_cli_<version>_windows.zip` | `eznit.exe`, `ez.exe`, `add_to_path.ps1`, README, LICENSE |
-| `eznit_cli_<version>_linux.tar.gz` | `eznit`, `ez`, `add_to_path.sh`, README, LICENSE |
-| `eznit_server_<version>_windows.zip` | the API server for Windows, the migrations, the Compose files and the example config |
-| `eznit_server_<version>_linux.tar.gz` | the API server for Linux, the migrations, the Compose files and the example config |
+| `eznit-cli_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux) | `eznit`, `ez`, `add_to_path.ps1` or `add_to_path.sh`, README, LICENSE |
+| `eznit-server_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux) | `eznit-server`, `eznit-gui`, `db/migrations/`, `scripts/run_migrate.sh`, `docker-compose.yml`, the example configuration and secret files, `RUNNING.md`, README, LICENSE |
 | `checksums.txt` | SHA-256 of every archive |
+
+Each archive is checked after it is written: exactly one top-level folder, named
+like the archive, and no `..` member. `make release` then runs
+`make verify-release`, which reads the finished archives — the names inside, the
+PE of every Windows binary, and (when `PROVENANCE_COMMIT` is set, as the
+workflow does) the revision and `vcs.modified=false`. Every Windows binary also
+carries an icon, a per-monitor DPI manifest and a version block, generated from
+`assets/logo.png` before the build and removed afterwards. The server bundle's
+`RUNNING.md` says which Compose services work from it and which need a source
+checkout.
 
 The workflow can also be run by hand (`workflow_dispatch`): that run builds the
 same archives and keeps them on the run, and publishes nothing. Only a tag
@@ -598,6 +635,16 @@ looks like a broken UI: the page renders and the data does not. Check the API
 first — `curl -s -o /dev/null -w '%{http_code}\n' localhost:4000/v1/healthcheck`
 — then the sandbox log for a compile error (`make dev-log`). With
 `make dev-up` the log stream is attached, so the error is usually on screen.
+
+## Contributing
+
+Issues and pull requests are welcome. The short version: open an issue first,
+branch from `dev`, run `make check` (and `make web_check` for UI changes), and
+say in the pull request what ran and what did not. The full rules are in
+[CONTRIBUTING.md](CONTRIBUTING.md) and `AGENTS.md`.
+
+This project is developed with an AI agent. The review bar is the same: judge by
+tests and evidence, not by who wrote it.
 
 ## License
 
