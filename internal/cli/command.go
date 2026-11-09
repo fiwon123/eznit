@@ -117,7 +117,7 @@ func (cmd *CommandAddCmd) Run(g *Globals) error {
 	}
 
 	fmt.Printf("\nadded %s (%s, %s)\n", data.Name, data.Kind, data.ID)
-	fmt.Printf("pull it into a template with: eznit template publish . --command %s=scripts/%s\n", data.ID, data.Name)
+	fmt.Printf("pull it into a template with: eznit template publish . --commands %s=scripts/%s\n", data.ID, data.Name)
 
 	return nil
 }
