@@ -81,6 +81,13 @@ eznit template apply <id> --target ../another-project
 `apply` asks the variables on the machine that writes the files — a value you
 type never travels to the server.
 
+To carry the template to a machine with no server at all, export it to one file:
+
+```sh
+eznit template export <id> -o setup.eznit
+eznit template apply --from-file setup.eznit --target ../another-project
+```
+
 ## 📦 From a release bundle (no source)
 
 A release archive is **not** a source checkout: there is no `go.mod`, no `web/`,

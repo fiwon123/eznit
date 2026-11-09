@@ -60,6 +60,8 @@ The CLI is a separate binary: `make build_cli` (Go only) writes
 ./build/cli/linux/eznit template publish ./demo --public
 ./build/cli/linux/eznit template list                                 # note the id
 ./build/cli/linux/eznit template apply <id> --target ../another-project
+./build/cli/linux/eznit template export <id> -o setup.eznit          # one file…
+./build/cli/linux/eznit template apply --from-file setup.eznit        # …on a machine with no server
 ```
 
 The core commands prompt for what they need. `template init` is the offline
@@ -81,7 +83,7 @@ Sign up or log in on the page, or paste the token from `eznit login` into
 | Keep | Commands | Travels as |
 | --- | --- | --- |
 | **Files** | `upload`, `list`, `download`, `delete`, `share` | bytes on your disk, indexed in PostgreSQL |
-| **Templates** | `template publish`, `list`, `show`, `apply`, `init` | a folder: text, binary, variables, commands |
+| **Templates** | `template publish`, `list`, `show`, `apply`, `export`, `init` | a folder: text, binary, variables, commands |
 | **Commands** | `command add`, `list`, `show`, `remove` | a script kept once and pulled into templates by id |
 | **Repositories** | `repo auth`, `list`, `clone` | a clone; the token stays on your machine |
 

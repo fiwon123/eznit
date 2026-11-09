@@ -5,8 +5,9 @@ instructions, editor rules, skills, scripts, project scaffolding. Publishing it
 makes one copy the source of truth; applying it is the setup step.
 
 You do not need a template to start: `eznit template init` writes a built-in
-starter offline. You do need a running eznit instance to publish one or to apply
-someone else's.
+starter offline. Publishing and applying through the API need a running eznit
+instance; an **offline bundle** needs neither (see
+[Take it with you](#-take-it-with-you-no-server)).
 
 ## 🗂️ What goes in a template
 
@@ -90,6 +91,25 @@ A command name is unique per user, not globally. `command remove` answers
 `409` while a template still references it — a published template does not
 quietly lose a script.
 
+## 📦 Take it with you (no server)
+
+A template can leave the server as one file, and come back out on a machine that
+has never seen eznit:
+
+```sh
+eznit template export <id> -o setup.eznit     # needs a session for a private template
+eznit template apply --from-file setup.eznit --target ../another-project
+```
+
+The bundle is JSON (`format: 1`) holding the files — text and binary — and the
+variables with their prompts and defaults. A command the template pulls in is
+written at its target path, so the bundle is a snapshot to apply, not a publish
+request. The same path rules and limits are checked when it is read; a bundle
+cannot be a way around them. `apply --from-file` asks the variables locally, so
+no answer leaves the machine.
+
+`export` refuses to overwrite an existing file without `--force`.
+
 ## 🧮 Limits
 
 Checked by the CLI before the upload and by the server on the request:
@@ -112,13 +132,11 @@ Checked by the CLI before the upload and by the server on the request:
 
 ## 🚧 Not available yet
 
-- **Offline bundles** — export a template to one file and apply it with no
-  server ([#184](https://github.com/fiwon123/eznit/issues/184)).
 - **Crower packs** — move a command library between eznit and
   [crower](https://github.com/fiwon123/crower)
   ([#185](https://github.com/fiwon123/eznit/issues/185)).
 - **Device-to-device transfer** over cthrone. See
   [Direction](https://github.com/fiwon123/eznit/wiki/Direction).
 
-Until then, sharing means a running instance: `publish --public` and anyone with
-the id can `apply` it.
+An offline bundle is how sharing works today without a shared instance:
+`template export` and `apply --from-file`, above.
