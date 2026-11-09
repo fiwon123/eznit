@@ -227,6 +227,15 @@ disagree, so it describes the API as it is, including the known gaps listed in
 
 ## Web UI
 
+| | Dark | Light |
+|---|---|---|
+| **Catalogue** | ![catalogue, dark](docs/screenshots/catalogue-dark.png) | ![catalogue, light](docs/screenshots/catalogue-light.png) |
+| **Log in** | ![log in, dark](docs/screenshots/login-dark.png) | ![log in, light](docs/screenshots/login-light.png) |
+| **Sign up** | ![sign up, dark](docs/screenshots/signup-dark.png) | ![sign up, light](docs/screenshots/signup-light.png) |
+
+Captured by `make screenshots` against a running stack; see
+[docs/screenshots/README.md](docs/screenshots/README.md) to regenerate them.
+
 The web UI lives in `web/`. It reaches the browser two ways:
 
 - **from disk** — the API serves `web/dist` when it holds a build, so a
