@@ -12,7 +12,7 @@ name: Release
 # it never publishes a release. That is the way to exercise this pipeline
 # without a tag: the publish step itself is only proven by a real release.
 #
-# The archives come from `make build`, the same target a developer runs
+# The archives come from `make release`, the same target a developer runs
 # locally, so the release artifacts and the documented build cannot drift into
 # two different packaging stories. `VERSION` is overridden with the tag.
 
@@ -86,17 +86,11 @@ jobs:
         working-directory: web
 
       - name: Build the archives
-        run: make build VERSION="${{ steps.version.outputs.version }}"
+        run: make release VERSION="${{ steps.version.outputs.version }}"
 
-      # A download nobody can verify is only assumed intact. Hash every
-      # archive, in a deterministic order, into one file next to them.
-      - name: Write the checksums
-        run: |
-          cd build
-          find . -type f \( -name '*.zip' -o -name '*.tar.gz' \) -print0 \
-            | sort -z \
-            | xargs -0 sha256sum > checksums.txt
-          cat checksums.txt
+      # `make release` writes the hash list next to the archives it produced.
+      - name: Show the checksums
+        run: cat build/dist/checksums.txt
 
       # A dry run keeps the archives on the workflow run and stops there.
       - name: Upload the archives to the run
@@ -105,9 +99,9 @@ jobs:
         with:
           name: eznit-${{ steps.version.outputs.version }}
           path: |
-            build/**/*.zip
-            build/**/*.tar.gz
-            build/checksums.txt
+            build/dist/*.zip
+            build/dist/*.tar.gz
+            build/dist/checksums.txt
           if-no-files-found: error
 
       - name: Publish the release
@@ -116,11 +110,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            build/cli/windows/*.zip \
-            build/cli/linux/*.tar.gz \
-            build/api/*.zip \
-            build/api/*.tar.gz \
-            build/checksums.txt \
+            build/dist/*.zip \
+            build/dist/*.tar.gz \
+            build/dist/checksums.txt \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
             --verify-tag

@@ -284,7 +284,8 @@ upload variables for the in-process mode. With neither `GUI_API_URL` nor
 | --- | --- | --- |
 | `make check` | gofmt, `go vet`, `go test`, `go build` | Go only |
 | `make web_check` | oxlint, oxfmt, `tsc --noEmit`, `vite build` | Node (`mise install`) |
-| `make build` | both binaries (and the UI they embed) | Go + Node |
+| `make build` | the local binaries (and the UI they embed) | Go + Node |
+| `make release` | one-folder archives for every platform | Go + Node |
 
 Both gates fail rather than skip when their toolchain is missing. Neither runs
 the product: no database, no HTTP request, no browser. `make check` prints the

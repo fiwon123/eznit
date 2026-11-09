@@ -101,22 +101,24 @@ Uploaded bytes live on the `api-data` volume, so they survive
 
 > In a **release bundle** the source is not there, so there is no image to
 > build. Start the database with `docker compose up db migrate` and run the
-> prebuilt `build/api/server` (Windows: `build\api\server.exe`) from the
-> archive; it serves the UI embedded at build time. Plain `docker compose up`
-> is the source-checkout path — in a bundle it would try to build an image the
+> prebuilt `eznit-server` (Windows: `eznit-server.exe`) from the archive; it
+> serves the UI embedded at build time. Plain `docker compose up` is the
+> source-checkout path — in a bundle it would try to build an image the
 > archive does not contain. `make dev-up` and the `dev` sandbox are not part of
-> the bundle either.
+> the bundle either. The bundle carries `RUNNING.md` with the same steps.
 
 ### Build the CLI
 
 ```sh
-make build        # both binaries into ./build (and the web UI, which they embed)
+make build        # the local binaries into ./build (and the web UI they embed)
 ./build/cli/eznit --help
+make release      # one-folder archives for every platform into ./build/dist
 ```
 
 Node is needed here even for the Go binaries: `make build_api` and
 `make build_gui` build the web UI first, because both binaries carry a copy of
 it (see [Web UI](#web-ui)). `make check` does not — the Go gate stays Node-free.
+`make release` builds the UI once and packages it with both families.
 
 ### Commands
 
@@ -298,10 +300,10 @@ static file server's 404.
 
 ```sh
 # one file, with the database configuration from .env
-./build/eznit-gui
+./build/gui/eznit-gui
 
 # or: a window in front of an API that is already running
-GUI_API_URL=http://localhost:4000 ./build/eznit-gui
+GUI_API_URL=http://localhost:4000 ./build/gui/eznit-gui
 ```
 
 ## Security status
@@ -502,16 +504,24 @@ connection string.
 
 A release is a `v*` tag on `main`. `.github/workflows/release.yml` refuses a tag
 that does not point at a commit on `main`, builds the archives with
-`make build VERSION=<tag>` — the same target a developer runs — and publishes
-them with `gh release create`:
+`make release VERSION=<tag>` — the same target a developer runs — and publishes
+them with `gh release create`.
+
+`make release` stages one folder per archive and compresses **the folder**, so a
+download extracts into a folder named after it instead of scattering files into
+the directory you ran the command in. `PLATFORMS` defaults to `windows/amd64`,
+`windows/arm64`, `linux/amd64` and `linux/arm64`; the platform is in the
+archive name, never in the binary name.
 
 | Asset | Contents |
 | --- | --- |
-| `eznit_cli_<version>_windows.zip` | `eznit.exe`, `ez.exe`, `add_to_path.ps1`, README, LICENSE |
-| `eznit_cli_<version>_linux.tar.gz` | `eznit`, `ez`, `add_to_path.sh`, README, LICENSE |
-| `eznit_server_<version>_windows.zip` | the API server for Windows, the migrations, the Compose files and the example config |
-| `eznit_server_<version>_linux.tar.gz` | the API server for Linux, the migrations, the Compose files and the example config |
+| `eznit-cli_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux) | `eznit`, `ez`, `add_to_path.ps1` or `add_to_path.sh`, README, LICENSE |
+| `eznit-server_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux) | `eznit-server`, `eznit-gui`, `db/migrations/`, `scripts/run_migrate.sh`, `docker-compose.yml`, the example configuration and secret files, `RUNNING.md`, README, LICENSE |
 | `checksums.txt` | SHA-256 of every archive |
+
+Each archive is checked after it is written: exactly one top-level folder, named
+like the archive, and no `..` member. The server bundle's `RUNNING.md` says
+which Compose services work from it and which need a source checkout.
 
 The workflow can also be run by hand (`workflow_dispatch`): that run builds the
 same archives and keeps them on the run, and publishes nothing. Only a tag

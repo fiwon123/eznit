@@ -72,7 +72,8 @@ index; the path column is what `download` opens.
 | `make vuln` | Reachable-vulnerability scan (needs network; not part of `check`) |
 | `make run_api` | Run the API against the configured database |
 | `make run_cli` | Run the CLI |
-| `make build` | Build both binaries into `./build` |
+| `make build` | Build the local binaries into `./build` |
+| `make release` | Build one-folder archives for every platform into `./build/dist` |
 | `make web_check` | Lint, format check, typecheck and build the web UI |
 | `make web_build` | Build the web UI into `web/dist` |
 | `make web_dev` | Run the Vite dev server |
