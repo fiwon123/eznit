@@ -130,8 +130,8 @@ func newRecordingRepository(t *testing.T) (*sqlRepository, *recordingDriver) {
 func TestListTemplatesSendsABoundedQuery(t *testing.T) {
 	repo, recorder := newRecordingRepository(t)
 
-	if _, ok := repo.ListTemplates(uuid.New(), "", 100); !ok {
-		t.Fatal("expected the query to succeed")
+	if _, err := repo.ListTemplates(uuid.New(), "", 100); err != nil {
+		t.Fatalf("expected the query to succeed: %v", err)
 	}
 
 	query := recorder.lastQuery()
@@ -151,8 +151,8 @@ func TestListTemplatesSendsABoundedQuery(t *testing.T) {
 func TestListTemplatesFiltersByOwnerAndVisibility(t *testing.T) {
 	repo, recorder := newRecordingRepository(t)
 
-	if _, ok := repo.ListTemplates(uuid.New(), KindCodex, 100); !ok {
-		t.Fatal("expected the query to succeed")
+	if _, err := repo.ListTemplates(uuid.New(), KindCodex, 100); err != nil {
+		t.Fatalf("expected the query to succeed: %v", err)
 	}
 
 	query := strings.ToUpper(recorder.lastQuery())
@@ -191,15 +191,15 @@ func TestCreateTemplateWritesTheFilesAndTheVariables(t *testing.T) {
 
 	templateID := uuid.New()
 
-	ok := repo.CreateTemplate(
+	err := repo.CreateTemplate(
 		Template{ID: templateID, Name: "mine", Slug: "mine", Kind: KindGeneric},
 		[]TemplateFile{{ID: uuid.New(), TemplateID: templateID, Path: "AGENTS.md", Content: "x"}},
 		[]TemplateVariable{{ID: uuid.New(), TemplateID: templateID, Key: "PROJECT_NAME"}},
 		nil,
 	)
 
-	if !ok {
-		t.Fatal("expected the template to be created")
+	if err != nil {
+		t.Fatalf("expected the template to be created: %v", err)
 	}
 
 	queries := recorder.allQueries()
@@ -266,12 +266,12 @@ func TestCreateTemplateFailsWithoutATransaction(t *testing.T) {
 
 	repo := NewRepository(db, log)
 
-	if repo.CreateTemplate(
+	if err := repo.CreateTemplate(
 		Template{ID: uuid.New(), Name: "mine", Slug: "mine", Kind: KindGeneric},
 		[]TemplateFile{{ID: uuid.New(), Path: "AGENTS.md", Content: "x"}},
 		nil,
 		nil,
-	) {
+	); err == nil {
 		t.Fatal("expected the write to fail without a transaction")
 	}
 
