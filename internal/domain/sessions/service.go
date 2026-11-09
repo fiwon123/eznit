@@ -2,6 +2,7 @@ package sessions
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -24,9 +25,13 @@ func NewService(db Repository, logger *logger.Config) *Service {
 
 func (s *Service) IsValid(token string) bool {
 	s.logger.Debug("token: ", slog.String("token_fp", helper.Fingerprint(token)))
-	session := s.db.GetSession(token)
-	if session == nil {
-		s.logger.Warn("session not found")
+	session, err := s.db.GetSession(token)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			s.logger.Warn("session not found")
+		} else {
+			s.logger.Error("get session", slog.Any("error", err))
+		}
 		return false
 	}
 
@@ -41,9 +46,9 @@ func (s *Service) IsValid(token string) bool {
 
 func (s *Service) GetToken(ctx context.Context, userID uuid.UUID) *DataResponse {
 	s.logger.Debug("userID: ", slog.String("id", userID.String()))
-	session, ok := s.db.GetSessionByUserID(userID)
-	if !ok {
-		s.logger.Error("session not found")
+	session, err := s.db.GetSessionByUserID(userID)
+	if err != nil {
+		s.logger.Error("session not found", slog.Any("error", err))
 		return &DataResponse{
 			Token: "",
 		}
@@ -65,14 +70,14 @@ func (s *Service) CreateToken(userdID uuid.UUID) (string, bool) {
 	}
 
 	s.logger.Debug("token: ", slog.String("token_fp", helper.Fingerprint(token)))
-	ok := s.db.CreateSession(Session{
+	err = s.db.CreateSession(Session{
 		Token:     token,
 		UserID:    userdID,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 	})
 
-	if !ok {
-		s.logger.Error("error create session db")
+	if err != nil {
+		s.logger.Error("error create session db", slog.Any("error", err))
 		return "", false
 	}
 
@@ -85,13 +90,13 @@ func (s *Service) CreateToken(userdID uuid.UUID) (string, bool) {
 // token is active and user not loggout, repository has a expiration date time to control it too
 func (s *Service) UseToken(ctx context.Context, token string) bool {
 	s.logger.Debug("token: ", slog.String("token_fp", helper.Fingerprint(token)))
-	ok := s.db.UpdateSession(Session{
+	err := s.db.UpdateSession(Session{
 		Token:    token,
 		IsActive: false,
 	})
 
-	if !ok {
-		s.logger.Error("error update session db")
+	if err != nil {
+		s.logger.Error("error update session db", slog.Any("error", err))
 		return false
 	}
 
@@ -102,9 +107,9 @@ func (s *Service) UseToken(ctx context.Context, token string) bool {
 
 // Get UserId by token string
 func (s *Service) GetUserIDByToken(token string) (uuid.UUID, bool) {
-	userID, ok := s.db.GetUserIDByToken(token)
-	if !ok {
-		s.logger.Error("user not found")
+	userID, err := s.db.GetUserIDByToken(token)
+	if err != nil {
+		s.logger.Error("user not found", slog.Any("error", err))
 		return uuid.UUID{}, false
 	}
 
