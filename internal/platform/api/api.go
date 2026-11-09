@@ -45,7 +45,7 @@ func NewRouter(cfg Config) *chi.Mux {
 	sessionsService := sessions.NewService(sessionsRepo, cfg.Logger)
 
 	userRepo := users.NewRepository(cfg.DB, cfg.Logger)
-	userService := users.NewService(userRepo, sessionsService, cfg.Logger)
+	userService := users.NewService(userRepo, cfg.UploadFolder, sessionsService, cfg.Logger)
 
 	// The guard asks the users service who is an admin. It is built after the
 	// service for that reason, and the service is passed as the AdminChecker

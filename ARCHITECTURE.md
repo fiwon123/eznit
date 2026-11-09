@@ -210,6 +210,16 @@ the gate fails otherwise.
 | `commands` | id, user_id, name, kind (`text`/`binary`), content, size, storage_path, is_executable — the name is unique per user |
 | `template_commands` | template_id, command_id, target_path — the commands a template pulls in; `ON DELETE RESTRICT` on the command, `CASCADE` on the template |
 
+Deleting an account deletes it as a whole: `sessions`, `files` (and the
+`files_history` rows that cascade from them), `templates` (with their files,
+variables and command references) and `commands` all go with the user row, and
+the service removes the folders those rows named —
+`<upload-root>/<user-id>/`, `<upload-root>/templates/<template-id>/`,
+`<upload-root>/commands/<command-id>/`. Two deletes are refused with `409`: the
+account the caller is signed in with, and an account whose command a template
+still pulls in (that reference is `RESTRICT`, the same rule
+`DELETE /v1/commands/{id}` follows).
+
 ### Migrations
 
 `db/migrations/` is append-only history: a numbered `.up.sql`/`.down.sql` pair

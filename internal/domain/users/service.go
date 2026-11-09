@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
 	"github.com/fiwon123/eznit/pkg/errors"
@@ -15,17 +17,23 @@ import (
 // User Service handle all incoming request passed by handlers
 // and calling other necessary services or repositories to complete request
 type Service struct {
-	db      Repository
-	session *sessions.Service
-	logger  *logger.Config
+	db Repository
+	// uploadFolder is the root the account's bytes live under: the files at
+	// `<upload-root>/<user-id>/`, the template binaries at
+	// `<upload-root>/templates/<template-id>/` and the command binaries at
+	// `<upload-root>/commands/<command-id>/`. Deleting an account removes them.
+	uploadFolder string
+	session      *sessions.Service
+	logger       *logger.Config
 }
 
 // Return a new User Service
-func NewService(db Repository, session *sessions.Service, logger *logger.Config) *Service {
+func NewService(db Repository, uploadFolder string, session *sessions.Service, logger *logger.Config) *Service {
 	return &Service{
-		db:      db,
-		session: session,
-		logger:  logger,
+		db:           db,
+		uploadFolder: uploadFolder,
+		session:      session,
+		logger:       logger,
 	}
 }
 
@@ -176,8 +184,24 @@ func (s *Service) CreateUser(ctx context.Context, req SignupRequest) (string, *e
 }
 
 // Delete User based on delete request
-func (s *Service) DeleteUser(ctx context.Context, req DeleteRequest) (string, *errors.AppError) {
-	s.logger.Debug("DeleteUser", slog.Any("request", req))
+//
+// An account is deleted as a whole: its sessions, files (and their history),
+// templates and commands go with it, and so do the bytes those rows named.
+//
+// Two deletes are refused. The account the caller is signed in with is a 409:
+// the request would drop its own session, and on an instance with one admin it
+// would leave nobody able to reach the admin routes. And an account whose
+// command another template still pulls in is a 409 too — the schema keeps that
+// reference RESTRICT so a published template does not quietly lose a script,
+// which is the rule commands.DeleteCommand already follows. A database failure
+// is a 500, never the 404 that used to be answered for every failure (#144).
+func (s *Service) DeleteUser(ctx context.Context, req DeleteRequest, callerID uuid.UUID) (string, *errors.AppError) {
+	s.logger.Debug("DeleteUser", slog.String("id", req.Id.String()))
+
+	if req.Id == callerID {
+		s.logger.Warn("the caller tried to delete the account it is signed in with", slog.String("id", req.Id.String()))
+		return "", errors.NewAppError(http.StatusConflict, "you cannot delete the account you are signed in with")
+	}
 
 	db := s.db
 
@@ -186,13 +210,60 @@ func (s *Service) DeleteUser(ctx context.Context, req DeleteRequest) (string, *e
 		return "", errors.NewAppError(http.StatusNotFound, "user not exists")
 	}
 
-	if !db.DeleteUser(*user) {
-		return "", errors.NewAppError(http.StatusNotFound, "delete user failed")
+	inUse, ok := db.CommandsInUseByOthers(req.Id)
+	if !ok {
+		s.logger.Error("failed to check whether a template uses the account's commands")
+		return "", errors.NewAppError(http.StatusInternalServerError, "failed to delete user")
 	}
+
+	if inUse {
+		s.logger.Warn("a template of another account pulls in one of this account's commands")
+		return "", errors.NewAppError(http.StatusConflict, "a template still uses a command owned by this account")
+	}
+
+	owner, ok := db.DeleteUser(*user)
+	if !ok {
+		s.logger.Error("delete user failed")
+		return "", errors.NewAppError(http.StatusInternalServerError, "failed to delete user")
+	}
+
+	s.removeAccountStorage(req.Id, owner)
 
 	s.logger.Debug("user deleted!")
 
 	return "user deleted!", nil
+}
+
+// removeAccountStorage removes the bytes a deleted account left behind: its
+// uploads, and the binary files of its templates and commands.
+//
+// The rows are already gone, so a folder that will not go is a leak, not a
+// failure the caller can act on — it is logged and the delete stands, the way
+// the templates and commands domains already handle their own storage.
+func (s *Service) removeAccountStorage(userID uuid.UUID, owner OwnerStorage) {
+	folders := []string{filepath.Join(s.uploadFolder, userID.String())}
+
+	for _, id := range owner.TemplateIDs {
+		folders = append(folders, filepath.Join(s.uploadFolder, "templates", id.String()))
+	}
+
+	for _, id := range owner.CommandIDs {
+		folders = append(folders, filepath.Join(s.uploadFolder, "commands", id.String()))
+	}
+
+	for _, folder := range folders {
+		// The folder is built from ids the database returned, but it is still
+		// checked: an empty upload root or a path that escaped it must not turn
+		// a delete into a recursive removal somewhere else.
+		if !helper.PathIsInside(s.uploadFolder, folder) {
+			s.logger.Error("refusing to remove a folder outside the upload folder", slog.String("path", folder))
+			continue
+		}
+
+		if err := os.RemoveAll(folder); err != nil {
+			s.logger.Warn("failed to remove the account's storage", slog.String("path", folder), slog.Any("error", err))
+		}
+	}
 }
 
 // Update user based on update request

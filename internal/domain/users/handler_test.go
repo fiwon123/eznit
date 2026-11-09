@@ -88,7 +88,7 @@ func newTestRouter(t *testing.T, repo Repository, userID uuid.UUID) *chi.Mux {
 	}
 
 	sessionsService := sessions.NewService(newFakeSessionsRepository(session), log)
-	service := NewService(repo, sessionsService, log)
+	service := NewService(repo, t.TempDir(), sessionsService, log)
 	guard := middleware.NewGuard(sessionsService, service, log)
 
 	handler := NewHandler(service, sessionsService, guard, log)
@@ -247,6 +247,24 @@ func TestDeleteUserLetsAnAdminDeleteAnAccount(t *testing.T) {
 
 	if _, ok := repo.GetUser(owner.ID); ok {
 		t.Error("the account was not deleted")
+	}
+}
+
+// The admin guard does not make an admin able to delete the account it is
+// signed in with.
+func TestTheDeleteRouteRefusesTheSignedInAccount(t *testing.T) {
+	admin := User{ID: uuid.New(), Email: "admin@example.com", IsAdmin: true}
+	repo := newFakeRepository(admin)
+	router := newTestRouter(t, repo, admin.ID)
+
+	recorder := do(t, router, http.MethodDelete, "/v1/users/"+admin.ID.String(), "test-token", "")
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("DELETE /v1/users/{own id} = %d, want %d", recorder.Code, http.StatusConflict)
+	}
+
+	if _, ok := repo.GetUser(admin.ID); !ok {
+		t.Error("the refused delete removed the account")
 	}
 }
 

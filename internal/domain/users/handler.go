@@ -176,7 +176,14 @@ func (h *Handler) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	message, appError := h.service.DeleteUser(r.Context(), DeleteRequest{Id: parseID})
+	callerID, ok := r.Context().Value("user_id").(uuid.UUID)
+	if !ok {
+		h.logger.Error("delete user failed! no caller in the request context")
+		helper.SendErrorJson(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	message, appError := h.service.DeleteUser(r.Context(), DeleteRequest{Id: parseID}, callerID)
 	if appError != nil {
 		h.logger.Error("delete user failed!")
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
