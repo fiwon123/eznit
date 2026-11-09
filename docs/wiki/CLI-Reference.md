@@ -114,15 +114,27 @@ binary command cannot be exported: it is named, not dropped. Import is additive;
 
 ## 🐙 Git hosts
 
-`eznit` can list the repositories a GitHub token can reach and clone one. The
-token is a **personal access token** and it stays on your machine: it is kept in
-`~/.eznit/config.json` next to the session token, and the eznit API never sees it.
+`eznit` can list the repositories a token can reach and clone one, on GitHub,
+GitLab or Bitbucket Cloud. The token is a **personal access token** and it stays
+on your machine: it is kept in `~/.eznit/config.json` next to the session token,
+and the eznit API never sees it.
+
+| Host | `--provider` | Token needs | API base |
+| --- | --- | --- | --- |
+| GitHub | `github` (default) | `repo` scope | `EZNIT_GITHUB_API` (GitHub Enterprise) |
+| GitLab | `gitlab` | `read_api` (and `read_repository` to clone) | `EZNIT_GITLAB_API` (instance root, e.g. `https://gitlab.example.com`) |
+| Bitbucket Cloud | `bitbucket` | repository/workspace read access | `EZNIT_BITBUCKET_API` |
 
 | Command | Flags | What it does |
 | --- | --- | --- |
-| `eznit repo auth` | `--provider github`, `--token`, `--token-file`, `--remove` | Store a token (prompt by default); `--remove` forgets it |
-| `eznit repo list` | `--provider github` | List the repositories the token can reach |
-| `eznit repo clone <owner/name>` | `--provider github`, `--dir <path>` | Clone into `<dir>/github/<owner>/<repo>` |
+| `eznit repo auth` | `--provider`, `--token`, `--token-file`, `--remove` | Store a token (prompt by default); `--remove` forgets that host's |
+| `eznit repo list` | `--provider` | List the repositories the token can reach |
+| `eznit repo clone <owner/name>` | `--provider`, `--dir <path>` | Clone into `<dir>/<provider>/<owner>/<repo>` |
+
+A GitLab project is addressed by its full path (`group/subgroup/project` is
+fine); Bitbucket by `workspace/repository`. Bitbucket has no "every repository
+of this user" endpoint, so its listing walks the workspaces the token can see,
+then each workspace's repositories.
 
 The clone runs `git` directly, with the token supplied through the child process's
 environment (`http.extraheader`), so it is never in the command line, never in the
@@ -134,10 +146,10 @@ place; `eznit repo auth --remove` removes that one.
 
 ## 🧾 The config file
 
-`~/.eznit/config.json` (mode `0600`) holds the session token (`token`) and, if you
-stored one, the git-host token (`github_token`). The two are written separately and
-neither erases the other. `EZNIT_CONFIG` points the file elsewhere (a test or a
-profile).
+`~/.eznit/config.json` (mode `0600`) holds the session token (`token`) and, per
+git host, `github_token`, `gitlab_token` or `bitbucket_token`. Each key is
+written on its own and none erases another. `EZNIT_CONFIG` points the file
+elsewhere (a test or a profile).
 
 ## 🌱 CLI environment variables
 
@@ -150,6 +162,8 @@ profile).
 | `EZNIT_CONFIG` | `~/.eznit/config.json` | the config file |
 | `EZNIT_REPOS` | `~/eznit` | clone root when `repo clone` has no `--dir` |
 | `EZNIT_GITHUB_API` | `https://api.github.com` | GitHub Enterprise API base |
+| `EZNIT_GITLAB_API` | `https://gitlab.com` | GitLab instance root; `/api/v4` is added |
+| `EZNIT_BITBUCKET_API` | `https://api.bitbucket.org/2.0` | Bitbucket API base |
 
 The CLI also loads `.env.local` and `.env` from the working directory, so a
 development checkout can point it at a non-default API with the same files the

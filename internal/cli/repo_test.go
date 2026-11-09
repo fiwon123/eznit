@@ -230,8 +230,24 @@ func TestRepoListNeedsAToken(t *testing.T) {
 
 // An unknown host is named, and nothing is stored for it.
 func TestProviderForRefusesAnUnknownHost(t *testing.T) {
-	if _, err := providerFor("bitbucket"); err == nil {
+	if _, err := providerFor("sourcehut"); err == nil {
 		t.Fatal("expected the unknown host to be refused")
+	}
+}
+
+// Every supported host resolves to a provider with its own name, so the token
+// is stored under its own key.
+func TestProviderForReturnsEachSupportedHost(t *testing.T) {
+	for _, want := range []string{"github", "gitlab", "bitbucket"} {
+		t.Run(want, func(t *testing.T) {
+			provider, err := providerFor(want)
+			if err != nil {
+				t.Fatalf("providerFor(%q) error = %v", want, err)
+			}
+			if provider.Name() != want {
+				t.Errorf("Name() = %q, want %q", provider.Name(), want)
+			}
+		})
 	}
 }
 

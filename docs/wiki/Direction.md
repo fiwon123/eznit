@@ -33,8 +33,10 @@ machine next to it is solving the wrong problem.
   still carry any shell file, starter or not.
 - `eznit template init` writes a starter with no server and no account.
 - The command library keeps a script once and pulls it into templates by id.
-- A GitHub token on your machine lists and clones repositories; the token never
-  reaches the API.
+- **GitHub, GitLab and Bitbucket** tokens on your machine list and clone
+  repositories ([#188](https://github.com/fiwon123/eznit/issues/188), v0.18.0);
+  a token never reaches the API.
+- A git-host token stays on the CLI machine, one config key per host.
 
 ## 📱 Device-to-device over cthrone — not implemented
 
@@ -44,11 +46,6 @@ No issue yet — the most work of anything here.
 and no server. The plan is to send a template bundle over it, so a second
 machine (a laptop, a tablet, a machine on the same network) receives a setup
 without either side running eznit's API.
-
-## 🐚 More hosts — not implemented
-
-- **GitLab and Bitbucket** clone providers next to GitHub
-  ([#188](https://github.com/fiwon123/eznit/issues/188)).
 
 If a feature on this page would change how you use eznit today, open the issue
 and say so — the plan is a direction, not a schedule.

@@ -58,10 +58,12 @@ type Provider interface {
 	GitAuthHeader(token string) (key string, value string)
 }
 
-// fullNamePattern is the shape of `<owner>/<name>`. It is a label the host
+// fullNamePattern is the shape of a repository path: two or more segments,
+// each a host label. GitHub and Bitbucket use exactly two (`owner/name`);
+// GitLab allows subgroups (`group/subgroup/project`). It is a label the host
 // hands back, but a clone builds a path from it, so a separator trick, a
 // dot-dot or an empty part is refused before it reaches the filesystem.
-var fullNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+var fullNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)+$`)
 
 // ValidFullName reports whether a repository name may be used to build a path.
 func ValidFullName(fullName string) bool {
@@ -69,9 +71,10 @@ func ValidFullName(fullName string) bool {
 		return false
 	}
 
-	owner, name, ok := strings.Cut(fullName, "/")
-	if !ok || owner == "." || owner == ".." || name == "." || name == ".." {
-		return false
+	for _, segment := range strings.Split(fullName, "/") {
+		if segment == "." || segment == ".." {
+			return false
+		}
 	}
 
 	return true
