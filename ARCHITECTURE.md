@@ -180,7 +180,9 @@ the service checks it before the reference is stored.
 The routes are public on purpose — a client author reads the contract before
 they have a token. They expose the route table and the schemas, never a row, a
 file or a token. `internal/platform/webui` passes `/docs` to the API, because
-the SPA fallback would otherwise answer it with the app.
+the SPA fallback would otherwise answer it with the app; the compose `web` tier
+proxies `/docs` to the API for the same reason, so `:5173/docs` is the reference
+rather than the app.
 
 The document is the source of truth, not a by-product of comments. Three tests
 keep it honest:

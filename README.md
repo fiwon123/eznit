@@ -46,7 +46,7 @@ While it runs (it streams the stack's logs; Ctrl-C stops the attached services):
 | --- | --- |
 | Web UI | http://localhost:5173 |
 | API | http://localhost:4000 |
-| Docs (Swagger UI) | http://localhost:4000/docs |
+| Docs (Swagger UI) | http://localhost:5173/docs (proxied) or http://localhost:4000/docs |
 
 Uploaded bytes live on the `api-data` volume, so they survive `docker compose down`
 (use `docker compose down -v` to remove them too).
@@ -129,7 +129,8 @@ Every `/v1` operation is described in one OpenAPI 3.1 document, served by the AP
 itself:
 
 - **`http://localhost:4000/docs`** — Swagger UI, with an **Authorize** button and
-  "Try it out" on every operation.
+  "Try it out" on every operation. In the product stack the `web` service proxies
+  `/docs` too, so `http://localhost:5173/docs` serves the same page.
 - **`http://localhost:4000/v1/openapi.yaml`** — the document, committed at
   `internal/platform/openapi/openapi.yaml`.
 - **`http://localhost:4000/v1/openapi.json`** — the same document as JSON.
