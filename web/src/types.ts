@@ -86,6 +86,17 @@ export interface Envelope<T> {
 
 // The kinds a template may carry. The API enforces the same list with a
 // CHECK constraint, so a kind outside this list never reaches the catalogue.
-export const KINDS = ["opencode", "codex", "copilot", "cursor", "windsurf", "generic"] as const;
+export const KINDS = [
+  "opencode",
+  "codex",
+  "copilot",
+  "cursor",
+  "windsurf",
+  "generic",
+  "bash",
+  "zsh",
+  "fish",
+  "powershell",
+] as const;
 
 export type Kind = (typeof KINDS)[number];

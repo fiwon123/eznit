@@ -226,6 +226,30 @@ func TestSlugIsUniqueAcrossAccounts(t *testing.T) {
 	}
 }
 
+// The schema's CHECK is the second gate behind the service's kind list: a
+// template row with a kind this build knows must be insertable. The shell
+// kinds were added by migration 000015, so this test fails if that migration
+// and the code drift apart.
+func TestEveryTemplateKindIsAcceptedByTheSchema(t *testing.T) {
+	repo, db := newTemplates(t)
+
+	alice := createAccount(t, db, "alice@example.com")
+
+	for _, kind := range Kinds {
+		template := Template{
+			ID:     uuid.New(),
+			UserID: alice,
+			Name:   "a " + kind + " template",
+			Slug:   "a-" + kind + "-template",
+			Kind:   kind,
+		}
+
+		if err := repo.CreateTemplate(template, nil, nil, nil); err != nil {
+			t.Errorf("CreateTemplate(kind %q) error = %v, want the schema to accept it", kind, err)
+		}
+	}
+}
+
 func TestDeleteTemplateCascadesItsContents(t *testing.T) {
 	repo, db := newTemplates(t)
 
