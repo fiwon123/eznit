@@ -24,6 +24,7 @@ pull onto any machine — self-hosted, no subscription, no third party.
 | 3. Create an account | `eznit signup` | The first account on the instance is its admin |
 | 4. Publish it | `eznit template publish ./demo --public` | The folder is in the shared catalogue |
 | 5. Apply it elsewhere | `eznit template apply <id> --target ../other-project` | The files are written; the variables are asked here |
+| 6. Take it offline | `eznit template export <id> -o setup.eznit` | One file; `apply --from-file` needs no server or account |
 
 The full walkthrough, including the release-bundle and no-Make paths, is on
 [Getting Started](https://github.com/fiwon123/eznit/wiki/Getting-Started).

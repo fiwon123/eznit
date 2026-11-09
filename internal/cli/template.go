@@ -22,6 +22,7 @@ type TemplateCmd struct {
 	Show    TemplateShowCmd    `cmd:"" help:"show a template, its files and its variables"`
 	Publish TemplatePublishCmd `cmd:"" help:"publish a folder as a template"`
 	Apply   TemplateApplyCmd   `cmd:"" help:"apply a template to a folder"`
+	Export  TemplateExportCmd  `cmd:"" help:"write a template to one file, to apply with --from-file"`
 	Init    TemplateInitCmd    `cmd:"" help:"write a starter structure locally, no server needed"`
 }
 
