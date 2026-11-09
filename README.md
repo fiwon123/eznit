@@ -144,10 +144,12 @@ and the router disagree.
 This is a self-hosted tool, and it is not hardened. What is true today:
 
 - **Coverage is partial.** The API domains, the middleware, the CLI, the web UI
-  handler and the OpenAPI document have tests; `cmd/cli`, `pkg/errors`,
-  `pkg/logger` and `pkg/types` have none, and the pages' browser behaviour has no
-  automated test. A green `make check` means "it builds and the tested packages
-  passed" — not "it works".
+  handler, the OpenAPI document, the logger and the response envelope have
+  tests; `cmd/cli` has none, and the pages' browser behaviour has no automated
+  test. `make test_integration` is what runs SQL: it applies and reverses every
+  migration and drives each repository against a real PostgreSQL. A green
+  `make check` means "it builds and the tested packages passed" — not "it
+  works"; `make check` alone never touches a database.
 - **The first account is the admin.** It is the only one that may list, update or
   delete other accounts. Promote another with
   `UPDATE users SET is_admin = true WHERE email = ...`.

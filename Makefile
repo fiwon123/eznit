@@ -116,7 +116,7 @@ VERIFY_FILES_SERVER ?= README.md,LICENSE,RUNNING.md,docker-compose.yml
 .PHONY: clean
 .PHONY: build build_cli build_api build_gui verify
 .PHONY: release release-platform cli-platform server-platform verify-release checksums
-.PHONY: check
+.PHONY: check test_integration
 
 # The local developer build: the binaries the README tells you to run from
 # ./build. `release` below is the packaging path — staging and compressing a
@@ -513,6 +513,32 @@ check: ## gofmt, vet, test, build — the local verification gate
 		echo "NOTE: these packages have no test files — this run does not cover them:"; \
 		echo "$$notested" | sed 's/^/  /'; \
 	fi
+
+# ---------------------------------------------------------------------------
+# Live-PostgreSQL integration suite
+#
+# The tests behind the `integration` build tag that run the real migrations and
+# the repository SQL against a real database. `make check` stays database-free
+# on purpose: this target exists so the SQL is verified somewhere rather than
+# only compiled.
+#
+# TEST_DATABASE_URL must point at a SCRATCH database whose name ends in `_test`
+# (CI uses `eznit_test`). The suite drops and truncates tables; a name that is
+# not clearly a test database aborts the run before the first destructive
+# statement, so a copied product connection string fails instead of wiping.
+#
+# A missing variable FAILS the target rather than skipping: a gate that cannot
+# fail is worse than no gate. CI runs the same commands as a step of its own.
+# ---------------------------------------------------------------------------
+test_integration: ## run the migrations + repository suite against a real PostgreSQL (needs TEST_DATABASE_URL=..._test)
+	@if [ -z "$${TEST_DATABASE_URL}" ]; then \
+		echo "ERROR: TEST_DATABASE_URL is not set — the suite needs a scratch database whose name ends in _test" >&2; \
+		echo "       example: TEST_DATABASE_URL='postgres://user:pass@localhost:5432/eznit_test?sslmode=disable' make test_integration" >&2; \
+		exit 1; \
+	fi; \
+	set -e; \
+	go vet -tags=integration ./...; \
+	go test -tags=integration -count=1 -p 1 ./...
 
 # ---------------------------------------------------------------------------
 # Dependency vulnerability scan

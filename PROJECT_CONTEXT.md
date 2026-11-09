@@ -12,12 +12,15 @@ empty field here means a placeholder somewhere else.
 - **License**: MIT (see `LICENSE`)
 - **Status**: pre-1.0. The API, the CLI and the web UI work end to end
   against a local Compose stack. The test suite is **partial**: every package
-  except four has tests (`cmd/{api,gui}`, `internal/cli`, the domain packages,
-  `internal/platform/*`, `pkg/helper`, `web`, `internal/tools/winres`), and
-  `cmd/cli` and `pkg/{errors,logger,types}` have none — a green `go test`
-  covers what ran, not the rest, and `make check` prints the packages with no
-  test files at the end of a green run. The API's known-insecure routes are
-  closed; see "Known gaps" in `AGENTS.md`.
+  except `cmd/cli` has tests (`cmd/{api,gui}`, `internal/cli`, the domain
+  packages, `internal/platform/*`, `pkg/{errors,helper,logger,types}`, `web`,
+  `internal/tools/winres`), and `cmd/cli` has none — it is the kong wiring the
+  `internal/cli` tests cover one layer down. `make check` never runs SQL; the
+  `integration`-tagged suite (`make test_integration`, also a CI (Go) step)
+  applies and reverses every migration and drives each repository against a
+  real PostgreSQL. `make check` prints the packages with no test files at the
+  end of a green run. The API's known-insecure routes are closed; see
+  "Known gaps" in `AGENTS.md`.
 
 ## Stack
 
@@ -70,6 +73,7 @@ index; the path column is what `download` opens.
 | Command | What it is for |
 | --- | --- |
 | `make check` | The local verification gate: gofmt, vet, test, build |
+| `make test_integration` | Migrations + repository SQL against a real PostgreSQL (needs `TEST_DATABASE_URL`, a `*_test` database) |
 | `make vuln` | Reachable-vulnerability scan (needs network; not part of `check`) |
 | `make run_api` | Run the API against the configured database |
 | `make run_cli` | Run the CLI |

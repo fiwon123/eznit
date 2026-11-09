@@ -29,20 +29,24 @@ A gate is only worth having if it can fail.
 
 ### The current state of this suite — read this before claiming coverage
 
-This project's test suite is **small**. `go test ./...` prints
+The suite has grown, but it is still **partial**. `go test ./...` prints
 `? package [no test files]` for every package without a test file, and exits 0.
-That is not a pass: it means nothing was executed there.
+That is not a pass: it means nothing was executed there. Only `cmd/cli` (the
+kong wiring) is in that state now.
 
-So a green `make check` currently proves exactly three things:
+A green `make check` proves:
 
 - the code is `gofmt`-clean,
 - `go vet` found nothing,
-- the code compiles.
+- the packages with tests passed, and the rest compiled.
 
-It does **not** prove the behaviour still works. Until a package has a test
-file, treat its behaviour as unverified, and say so when reporting. The honest
-report is "gofmt, vet, and build are clean; the changed package has no test
-coverage", not "tests pass".
+It does **not** prove the SQL still matches the schema — that is
+`make test_integration` (and the CI (Go) integration step), which applies and
+reverses the migrations and drives every repository against a real PostgreSQL.
+It also does not exercise HTTP routes end to end, or the browser.
+
+Report what ran and what it covered: "make check exit 0, and the integration
+suite ran against eznit_test" is evidence; "tests pass" alone is not.
 
 ### Go conventions
 
@@ -104,6 +108,13 @@ coverage", not "tests pass".
 
 This is the difference between a mistyped environment variable failing a run and
 it wiping a real database.
+
+This project implements that guard in `internal/platform/dbtest`: every file
+carries `//go:build integration`, `Open` refuses a database whose name does not
+end in `_test`, and `make test_integration` fails when `TEST_DATABASE_URL` is
+unset rather than skipping. The suite applies and reverses every migration and
+drives each repository against a real PostgreSQL; CI runs it in the **CI (Go)**
+job against a `postgres:18.3-bookworm` service. Keep `make check` database-free.
 
 ### Before committing
 
