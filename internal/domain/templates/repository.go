@@ -1,10 +1,16 @@
 package templates
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// ErrNotFound is what a read answers when there is no row, and what a write
+// answers when it changed no row. It is distinct from a real failure so a caller
+// can tell "no such template" from "the database is down".
+var ErrNotFound = errors.New("not found")
 
 // Template Model
 type Template struct {
@@ -93,28 +99,28 @@ type TemplateVariable struct {
 type Repository interface {
 	// ListTemplates returns the catalogue for a user: the public templates
 	// plus the user's own. An empty kind means every kind.
-	ListTemplates(userID uuid.UUID, kind string, limit int) ([]Template, bool)
+	ListTemplates(userID uuid.UUID, kind string, limit int) ([]Template, error)
 	// ListTemplatesForUser returns only the user's own templates, the
 	// private ones included.
-	ListTemplatesForUser(userID uuid.UUID) ([]Template, bool)
-	GetTemplate(id uuid.UUID) (*Template, bool)
-	GetTemplateFiles(templateID uuid.UUID) ([]TemplateFile, bool)
-	GetTemplateVariables(templateID uuid.UUID) ([]TemplateVariable, bool)
+	ListTemplatesForUser(userID uuid.UUID) ([]Template, error)
+	GetTemplate(id uuid.UUID) (*Template, error)
+	GetTemplateFiles(templateID uuid.UUID) ([]TemplateFile, error)
+	GetTemplateVariables(templateID uuid.UUID) ([]TemplateVariable, error)
 	// GetTemplateCommands returns the commands a template pulls in, with
 	// each command's content.
-	GetTemplateCommands(templateID uuid.UUID) ([]TemplateCommand, bool)
+	GetTemplateCommands(templateID uuid.UUID) ([]TemplateCommand, error)
 	// OwnedCommandIDs returns which of the ids belong to the user. A
 	// template may only reference commands its owner owns, and this is the
 	// check the service runs before it stores a reference.
-	OwnedCommandIDs(userID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]bool, bool)
+	OwnedCommandIDs(userID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]bool, error)
 	// CreateTemplate stores a template with its files, variables and command
 	// references in one transaction: a template without its files is not a
 	// template.
-	CreateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) bool
+	CreateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) error
 	// UpdateTemplate replaces a template with the given files, variables and
 	// command references, in one transaction.
-	UpdateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) bool
-	DeleteTemplate(id uuid.UUID, userID uuid.UUID) bool
-	IsOwner(id uuid.UUID, userID uuid.UUID) bool
-	SlugExists(slug string) bool
+	UpdateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) error
+	DeleteTemplate(id uuid.UUID, userID uuid.UUID) error
+	IsOwner(id uuid.UUID, userID uuid.UUID) (bool, error)
+	SlugExists(slug string) (bool, error)
 }

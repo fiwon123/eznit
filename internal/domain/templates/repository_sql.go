@@ -24,6 +24,14 @@ func NewRepository(db *sqlx.DB, logger *logger.Config) *sqlRepository {
 	}
 }
 
+// notFoundOr maps sql.ErrNoRows to ErrNotFound and returns any other error as is.
+func notFoundOr(err error) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
 // templateColumns is the read shape of a template, with the owner's email
 // joined in: the catalogue shows who published what.
 //
@@ -61,7 +69,7 @@ const templateCommandColumns = templateCommandRefColumns + ", " + templateComman
 // ListTemplates returns the catalogue for a user: every public template and
 // the user's own, public or not. The filter is in the query, so a template
 // that is not visible to the caller is never read in the first place.
-func (r *sqlRepository) ListTemplates(userID uuid.UUID, kind string, limit int) ([]Template, bool) {
+func (r *sqlRepository) ListTemplates(userID uuid.UUID, kind string, limit int) ([]Template, error) {
 	r.logger.Debug("listing templates", slog.String("userID", userID.String()))
 
 	var templates []Template
@@ -77,15 +85,15 @@ func (r *sqlRepository) ListTemplates(userID uuid.UUID, kind string, limit int) 
 	err := r.db.Select(&templates, query, userID, kind, limit)
 	if err != nil {
 		r.logger.Error("list templates query", slog.Any("error", err))
-		return []Template{}, false
+		return []Template{}, err
 	}
 
-	return templates, true
+	return templates, nil
 }
 
 // ListTemplatesForUser returns the user's own templates, private ones
 // included.
-func (r *sqlRepository) ListTemplatesForUser(userID uuid.UUID) ([]Template, bool) {
+func (r *sqlRepository) ListTemplatesForUser(userID uuid.UUID) ([]Template, error) {
 	r.logger.Debug("listing the user's own templates", slog.String("userID", userID.String()))
 
 	var templates []Template
@@ -99,14 +107,14 @@ func (r *sqlRepository) ListTemplatesForUser(userID uuid.UUID) ([]Template, bool
 	err := r.db.Select(&templates, query, userID)
 	if err != nil {
 		r.logger.Error("list templates for user query", slog.Any("error", err))
-		return []Template{}, false
+		return []Template{}, err
 	}
 
-	return templates, true
+	return templates, nil
 }
 
 // GetTemplate returns a template by id, with the owner's email.
-func (r *sqlRepository) GetTemplate(id uuid.UUID) (*Template, bool) {
+func (r *sqlRepository) GetTemplate(id uuid.UUID) (*Template, error) {
 	r.logger.Debug("getting template", slog.String("id", id.String()))
 
 	var template Template
@@ -128,15 +136,15 @@ func (r *sqlRepository) GetTemplate(id uuid.UUID) (*Template, bool) {
 			r.logger.Error("get template query", slog.Any("error", err))
 		}
 
-		return nil, false
+		return nil, notFoundOr(err)
 	}
 
-	return &template, true
+	return &template, nil
 }
 
 // GetTemplateFiles returns the files of a template, ordered by path so the
 // tree is stable between two reads.
-func (r *sqlRepository) GetTemplateFiles(templateID uuid.UUID) ([]TemplateFile, bool) {
+func (r *sqlRepository) GetTemplateFiles(templateID uuid.UUID) ([]TemplateFile, error) {
 	r.logger.Debug("getting template files", slog.String("templateID", templateID.String()))
 
 	var files []TemplateFile
@@ -144,15 +152,15 @@ func (r *sqlRepository) GetTemplateFiles(templateID uuid.UUID) ([]TemplateFile, 
 	err := r.db.Select(&files, "SELECT "+templateFileColumns+" FROM template_files WHERE template_id=$1 ORDER BY path", templateID)
 	if err != nil {
 		r.logger.Error("get template files query", slog.Any("error", err))
-		return []TemplateFile{}, false
+		return []TemplateFile{}, err
 	}
 
-	return files, true
+	return files, nil
 }
 
 // GetTemplateVariables returns the variables of a template, in the order they
 // are asked.
-func (r *sqlRepository) GetTemplateVariables(templateID uuid.UUID) ([]TemplateVariable, bool) {
+func (r *sqlRepository) GetTemplateVariables(templateID uuid.UUID) ([]TemplateVariable, error) {
 	r.logger.Debug("getting template variables", slog.String("templateID", templateID.String()))
 
 	var variables []TemplateVariable
@@ -160,14 +168,14 @@ func (r *sqlRepository) GetTemplateVariables(templateID uuid.UUID) ([]TemplateVa
 	err := r.db.Select(&variables, "SELECT "+templateVariableColumns+" FROM template_variables WHERE template_id=$1 ORDER BY sort_order, var_key", templateID)
 	if err != nil {
 		r.logger.Error("get template variables query", slog.Any("error", err))
-		return []TemplateVariable{}, false
+		return []TemplateVariable{}, err
 	}
 
-	return variables, true
+	return variables, nil
 }
 
 // GetTemplateCommands returns the commands a template pulls in.
-func (r *sqlRepository) GetTemplateCommands(templateID uuid.UUID) ([]TemplateCommand, bool) {
+func (r *sqlRepository) GetTemplateCommands(templateID uuid.UUID) ([]TemplateCommand, error) {
 	var commands []TemplateCommand
 
 	query := "SELECT " + templateCommandColumns +
@@ -176,50 +184,50 @@ func (r *sqlRepository) GetTemplateCommands(templateID uuid.UUID) ([]TemplateCom
 
 	if err := r.db.Select(&commands, query, templateID); err != nil {
 		r.logger.Error("get template commands query", slog.Any("error", err))
-		return []TemplateCommand{}, false
+		return []TemplateCommand{}, err
 	}
 
-	return commands, true
+	return commands, nil
 }
 
 // OwnedCommandIDs returns which of the ids belong to the user.
-func (r *sqlRepository) OwnedCommandIDs(userID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]bool, bool) {
+func (r *sqlRepository) OwnedCommandIDs(userID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]bool, error) {
 	owned := map[uuid.UUID]bool{}
 
 	if len(ids) == 0 {
-		return owned, true
+		return owned, nil
 	}
 
 	query, args, err := sqlx.In("SELECT id FROM commands WHERE user_id = ? AND id IN (?)", userID, ids)
 	if err != nil {
 		r.logger.Error("owned commands query", slog.Any("error", err))
-		return nil, false
+		return nil, err
 	}
 
 	var found []uuid.UUID
 	if err := r.db.Select(&found, r.db.Rebind(query), args...); err != nil {
 		r.logger.Error("owned commands select", slog.Any("error", err))
-		return nil, false
+		return nil, err
 	}
 
 	for _, id := range found {
 		owned[id] = true
 	}
 
-	return owned, true
+	return owned, nil
 }
 
 // CreateTemplate stores the template, its files, its variables and its command
 // references in one transaction. A template whose files did not make it is a
 // broken template, and a half-written one is worse: the transaction is what
 // keeps them in step.
-func (r *sqlRepository) CreateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) bool {
+func (r *sqlRepository) CreateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) error {
 	r.logger.Debug("creating template", slog.String("id", template.ID.String()))
 
 	tx, err := r.db.Beginx()
 	if err != nil {
 		r.logger.Error("begin transaction for template", slog.Any("error", err))
-		return false
+		return err
 	}
 	defer tx.Rollback()
 
@@ -228,41 +236,41 @@ func (r *sqlRepository) CreateTemplate(template Template, files []TemplateFile, 
 
 	if _, err := tx.NamedExec(query, template); err != nil {
 		r.logger.Error("insert into templates", slog.Any("error", err))
-		return false
+		return err
 	}
 
 	if err := insertTemplateFiles(tx, files); err != nil {
 		r.logger.Error("insert into template_files", slog.Any("error", err))
-		return false
+		return err
 	}
 
 	if err := insertTemplateVariables(tx, variables); err != nil {
 		r.logger.Error("insert into template_variables", slog.Any("error", err))
-		return false
+		return err
 	}
 
 	if err := insertTemplateCommands(tx, commands); err != nil {
 		r.logger.Error("insert into template_commands", slog.Any("error", err))
-		return false
+		return err
 	}
 
 	if err := tx.Commit(); err != nil {
 		r.logger.Error("commit template transaction", slog.Any("error", err))
-		return false
+		return err
 	}
 
-	return true
+	return nil
 }
 
 // UpdateTemplate replaces a template with the given files, variables and
 // command references, in one transaction: the old ones go, the new ones come.
-func (r *sqlRepository) UpdateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) bool {
+func (r *sqlRepository) UpdateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) error {
 	r.logger.Debug("updating template", slog.String("id", template.ID.String()))
 
 	tx, err := r.db.Beginx()
 	if err != nil {
 		r.logger.Error("begin transaction for template", slog.Any("error", err))
-		return false
+		return err
 	}
 	defer tx.Rollback()
 
@@ -273,45 +281,45 @@ func (r *sqlRepository) UpdateTemplate(template Template, files []TemplateFile, 
 
 	if _, err := tx.NamedExec(query, template); err != nil {
 		r.logger.Error("update templates", slog.Any("error", err))
-		return false
+		return err
 	}
 
 	if _, err := tx.Exec("DELETE FROM template_files WHERE template_id=$1", template.ID); err != nil {
 		r.logger.Error("delete template files", slog.Any("error", err))
-		return false
+		return err
 	}
 
 	if _, err := tx.Exec("DELETE FROM template_variables WHERE template_id=$1", template.ID); err != nil {
 		r.logger.Error("delete template variables", slog.Any("error", err))
-		return false
+		return err
 	}
 
 	if _, err := tx.Exec("DELETE FROM template_commands WHERE template_id=$1", template.ID); err != nil {
 		r.logger.Error("delete template commands", slog.Any("error", err))
-		return false
+		return err
 	}
 
 	if err := insertTemplateFiles(tx, files); err != nil {
 		r.logger.Error("insert into template_files", slog.Any("error", err))
-		return false
+		return err
 	}
 
 	if err := insertTemplateVariables(tx, variables); err != nil {
 		r.logger.Error("insert into template_variables", slog.Any("error", err))
-		return false
+		return err
 	}
 
 	if err := insertTemplateCommands(tx, commands); err != nil {
 		r.logger.Error("insert into template_commands", slog.Any("error", err))
-		return false
+		return err
 	}
 
 	if err := tx.Commit(); err != nil {
 		r.logger.Error("commit template transaction", slog.Any("error", err))
-		return false
+		return err
 	}
 
-	return true
+	return nil
 }
 
 // insertTemplateCommands writes the command references of a template.
@@ -358,51 +366,53 @@ func insertTemplateVariables(tx *sqlx.Tx, variables []TemplateVariable) error {
 
 // DeleteTemplate removes a template owned by the given user. The files and
 // the variables go with it: the schema cascades.
-func (r *sqlRepository) DeleteTemplate(id uuid.UUID, userID uuid.UUID) bool {
+func (r *sqlRepository) DeleteTemplate(id uuid.UUID, userID uuid.UUID) error {
 	r.logger.Debug("deleting template", slog.String("id", id.String()))
 
 	result, err := r.db.Exec("DELETE FROM templates WHERE id=$1 AND user_id=$2", id, userID)
 	if err != nil {
 		r.logger.Error("delete template", slog.Any("error", err))
-		return false
+		return err
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
 		r.logger.Error("delete template rows affected", slog.Any("error", err))
-		return false
+		return err
 	}
 
-	return rows > 0
+	if rows == 0 {
+		return ErrNotFound
+	}
+
+	return nil
 }
 
 // IsOwner reports whether the user owns the template.
-func (r *sqlRepository) IsOwner(id uuid.UUID, userID uuid.UUID) bool {
+func (r *sqlRepository) IsOwner(id uuid.UUID, userID uuid.UUID) (bool, error) {
 	r.logger.Debug("checking template owner", slog.String("id", id.String()), slog.String("userID", userID.String()))
 
 	var count int
 
-	err := r.db.Get(&count, "SELECT count(*) FROM templates WHERE id=$1 AND user_id=$2", id, userID)
-	if err != nil {
+	if err := r.db.Get(&count, "SELECT count(*) FROM templates WHERE id=$1 AND user_id=$2", id, userID); err != nil {
 		r.logger.Error("failed to verify the template owner", slog.Any("error", err))
-		return false
+		return false, err
 	}
 
-	return count > 0
+	return count > 0, nil
 }
 
 // SlugExists reports whether a slug is already taken. A slug identifies a
 // template in a URL, so two templates cannot share one.
-func (r *sqlRepository) SlugExists(slug string) bool {
+func (r *sqlRepository) SlugExists(slug string) (bool, error) {
 	r.logger.Debug("checking whether the slug exists", slog.String("slug", slug))
 
 	var count int
 
-	err := r.db.Get(&count, "SELECT count(*) FROM templates WHERE slug=$1", slug)
-	if err != nil {
+	if err := r.db.Get(&count, "SELECT count(*) FROM templates WHERE slug=$1", slug); err != nil {
 		r.logger.Error("failed to verify the slug", slog.Any("error", err))
-		return false
+		return false, err
 	}
 
-	return count > 0
+	return count > 0, nil
 }

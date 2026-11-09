@@ -1,6 +1,8 @@
 package templates
 
 import (
+	"errors"
+
 	"github.com/google/uuid"
 )
 
@@ -41,7 +43,7 @@ func newFakeRepository(templates ...Template) *fakeRepository {
 	return repo
 }
 
-func (r *fakeRepository) ListTemplates(userID uuid.UUID, kind string, limit int) ([]Template, bool) {
+func (r *fakeRepository) ListTemplates(userID uuid.UUID, kind string, limit int) ([]Template, error) {
 	var visible []Template
 
 	for _, template := range r.templates {
@@ -54,10 +56,10 @@ func (r *fakeRepository) ListTemplates(userID uuid.UUID, kind string, limit int)
 		visible = append(visible, template)
 	}
 
-	return visible, true
+	return visible, nil
 }
 
-func (r *fakeRepository) ListTemplatesForUser(userID uuid.UUID) ([]Template, bool) {
+func (r *fakeRepository) ListTemplatesForUser(userID uuid.UUID) ([]Template, error) {
 	var owned []Template
 
 	for _, template := range r.templates {
@@ -66,24 +68,24 @@ func (r *fakeRepository) ListTemplatesForUser(userID uuid.UUID) ([]Template, boo
 		}
 	}
 
-	return owned, true
+	return owned, nil
 }
 
-func (r *fakeRepository) GetTemplate(id uuid.UUID) (*Template, bool) {
+func (r *fakeRepository) GetTemplate(id uuid.UUID) (*Template, error) {
 	template, ok := r.templates[id]
 	if !ok {
-		return nil, false
+		return nil, ErrNotFound
 	}
 
-	return &template, true
+	return &template, nil
 }
 
-func (r *fakeRepository) GetTemplateFiles(templateID uuid.UUID) ([]TemplateFile, bool) {
-	return r.files[templateID], true
+func (r *fakeRepository) GetTemplateFiles(templateID uuid.UUID) ([]TemplateFile, error) {
+	return r.files[templateID], nil
 }
 
-func (r *fakeRepository) GetTemplateVariables(templateID uuid.UUID) ([]TemplateVariable, bool) {
-	return r.variables[templateID], true
+func (r *fakeRepository) GetTemplateVariables(templateID uuid.UUID) ([]TemplateVariable, error) {
+	return r.variables[templateID], nil
 }
 
 // addCommand puts a command in the library, as if the user had created it.
@@ -91,11 +93,11 @@ func (r *fakeRepository) addCommand(command TemplateCommand) {
 	r.library[command.CommandID] = command
 }
 
-func (r *fakeRepository) GetTemplateCommands(templateID uuid.UUID) ([]TemplateCommand, bool) {
-	return r.commands[templateID], true
+func (r *fakeRepository) GetTemplateCommands(templateID uuid.UUID) ([]TemplateCommand, error) {
+	return r.commands[templateID], nil
 }
 
-func (r *fakeRepository) OwnedCommandIDs(userID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]bool, bool) {
+func (r *fakeRepository) OwnedCommandIDs(userID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]bool, error) {
 	owned := make(map[uuid.UUID]bool, len(ids))
 
 	for _, id := range ids {
@@ -105,12 +107,12 @@ func (r *fakeRepository) OwnedCommandIDs(userID uuid.UUID, ids []uuid.UUID) (map
 		}
 	}
 
-	return owned, true
+	return owned, nil
 }
 
-func (r *fakeRepository) CreateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) bool {
+func (r *fakeRepository) CreateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) error {
 	if r.createFails {
-		return false
+		return errors.New("create failed")
 	}
 
 	r.templates[template.ID] = template
@@ -119,7 +121,7 @@ func (r *fakeRepository) CreateTemplate(template Template, files []TemplateFile,
 	r.commands[template.ID] = r.resolveCommands(commands)
 	r.createdIDs = append(r.createdIDs, template.ID)
 
-	return true
+	return nil
 }
 
 // resolveCommands fills a reference in from the library, as the join in the
@@ -143,9 +145,9 @@ func (r *fakeRepository) resolveCommands(commands []TemplateCommand) []TemplateC
 	return resolved
 }
 
-func (r *fakeRepository) UpdateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) bool {
+func (r *fakeRepository) UpdateTemplate(template Template, files []TemplateFile, variables []TemplateVariable, commands []TemplateCommand) error {
 	if r.updateFails {
-		return false
+		return errors.New("update failed")
 	}
 
 	r.templates[template.ID] = template
@@ -153,13 +155,13 @@ func (r *fakeRepository) UpdateTemplate(template Template, files []TemplateFile,
 	r.variables[template.ID] = variables
 	r.commands[template.ID] = r.resolveCommands(commands)
 
-	return true
+	return nil
 }
 
-func (r *fakeRepository) DeleteTemplate(id uuid.UUID, userID uuid.UUID) bool {
+func (r *fakeRepository) DeleteTemplate(id uuid.UUID, userID uuid.UUID) error {
 	template, ok := r.templates[id]
 	if !ok || template.UserID != userID {
-		return false
+		return ErrNotFound
 	}
 
 	delete(r.templates, id)
@@ -167,20 +169,20 @@ func (r *fakeRepository) DeleteTemplate(id uuid.UUID, userID uuid.UUID) bool {
 	delete(r.variables, id)
 	delete(r.commands, id)
 
-	return true
+	return nil
 }
 
-func (r *fakeRepository) IsOwner(id uuid.UUID, userID uuid.UUID) bool {
+func (r *fakeRepository) IsOwner(id uuid.UUID, userID uuid.UUID) (bool, error) {
 	template, ok := r.templates[id]
-	return ok && template.UserID == userID
+	return ok && template.UserID == userID, nil
 }
 
-func (r *fakeRepository) SlugExists(slug string) bool {
+func (r *fakeRepository) SlugExists(slug string) (bool, error) {
 	for _, template := range r.templates {
 		if template.Slug == slug {
-			return true
+			return true, nil
 		}
 	}
 
-	return false
+	return false, nil
 }

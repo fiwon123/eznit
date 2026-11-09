@@ -104,9 +104,9 @@ func TestPublishTemplateGivesTheFilesAndTheVariablesTheTemplateID(t *testing.T) 
 		t.Fatalf("expected the template to be published, got error %v", appError)
 	}
 
-	files, ok := repo.GetTemplateFiles(detail.ID)
-	if !ok {
-		t.Fatal("expected the files to be stored")
+	files, err := repo.GetTemplateFiles(detail.ID)
+	if err != nil {
+		t.Fatalf("expected the files to be stored: %v", err)
 	}
 
 	if len(files) == 0 {
@@ -119,9 +119,9 @@ func TestPublishTemplateGivesTheFilesAndTheVariablesTheTemplateID(t *testing.T) 
 		}
 	}
 
-	variables, ok := repo.GetTemplateVariables(detail.ID)
-	if !ok {
-		t.Fatal("expected the variables to be stored")
+	variables, err := repo.GetTemplateVariables(detail.ID)
+	if err != nil {
+		t.Fatalf("expected the variables to be stored: %v", err)
 	}
 
 	if len(variables) == 0 {
@@ -561,7 +561,7 @@ func TestDeleteTemplateRefusesAnotherUsersTemplate(t *testing.T) {
 		t.Fatal("expected the delete to be refused")
 	}
 
-	if _, ok := repo.GetTemplate(templateID); !ok {
+	if _, err := repo.GetTemplate(templateID); err != nil {
 		t.Error("the template was deleted by a user who does not own it")
 	}
 }
@@ -585,7 +585,7 @@ func TestDeleteTemplateRemovesTheOwnersTemplate(t *testing.T) {
 		t.Fatalf("expected the delete to go through, got error %v", appError)
 	}
 
-	if _, ok := repo.GetTemplate(templateID); ok {
+	if _, err := repo.GetTemplate(templateID); err == nil {
 		t.Error("the template was not deleted")
 	}
 }
