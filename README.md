@@ -4,216 +4,187 @@
 
 # eznit
 
-**Self-hosted file storage you control**
+**Your project's setup, in one place you host.**
 
-A Go API, CLI client, and web UI for uploading, listing, and retrieving your own files, backed by PostgreSQL.
+Templates, scripts and files you can pull onto any machine — self-hosted, no
+subscription, no third party.
 
+[![Release](https://img.shields.io/github/v/release/fiwon123/eznit?color=4c8bf5)](https://github.com/fiwon123/eznit/releases)
 [![License: MIT](https://img.shields.io/github/license/fiwon123/eznit)](LICENSE)
-[![Go version](https://img.shields.io/github/go-mod/go-version/fiwon123/eznit?logo=go&logoColor=white)](go.mod)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-blue)](https://github.com/fiwon123/eznit/releases)
 [![CI (Go)](https://github.com/fiwon123/eznit/actions/workflows/ci.go.yml/badge.svg)](https://github.com/fiwon123/eznit/actions/workflows/ci.go.yml)
-[![Pre-release](https://img.shields.io/badge/status-pre--1.0-orange)](https://github.com/fiwon123/eznit)
+[![Pre-1.0](https://img.shields.io/badge/status-pre--1.0-orange)](https://github.com/fiwon123/eznit)
 
 </div>
 
-## ✨ Why eznit
+## ✨ What it is
 
-- **Yours.** File bytes live on your disk, indexed in your own PostgreSQL. No
-  subscription, no third-party account.
-- **No browser needed.** The CLI puts a file back out with one command; the web UI
-  is there when you want it. The API and the CLI are the whole product.
-- **One stack.** `make setup && make up` runs the API, the UI, PostgreSQL and the
-  migrations on a machine with Docker.
+- **One place for the files a project needs.** Agent instructions, editor rules,
+  skills, scripts, any text or binary file, in any folder shape you like.
+- **Publish once, apply anywhere.** A folder becomes a *template*: the next
+  machine, or the next project, gets `eznit template apply <id>` instead of a
+  retyped setup.
+- **With or without AI.** Built-in starters for opencode, Codex, Copilot, Cursor
+  and Windsurf; the same folder holds plain shell and editor configuration.
+- **Yours.** Bytes live on your disk, indexed in your own PostgreSQL. No
+  subscription and no third-party account.
+- **One command to try.** `make setup && make up` needs only Docker.
 
 > **Pre-1.0 and unhardened.** Read [Security status](#-security-status) before
 > exposing this anywhere but `localhost`.
 
-Supported platforms: Linux, macOS and Windows. The product stack runs on Docker;
-the CLI and the API are pure Go.
-
 ## 🚀 Quick start
 
-Two local files come first — the configuration and the database secret. Both are
-gitignored, and `make setup` creates them from the committed examples:
-
 ```sh
-make setup
-make up             # or: docker compose up
+make setup && make up     # Docker: API :4000, UI :5173, PostgreSQL, migrations
 ```
-
-While it runs (it streams the stack's logs; Ctrl-C stops the attached services):
 
 | What | Where |
 | --- | --- |
 | Web UI | http://localhost:5173 |
 | API | http://localhost:4000 |
-| Docs (Swagger UI) | http://localhost:5173/docs (proxied) or http://localhost:4000/docs |
+| API reference (Swagger UI) | http://localhost:5173/docs |
 
-Uploaded bytes live on the `api-data` volume, so they survive `docker compose down`
-(use `docker compose down -v` to remove them too).
+Uploaded bytes live on the `api-data` volume, so they survive
+`docker compose down` (`down -v` removes them too).
 
-### 📄 Your first file
+### 📄 Your first template
 
-The CLI is a separate binary. Build it with Go on the host, or download it from
-[Releases](https://github.com/fiwon123/eznit/releases). `make build_cli` cross-compiles
-`build/cli/linux/eznit` and `build/cli/windows/eznit.exe`.
-
-```sh
-make build_cli                     # needs Go only
-./build/cli/linux/eznit signup     # Enter Email / Password / Confirm
-./build/cli/linux/eznit login      # stores a session token in ~/.eznit/config.json (0600)
-./build/cli/linux/eznit upload     # file path: ./notes.txt
-./build/cli/linux/eznit list       # the files you own; note an id
-./build/cli/linux/eznit download   # id file: <id>  / destination folder path: ./out
-```
-
-The core commands prompt for what they need. Running the stack needs only Docker;
-building the CLI needs Go. Want the source loop with live reload? See
-[Getting Started](https://github.com/fiwon123/eznit/wiki/Getting-Started) and
-[Development](https://github.com/fiwon123/eznit/wiki/Development).
-
-## 📦 Install options
-
-| Path | For | Start |
-| --- | --- | --- |
-| Compose stack (source) | trying it, running it | `make setup && make up` |
-| Release bundle | a machine with no source | unpack, `docker compose up db migrate`, run `eznit-server` |
-| Host toolchain | development | `make run_api` + `make web_dev` |
-
-See [Getting Started](https://github.com/fiwon123/eznit/wiki/Getting-Started) for
-each, including the Windows and no-Make paths.
-
-## 🔧 Usage
-
-### 💻 CLI
-
-| Command | What it does |
-| --- | --- |
-| `eznit signup` / `login` / `logout` | Create an account, start a session, end it |
-| `eznit upload` | Upload a file (`--update <id>` replaces one) |
-| `eznit list` | List your own files (`--me` is the same list) |
-| `eznit download` | Download one of your own files by id |
-| `eznit delete` | Delete a file |
-| `eznit share` / `unshare` | Make a file public to the instance, or private again |
-
-Templates, the command library and git hosts are covered in the
-[CLI Reference](https://github.com/fiwon123/eznit/wiki/CLI-Reference):
+The CLI is a separate binary: `make build_cli` (Go only) writes
+`build/cli/linux/eznit`, or download one from
+[Releases](https://github.com/fiwon123/eznit/releases).
 
 ```sh
-eznit template publish <folder>   # publish a folder as a template
-eznit template list               # the catalogue
-eznit command add <file>          # keep a script, pull it into templates by id
-eznit repo clone <owner/name>     # clone a repo the stored GitHub token can reach
+./build/cli/linux/eznit template init --kind opencode --target ./demo  # no server needed
+./build/cli/linux/eznit signup                                        # first account is the admin
+./build/cli/linux/eznit template publish ./demo --public
+./build/cli/linux/eznit template list                                 # note the id
+./build/cli/linux/eznit template apply <id> --target ../another-project
 ```
 
-A session is required for anything that touches your own rows; `signup`, `login`
-and the public template catalogue are the exceptions. (Shared files are readable
-anonymously through the API and the web UI, but `eznit download` always needs a
-session.)
+The core commands prompt for what they need. `template init` is the offline
+path: it writes a starter into a folder with no server and no account. Full
+flags: [CLI Reference](https://github.com/fiwon123/eznit/wiki/CLI-Reference).
 
 ### 🌐 Web UI
 
-| | Dark | Light |
-|---|---|---|
-| **Catalogue** | ![catalogue, dark](docs/screenshots/catalogue-dark.png) | ![catalogue, light](docs/screenshots/catalogue-light.png) |
-| **Log in** | ![log in, dark](docs/screenshots/login-dark.png) | ![log in, light](docs/screenshots/login-light.png) |
-| **Sign up** | ![sign up, dark](docs/screenshots/signup-dark.png) | ![sign up, light](docs/screenshots/signup-light.png) |
+| Dark | Light |
+| --- | --- |
+| ![catalogue, dark](docs/screenshots/catalogue-dark.png) | ![catalogue, light](docs/screenshots/catalogue-light.png) |
 
-Captured with `make screenshots` against a running stack. Sign up or log in through
-the page, or paste the token from `eznit login` into `localStorage` as
-`eznit.token`. The UI lives in `web/` and is served two ways: from disk
-(`web/dist`) by the API, and embedded in the released binaries.
+Sign up or log in on the page, or paste the token from `eznit login` into
+`localStorage` as `eznit.token`. The full set of screenshots is under
+[`docs/screenshots`](docs/screenshots).
 
-### 🔌 API reference
+## 🧩 What you can keep
 
-Every `/v1` operation is described in one OpenAPI 3.1 document, served by the API
-itself:
+| Keep | Commands | Travels as |
+| --- | --- | --- |
+| **Files** | `upload`, `list`, `download`, `delete`, `share` | bytes on your disk, indexed in PostgreSQL |
+| **Templates** | `template publish`, `list`, `show`, `apply`, `init` | a folder: text, binary, variables, commands |
+| **Commands** | `command add`, `list`, `show`, `remove` | a script kept once and pulled into templates by id |
+| **Repositories** | `repo auth`, `list`, `clone` | a clone; the token stays on your machine |
 
-- **`http://localhost:4000/docs`** — Swagger UI, with an **Authorize** button and
-  "Try it out" on every operation. In the product stack the `web` service proxies
-  `/docs` too, so `http://localhost:5173/docs` serves the same page.
-- **`http://localhost:4000/v1/openapi.yaml`** — the document, committed at
-  `internal/platform/openapi/openapi.yaml`.
-- **`http://localhost:4000/v1/openapi.json`** — the same document as JSON.
+A template may hold anything: `AGENTS.md`, `.opencode/agents/`, a `SKILL.md`,
+`.cursor/rules/`, a PowerShell profile, a `Makefile`. Values like
+`{{PROJECT_NAME}}` are asked on the machine that writes the files and are never
+sent to the server.
 
-The UI assets are embedded in the binary, so the reference works with no internet
-access, and none of these routes needs a session. A test fails when the document
-and the router disagree.
+## 💻 Terminals, shells and editors
+
+`eznit template init --kind` writes a starter for the terminal you use:
+
+| Kind | Starter writes |
+| --- | --- |
+| `opencode` | `AGENTS.md` + `.opencode/agents/{build,plan,reviewer}.md` |
+| `codex` | `AGENTS.md` |
+| `copilot` | `AGENTS.md` + `.github/copilot-instructions.md` |
+| `cursor` | `AGENTS.md` + `.cursor/rules/project.mdc` |
+| `windsurf` | `AGENTS.md` + `.windsurf/rules/project.md` |
+| `generic` | `AGENTS.md` |
+
+A template is plain files, so bash, zsh, fish and PowerShell configuration
+travel the same way. Built-in shell starters are planned — see
+[Direction](https://github.com/fiwon123/eznit/wiki/Direction).
+
+## 📦 Download
+
+| Platform | CLI | Server bundle |
+| --- | --- | --- |
+| 🐧 Linux amd64 | `eznit-cli_<tag>_linux_amd64.tar.gz` | `eznit-server_<tag>_linux_amd64.tar.gz` |
+| 🐧 Linux arm64 | `eznit-cli_<tag>_linux_arm64.tar.gz` | `eznit-server_<tag>_linux_arm64.tar.gz` |
+| 🪟 Windows amd64 | `eznit-cli_<tag>_windows_amd64.zip` | `eznit-server_<tag>_windows_amd64.zip` |
+| 🪟 Windows arm64 | `eznit-cli_<tag>_windows_arm64.zip` | `eznit-server_<tag>_windows_arm64.zip` |
+
+The CLI archive carries `eznit` and `ez`; the server bundle carries
+`eznit-server`, `eznit-gui`, the migrations, the Compose services and
+`RUNNING.md`. Verify a download against `checksums.txt` from the release page.
+macOS builds from source today; archives are planned
+([#187](https://github.com/fiwon123/eznit/issues/187)).
 
 ## 🔒 Security status
 
 This is a self-hosted tool, and it is not hardened. What is true today:
 
-- **Coverage is partial.** The API domains, the middleware, the CLI, the web UI
-  handler, the OpenAPI document, the logger and the response envelope have
-  tests; `cmd/cli` has none, and the pages' browser behaviour has no automated
-  test. `make test_integration` is what runs SQL: it applies and reverses every
-  migration and drives each repository against a real PostgreSQL. A green
-  `make check` means "it builds and the tested packages passed" — not "it
-  works"; `make check` alone never touches a database.
-- **The first account is the admin.** It is the only one that may list, update or
-  delete other accounts. Promote another with
-  `UPDATE users SET is_admin = true WHERE email = ...`.
-- Files are stored unencrypted on the server's disk.
-- `signup` and `login` are rate-limited per IP and per address (`429` with
-  `Retry-After`). The limiter is in-process per instance and configurable; it is a
-  guard, not a distributed guarantee.
-- Signup and login do not say whether an address has an account: a signup for a
-  taken address answers like a new one, and a failed login is one generic `401`.
-- Passwords are hashed (bcrypt); session tokens are random and stored with an
-  expiry. CI runs a reachable-vulnerability scan (`govulncheck`); `make vuln` runs
-  it locally.
-- A git-host token stays in the CLI's own config file (mode 0600); the eznit API
-  never sees it.
+1. **Files are stored unencrypted** on the server's disk. Do not put this on a
+   public interface as it stands — `localhost` or a VPN you control.
+2. **The first account is the admin.** It is the only one that may list, update
+   or delete other accounts; no route grants the flag.
+3. **Auth is rate-limited** per IP and per address (`429` + `Retry-After`).
+   Signup and login do not reveal whether an address has an account; passwords
+   are bcrypt; session tokens are random and expire.
+4. **Tokens stay on the CLI machine.** The session token and the git-host token
+   live in `~/.eznit/config.json` (mode `0600`); the eznit API never sees the
+   host token.
 
-**Do not put this on a public interface as it stands.** It is fine on `localhost`,
-or behind a VPN you control. Local secret files (`.env`, `.env.local`,
-`secrets/db_password.txt`) must be mode `600` — see
-[Configuration](https://github.com/fiwon123/eznit/wiki/Configuration).
-
-The deferred hardening work is tracked on the
+The full list of what is deferred is on the
 [roadmap board](https://github.com/users/fiwon123/projects/12).
 
 ## 📚 Documentation
 
-| Page | What it covers |
+| I want to… | Read |
 | --- | --- |
-| [Getting Started](https://github.com/fiwon123/eznit/wiki/Getting-Started) | Run the stack and put a file in and out |
-| [CLI Reference](https://github.com/fiwon123/eznit/wiki/CLI-Reference) | Every command, flag and the config file |
-| [Configuration](https://github.com/fiwon123/eznit/wiki/Configuration) | Every variable, secret and port |
-| [Development](https://github.com/fiwon123/eznit/wiki/Development) | The dev loop, sandbox, migrations and the gates |
-| [Troubleshooting](https://github.com/fiwon123/eznit/wiki/Troubleshooting) | The errors you are likely to hit |
-| [Releases](https://github.com/fiwon123/eznit/wiki/Releases) | How a release is cut and what the archives hold |
+| try it in five minutes | [Getting Started](https://github.com/fiwon123/eznit/wiki/Getting-Started) |
+| publish and apply a template | [Templates and skills](https://github.com/fiwon123/eznit/wiki/Templates-and-Skills) |
+| look up a command or flag | [CLI Reference](https://github.com/fiwon123/eznit/wiki/CLI-Reference) |
+| configure every variable and secret | [Configuration](https://github.com/fiwon123/eznit/wiki/Configuration) |
+| know what runs on which OS or shell | [Platforms and shells](https://github.com/fiwon123/eznit/wiki/Platforms-and-Shells) |
+| see what is planned | [Direction](https://github.com/fiwon123/eznit/wiki/Direction) |
+| develop or build a release | [Development](https://github.com/fiwon123/eznit/wiki/Development) · [Releases](https://github.com/fiwon123/eznit/wiki/Releases) |
+| fix an error | [Troubleshooting](https://github.com/fiwon123/eznit/wiki/Troubleshooting) |
 
 In the repository: [ARCHITECTURE.md](ARCHITECTURE.md) is the map of the request
-path, the data model and where a change belongs; [CONTRIBUTING.md](CONTRIBUTING.md)
-is how to send a change. The wiki's source lives at `docs/wiki/` — edit it through
-a pull request, not only in the wiki UI, or the next sync overwrites it.
+path and where a change belongs; [CONTRIBUTING.md](CONTRIBUTING.md) is how to
+send one. The wiki's source is `docs/wiki/` — edit it through a pull request, or
+the next sync overwrites it.
 
-## 📁 Repository layout
+## ⚠️ What is not proven
 
-```
-cmd/             the entrypoints: api, cli, gui
-internal/domain/ one package per resource: users, sessions, files, templates
-                 handler -> service -> repository, plus dto.go
-internal/platform/ middleware (session guard), sql, webui (SPA), openapi
-pkg/             logger, errors, http/json helpers, path helpers, types
-db/migrations/   golang-migrate SQL, one up/down pair per change
-web/             React + TypeScript UI; embeds into the api/gui binaries
-```
+This project says what it verified.
 
-The layering is strict: a handler decodes and writes, a service holds the rules, a
-repository is the only place that speaks SQL.
+- **No test sends a request through the whole stack.** The router is tested with
+  no database, and the repositories are tested against a real PostgreSQL; no
+  test starts the API and makes an HTTP call that reaches a query.
+- **The Windows server bundle is built, never started.** CI smoke-tests the
+  Windows CLI; the server and the Compose stack are not run on Windows.
+- **The ARM64 binaries are built, never executed** on ARM hardware.
+- **The macOS build is not shipped** and not built in CI.
+- **The browser UI has no automated test**; the screenshots are captured by
+  hand.
+
+Running the untested parts and saying what happened is the most useful
+contribution right now — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 🤝 Contributing
 
-Issues and pull requests are welcome. The short version: open an issue first,
-branch from `dev`, run `make check` (and `make web_check` for UI changes), and say
-in the pull request what ran and what did not. The full rules are in
+Issues and pull requests are welcome: open an issue first, branch from `dev`,
+run `make check` (and `make web_check` for UI changes), and say in the pull
+request what ran and what did not. The full rules are in
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 This project is developed with an AI agent. The review bar is the same: judge by
 tests and evidence, not by who wrote it.
 
-## 📜 License
+## 📄 License
 
 MIT — see [LICENSE](LICENSE).
