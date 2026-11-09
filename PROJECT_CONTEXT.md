@@ -74,6 +74,7 @@ index; the path column is what `download` opens.
 | `make run_cli` | Run the CLI |
 | `make build` | Build the local binaries into `./build` |
 | `make release` | Build one-folder archives for every platform into `./build/dist` |
+| `make verify-release` | Check the archives: layout, names, PE resources and provenance |
 | `make web_check` | Lint, format check, typecheck and build the web UI |
 | `make web_build` | Build the web UI into `web/dist` |
 | `make web_dev` | Run the Vite dev server |

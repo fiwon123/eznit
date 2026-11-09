@@ -520,8 +520,14 @@ archive name, never in the binary name.
 | `checksums.txt` | SHA-256 of every archive |
 
 Each archive is checked after it is written: exactly one top-level folder, named
-like the archive, and no `..` member. The server bundle's `RUNNING.md` says
-which Compose services work from it and which need a source checkout.
+like the archive, and no `..` member. `make release` then runs
+`make verify-release`, which reads the finished archives — the names inside, the
+PE of every Windows binary, and (when `PROVENANCE_COMMIT` is set, as the
+workflow does) the revision and `vcs.modified=false`. Every Windows binary also
+carries an icon, a per-monitor DPI manifest and a version block, generated from
+`assets/logo.png` before the build and removed afterwards. The server bundle's
+`RUNNING.md` says which Compose services work from it and which need a source
+checkout.
 
 The workflow can also be run by hand (`workflow_dispatch`): that run builds the
 same archives and keeps them on the run, and publishes nothing. Only a tag
