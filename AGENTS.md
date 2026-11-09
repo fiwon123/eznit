@@ -220,7 +220,11 @@ result, because a run that executed nothing is not coverage.
 ## Git Workflow
 
 - Branch from `dev`, never from `main`
-- Never push directly to `dev` or `main`
+- Never push directly to `dev` or `main` — both are PR-only, and
+  `enforce_admins` is on, so no one (including an administrator) can bypass the
+  protection. A step that would need a bypass is a bug in the step.
+- Release pull requests merge with a **merge commit**, not a squash: `dev`
+  stays an ancestor of `main`, so no back-merge and no push to `dev` is needed.
 - Branch naming: `<type>/<issue-number>-<slug>` (e.g., `fix/4-download-auth`)
 - Branch types: `feat/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/`, `ci/`
 - Use conventional commits
