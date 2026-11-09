@@ -32,39 +32,39 @@ func newFakeSessionsRepository(s ...sessions.Session) *fakeSessionsRepository {
 	return repo
 }
 
-func (r *fakeSessionsRepository) GetSession(token string) *sessions.Session {
+func (r *fakeSessionsRepository) GetSession(token string) (*sessions.Session, error) {
 	session, ok := r.sessions[token]
 	if !ok {
-		return nil
+		return nil, sessions.ErrNotFound
 	}
-	return &session
+	return &session, nil
 }
 
-func (r *fakeSessionsRepository) GetSessionByUserID(userID uuid.UUID) (*sessions.Session, bool) {
+func (r *fakeSessionsRepository) GetSessionByUserID(userID uuid.UUID) (*sessions.Session, error) {
 	for _, session := range r.sessions {
 		if session.UserID == userID {
-			return &session, true
+			return &session, nil
 		}
 	}
-	return nil, false
+	return nil, sessions.ErrNotFound
 }
 
-func (r *fakeSessionsRepository) CreateSession(s sessions.Session) bool {
+func (r *fakeSessionsRepository) CreateSession(s sessions.Session) error {
 	r.sessions[s.Token] = s
-	return true
+	return nil
 }
 
-func (r *fakeSessionsRepository) UpdateSession(s sessions.Session) bool {
+func (r *fakeSessionsRepository) UpdateSession(s sessions.Session) error {
 	r.sessions[s.Token] = s
-	return true
+	return nil
 }
 
-func (r *fakeSessionsRepository) GetUserIDByToken(token string) (uuid.UUID, bool) {
+func (r *fakeSessionsRepository) GetUserIDByToken(token string) (uuid.UUID, error) {
 	session, ok := r.sessions[token]
 	if !ok {
-		return uuid.UUID{}, false
+		return uuid.UUID{}, sessions.ErrNotFound
 	}
-	return session.UserID, true
+	return session.UserID, nil
 }
 
 // newTestRouter returns a router with the users routes registered and one live

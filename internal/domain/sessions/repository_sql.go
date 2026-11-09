@@ -1,6 +1,8 @@
 package sessions
 
 import (
+	"database/sql"
+	"errors"
 	"log/slog"
 
 	"github.com/fiwon123/eznit/pkg/helper"
@@ -30,59 +32,66 @@ func NewRepository(db *sqlx.DB, logger *logger.Config) *sqlRepository {
 }
 
 // Get session by token
-func (r *sqlRepository) GetSession(token string) *Session {
+func (r *sqlRepository) GetSession(token string) (*Session, error) {
 	var session Session
 
 	err := r.db.Get(&session, "SELECT "+sessionColumns+" FROM sessions WHERE token=$1", token)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
 		r.logger.Error("get session", slog.Any("error", err))
-		return nil
+		return nil, err
 	}
 
-	return &session
+	return &session, nil
 }
 
 // Get session by user id
-func (r *sqlRepository) GetSessionByUserID(userID uuid.UUID) (*Session, bool) {
+func (r *sqlRepository) GetSessionByUserID(userID uuid.UUID) (*Session, error) {
 	r.logger.Logger.Debug("GetSessionByUserID")
 	var session Session
 
 	err := r.db.Get(&session, "SELECT "+sessionColumns+" FROM sessions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1", userID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
 		r.logger.Error("get session by user id", slog.Any("error", err))
-		return nil, false
+		return nil, err
 	}
 
-	return &session, true
+	return &session, nil
 }
 
 // Create a new session using session model
-func (r *sqlRepository) CreateSession(s Session) bool {
+func (r *sqlRepository) CreateSession(s Session) error {
 	_, err := r.db.NamedExec("INSERT INTO sessions(token, user_id, expires_at) VALUES (:token, :user_id, :expires_at)", s)
 	if err != nil {
 		r.logger.Error("create session", slog.Any("error", err))
-		return false
+		return err
 	}
 
-	return true
+	return nil
 }
 
 // Update session using session model
-func (r *sqlRepository) UpdateSession(s Session) bool {
-	exec := "UPDATE sessions SET is_active=:is_active WHERE token=:token"
-
-	_, err := r.db.NamedExec(exec, s)
+func (r *sqlRepository) UpdateSession(s Session) error {
+	result, err := r.db.NamedExec("UPDATE sessions SET is_active=:is_active WHERE token=:token", s)
 	if err != nil {
 		r.logger.Error("update session", slog.Any("error", err))
-		return false
+		return err
 	}
 
-	return true
+	if affected, err := result.RowsAffected(); err == nil && affected == 0 {
+		return ErrNotFound
+	}
+
+	return nil
 }
 
 // Get user id by token
-func (r *sqlRepository) GetUserIDByToken(token string) (uuid.UUID, bool) {
-
+func (r *sqlRepository) GetUserIDByToken(token string) (uuid.UUID, error) {
 	r.logger.Debug("GetUserIDByToken", slog.String("token_fp", helper.Fingerprint(token)))
 
 	exec := `SELECT u.id FROM users u
@@ -91,11 +100,13 @@ func (r *sqlRepository) GetUserIDByToken(token string) (uuid.UUID, bool) {
 
 	var userID uuid.UUID
 
-	row := r.db.QueryRow(exec, token)
-	if err := row.Scan(&userID); err != nil {
+	if err := r.db.QueryRow(exec, token).Scan(&userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return uuid.UUID{}, ErrNotFound
+		}
 		r.logger.Error("get user id by token", slog.Any("error", err))
-		return uuid.UUID{}, false
+		return uuid.UUID{}, err
 	}
 
-	return userID, true
+	return userID, nil
 }
