@@ -210,6 +210,7 @@ type schemaNode struct {
 	Properties map[string]schemaNode `yaml:"properties"`
 	AllOf      []schemaNode          `yaml:"allOf"`
 	Ref        string                `yaml:"$ref"`
+	Enum       []string              `yaml:"enum"`
 }
 
 type schemaDocument struct {
@@ -270,6 +271,38 @@ func propertiesOf(t *testing.T, document schemaDocument, node schemaNode, seen m
 	}
 
 	return properties
+}
+
+// The kinds are the service's list; the document must list the same set. A
+// kind added to the code but not the document leaves a client that validates
+// against it refusing what the API accepts, and a kind removed from the code
+// but left in the document is a promise the API does not keep.
+func TestTheDocumentListsEveryTemplateKind(t *testing.T) {
+	document := parseSchemas(t)
+	node, ok := document.Components.Schemas["TemplateKind"]
+	if !ok {
+		t.Fatal("the document has no TemplateKind schema")
+	}
+
+	documented := map[string]bool{}
+	for _, kind := range node.Enum {
+		documented[kind] = true
+	}
+
+	expected := map[string]bool{}
+	for _, kind := range templates.Kinds {
+		expected[kind] = true
+
+		if !documented[kind] {
+			t.Errorf("the code knows the template kind %q but the document does not list it", kind)
+		}
+	}
+
+	for kind := range documented {
+		if !expected[kind] {
+			t.Errorf("the document lists the template kind %q but the code does not know it", kind)
+		}
+	}
 }
 
 // jsonNames is the set of names encoding/json sends for a struct: its json

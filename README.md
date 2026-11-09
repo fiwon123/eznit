@@ -104,10 +104,14 @@ sent to the server.
 | `cursor` | `AGENTS.md` + `.cursor/rules/project.mdc` |
 | `windsurf` | `AGENTS.md` + `.windsurf/rules/project.md` |
 | `generic` | `AGENTS.md` |
+| `bash` | `shell/bashrc.sh` |
+| `zsh` | `shell/zshrc.sh` |
+| `fish` | `shell/config.fish` |
+| `powershell` | `shell/profile.ps1` |
 
-A template is plain files, so bash, zsh, fish and PowerShell configuration
-travel the same way. Built-in shell starters are planned — see
-[Direction](https://github.com/fiwon123/eznit/wiki/Direction).
+The shell starters are commented snippets: source the file from your shell's
+rc/profile and uncomment the examples you want. Applying a template never edits
+a file in your home directory unless you point `--target` there.
 
 ## 📦 Download
 

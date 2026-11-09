@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// The kinds of template: the AI terminal a template targets. The list is
+// The kinds of template: the terminal or shell a template targets. The list is
 // enforced by a CHECK constraint in the schema as well, so a template row
 // cannot hold a kind the code does not know about.
 const (
@@ -16,6 +16,14 @@ const (
 	KindCursor   = "cursor"
 	KindWindsurf = "windsurf"
 	KindGeneric  = "generic"
+
+	// The shells a starter can target. A template may carry one of these
+	// kinds like any other: the difference is only what `template init`
+	// writes for it.
+	KindBash       = "bash"
+	KindZsh        = "zsh"
+	KindFish       = "fish"
+	KindPowershell = "powershell"
 )
 
 // Kinds is the set of kinds a template may carry.
@@ -26,6 +34,10 @@ var Kinds = []string{
 	KindCursor,
 	KindWindsurf,
 	KindGeneric,
+	KindBash,
+	KindZsh,
+	KindFish,
+	KindPowershell,
 }
 
 // IsKind reports whether kind is one the service accepts.

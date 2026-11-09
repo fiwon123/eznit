@@ -29,7 +29,7 @@ type TemplateCmd struct {
 // Template List Cmd shows the catalogue: the public templates and the ones
 // the user published.
 type TemplateListCmd struct {
-	Kind string `help:"only the templates for this terminal" optional:""`
+	Kind string `help:"only the templates for this terminal or shell" optional:""`
 	Mine bool   `help:"only the templates you published"`
 }
 
