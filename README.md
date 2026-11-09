@@ -15,217 +15,96 @@ A Go API, CLI client, and web UI for uploading, listing, and retrieving your own
 
 </div>
 
-## Table of contents
+## Why eznit
 
-- [About](#about)
-- [Architecture](ARCHITECTURE.md)
-- [How to use](#how-to-use)
-  - [Run the stack](#run-the-stack)
-  - [Build the CLI](#build-the-cli)
-  - [Commands](#commands)
-- [Web UI](#web-ui)
-- [API reference](#api-reference)
-- [Security status](#security-status)
-- [How to develop](#how-to-develop)
-  - [Layout](#layout)
-  - [Migrations](#migrations)
-  - [Checking your change](#checking-your-change)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [License](#license)
-
-## About
-
-Eznit keeps a file on storage you control, indexes it in PostgreSQL, and gets it
-back out with one command. There is no browser and no account with a third
-party — the API and the CLI are the whole product.
-
-Two entry points:
-
-- **API server** (`cmd/api`) — serves the HTTP API the CLI talks to
-- **CLI tool** (`cmd/cli`) — signup, login, logout, upload, download, list,
-  update, delete
+- **Yours.** File bytes live on your disk, indexed in your own PostgreSQL. No
+  subscription, no third-party account.
+- **No browser needed.** The CLI puts a file back out with one command; the web UI
+  is there when you want it. The API and the CLI are the whole product.
+- **One stack.** `make setup && make up` runs the API, the UI, PostgreSQL and the
+  migrations on a machine with Docker.
 
 > **Pre-1.0 and unhardened.** Read [Security status](#security-status) before
 > exposing this anywhere but `localhost`.
 
-**Supported platforms:** Linux, macOS and Windows. The CLI and the API are pure
-Go; the development flow below runs through the dev sandbox, so it behaves the
-same on all three — see [How to develop](#how-to-develop).
+Supported platforms: Linux, macOS and Windows. The product stack runs on Docker;
+the CLI and the API are pure Go.
 
-## How to use
+## Quick start
 
-### Run the stack
-
-Two local files come first — the configuration and the database secret. Both
-are gitignored, and `make setup` creates them from the committed examples:
+Two local files come first — the configuration and the database secret. Both are
+gitignored, and `make setup` creates them from the committed examples:
 
 ```sh
 make setup
-```
-
-Without `make`, copy `.env.example` to `.env` and
-`secrets/db_password.txt.example` to `secrets/db_password.txt` by hand. The
-database password is a Docker file secret read through `DB_PASSWORD_FILE`; it
-is never an environment variable.
-
-Then one command brings up the product:
-
-```sh
 make up             # or: docker compose up
 ```
 
-That does five things, in order:
+When it returns:
 
-1. builds two images: `web/Dockerfile` (Node builds the UI, nginx serves it) and
-   `Dockerfile.api` (Node builds the UI, Go embeds it in the binary);
-2. starts PostgreSQL and waits until it is healthy;
-3. runs the `migrate` service once (`migrate up` is idempotent);
-4. starts the API on `http://localhost:4000` — API only, because the compose
-   service sets `API_SERVE_WEB=false`;
-5. starts the web UI on `http://localhost:5173`. It proxies `/v1/*` to the API,
-   so the browser still talks to one origin and the API needs no CORS headers.
+| What | Where |
+| --- | --- |
+| Web UI | http://localhost:5173 |
+| API | http://localhost:4000 |
+| Docs (Swagger UI) | http://localhost:4000/docs |
 
-| Role | Where | Port |
-| --- | --- | --- |
-| Frontend (the app) | `web` service, nginx | **5173** |
-| Backend (the API) | `api` service | **4000** |
-| Database | `db` service | 5432 |
+Uploaded bytes live on the `api-data` volume, so they survive `docker compose down`
+(use `docker compose down -v` to remove them too).
 
-`http://localhost:4000` still serves the UI inside the *released binary* (it
-embeds it); the compose stack keeps the two tiers apart so each port means one
-service.
-
-Uploaded bytes live on the `api-data` volume, so they survive
-`docker compose down` (use `docker compose down -v` to remove them too).
-
-> In a **release bundle** the source is not there, so there is no image to
-> build. Start the database with `docker compose up db migrate` and run the
-> prebuilt `eznit-server` (Windows: `eznit-server.exe`) from the archive; it
-> serves the UI embedded at build time. Plain `docker compose up` is the
-> source-checkout path — in a bundle it would try to build an image the
-> archive does not contain. `make dev-up` and the `dev` sandbox are not part of
-> the bundle either. The bundle carries `RUNNING.md` with the same steps.
-
-### Build the CLI
+### Your first file
 
 ```sh
-make build        # the local binaries into ./build (and the web UI they embed)
-./build/cli/eznit --help
-make release      # one-folder archives for every platform into ./build/dist
+make build
+./build/cli/eznit signup     # Enter Email / Password / Confirm
+./build/cli/eznit login      # stores a session token in ~/.eznit/config.json (0600)
+./build/cli/eznit upload     # file path: ./notes.txt
+./build/cli/eznit list       # the files you own; note an id
+./build/cli/eznit download   # id file: <id>  / destination folder path: ./out
 ```
 
-Node is needed here even for the Go binaries: `make build_api` and
-`make build_gui` build the web UI first, because both binaries carry a copy of
-it (see [Web UI](#web-ui)). `make check` does not — the Go gate stays Node-free.
-`make release` builds the UI once and packages it with both families.
+The core commands prompt for what they need. Need Go or Node on the host? You do
+not — the images build the UI. Want the source loop with live reload? See
+[Getting Started](https://github.com/fiwon123/eznit/wiki/Getting-Started) and
+[Development](https://github.com/fiwon123/eznit/wiki/Development).
 
-### Commands
+## Install options
+
+| Path | For | Start |
+| --- | --- | --- |
+| Compose stack (source) | trying it, running it | `make setup && make up` |
+| Release bundle | a machine with no source | unpack, `docker compose up db migrate`, run `eznit-server` |
+| Host toolchain | development | `make run_api` + `make web_dev` |
+
+See [Getting Started](https://github.com/fiwon123/eznit/wiki/Getting-Started) for
+each, including the Windows and no-Make paths.
+
+## Usage
+
+### CLI
 
 | Command | What it does |
 | --- | --- |
-| `eznit signup` | Create an account |
-| `eznit login` | Start a session; the token is stored in `~/.eznit/config.json` (mode 0600) |
-| `eznit list` | List your own files (`--me` is an alias for the same list) |
-| `eznit upload` | Upload a file |
+| `eznit signup` / `login` / `logout` | Create an account, start a session, end it |
+| `eznit upload` | Upload a file (`--update <id>` replaces one) |
+| `eznit list` | List your own files (`--me` is the same list) |
 | `eznit download` | Download one of your own files by id |
 | `eznit delete` | Delete a file |
-| `eznit logout` | End the session |
+| `eznit share` / `unshare` | Make a file public to the instance, or private again |
 
-Every command that reads or writes your own rows needs a session: the API
-requires the token, and the CLI sends the one `login` stored. The exceptions
-are `signup`, `login`, and the public reads — the catalogue (`eznit template
-list`, `template show`, `template apply` on a public id) and the shared files,
-which answer a visitor who has never signed up.
+Templates, the command library and git hosts are covered in the
+[CLI Reference](https://github.com/fiwon123/eznit/wiki/CLI-Reference):
 
 ```sh
-eznit signup
-eznit login
-eznit upload
-eznit list
-eznit download
+eznit template publish <folder>   # publish a folder as a template
+eznit template list               # the catalogue
+eznit command add <file>          # keep a script, pull it into templates by id
+eznit repo clone <owner/name>     # clone a repo the stored GitHub token can reach
 ```
 
-#### Templates
+A session is required for anything that touches your own rows; `signup`, `login`
+and the public reads (catalogue, shared files) are the exceptions.
 
-A template is a folder structure — agent instructions, prompts, editor config —
-that can be published and applied to another project:
-
-| Command | What it does |
-| --- | --- |
-| `eznit template publish <folder>` | Publish a folder as a template; `--command <id>=<path>` pulls a command in |
-| `eznit template list` | The catalogue: the public templates and your own |
-| `eznit template show <id>` | One template, its files and the variables it asks for |
-| `eznit template apply <id>` | Write a template into the current folder |
-| `eznit template init` | Write a starter template to publish |
-| `eznit command add <file>` | Keep a script in your command library (`--replace` updates it) |
-| `eznit command list` | List your command library |
-| `eznit command show <name>` | Show one command |
-| `eznit command remove <name>` | Remove a command; a command a template pulls in is refused |
-
-A template holds text files and binary files. Text travels as it is; a binary
-file — an image, a compiled helper, anything with a byte that is not valid
-UTF-8 — is sent as base64 and stored on disk by the server, under the upload
-root. The CLI detects the kind per file, keeps the executable bit, and reports
-the files it left out. Limits: 256 KiB per text file and 4 MiB of text per
-template, 10 MiB per binary file and 32 MiB per template counting both.
-
-A **command** is a file kept once in your library and pulled into templates by
-id, so one copy is updated once:
-
-```sh
-eznit command add scripts/fmt.sh --name fmt
-eznit template publish . --command <command-id>=scripts/fmt.sh
-```
-
-`eznit template apply` writes the command at its target path. A command that a
-template pulls in cannot be removed until the template stops referencing it.
-
-#### Git hosts
-
-`eznit` can list the repositories a GitHub token can reach and clone one. The
-token is a **personal access token**, and it stays on your machine: it is kept
-in `~/.eznit/config.json` (mode 0600) next to the session token, and the eznit
-API never sees it.
-
-| Command | What it does |
-| --- | --- |
-| `eznit repo auth` | Store a GitHub token (prompt by default, `--token`, `--token-file`); `--remove` forgets it |
-| `eznit repo list` | List the repositories the token can reach |
-| `eznit repo clone <owner/name> [--dir <path>]` | Clone into `<dir>/github/<owner>/<repo>` (default `~/eznit`) |
-
-```sh
-eznit repo auth                 # paste a token at the prompt
-eznit repo list
-eznit repo clone fiwon123/eznit
-```
-
-The clone runs `git` directly, with the token supplied through the child
-process's environment (`http.extraheader`), so it is never in the command
-line, never in the URL, and never written into the clone's `.git/config`. The
-remote stays the plain HTTPS URL. `EZNIT_REPOS` sets the clone root when
-`--dir` is not given, and `EZNIT_GITHUB_API` points at a GitHub Enterprise API.
-`eznit logout` removes the session token and leaves the host token in place;
-`eznit repo auth --remove` removes that one.
-
-## API reference
-
-Every `/v1` operation is described in one OpenAPI 3.1 document, served by the
-API itself:
-
-- **`http://localhost:4000/docs`** — Swagger UI, with an **Authorize** button
-  for a session token and "Try it out" on every operation.
-- **`http://localhost:4000/v1/openapi.yaml`** — the document.
-- **`http://localhost:4000/v1/openapi.json`** — the same document as JSON.
-
-The UI assets are embedded in the binary, so the reference works with no
-internet access, and none of these routes needs a session — a client author can
-read the contract before they have a token. The document is committed at
-`internal/platform/openapi/openapi.yaml`. A test fails when it and the router
-disagree, so it describes the API as it is, including the known gaps listed in
-[`AGENTS.md`](AGENTS.md#known-gaps--read-this-before-trusting-a-green-run).
-
-## Web UI
+### Web UI
 
 | | Dark | Light |
 |---|---|---|
@@ -233,422 +112,92 @@ disagree, so it describes the API as it is, including the known gaps listed in
 | **Log in** | ![log in, dark](docs/screenshots/login-dark.png) | ![log in, light](docs/screenshots/login-light.png) |
 | **Sign up** | ![sign up, dark](docs/screenshots/signup-dark.png) | ![sign up, light](docs/screenshots/signup-light.png) |
 
-Captured by `make screenshots` against a running stack; see
-[docs/screenshots/README.md](docs/screenshots/README.md) to regenerate them.
+Captured with `make screenshots` against a running stack. Sign up or log in through
+the page, or paste the token from `eznit login` into `localStorage` as
+`eznit.token`. The UI lives in `web/` and is served two ways: from disk
+(`web/dist`) by the API, and embedded in the released binaries.
 
-The web UI lives in `web/`. It reaches the browser two ways:
+### API reference
 
-- **from disk** — the API serves `web/dist` when it holds a build, so a
-  production server runs the UI from the same origin as the API, and no CORS
-  is needed. Rebuilding the UI is enough; the API does not need a restart.
-- **from the binary** — the API and the GUI carry the UI embedded at build
-  time (`web/embed.go`), so a released binary serves it with no `web/dist`
-  next to it. `make build_api`, `make build_gui` and the compose image
-  (`Dockerfile.api`) build the UI first for that reason.
+Every `/v1` operation is described in one OpenAPI 3.1 document, served by the API
+itself:
 
-A `web/dist` with no `index.html` — a fresh clone, where the folder holds only
-the committed placeholder — counts as "no UI": the API serves the API only.
+- **`http://localhost:4000/docs`** — Swagger UI, with an **Authorize** button and
+  "Try it out" on every operation.
+- **`http://localhost:4000/v1/openapi.yaml`** — the document, committed at
+  `internal/platform/openapi/openapi.yaml`.
+- **`http://localhost:4000/v1/openapi.json`** — the same document as JSON.
 
-| Command | What it does |
-| --- | --- |
-| `make web_install` | Install the web dependencies (`npm ci`) |
-| `make web_dev` | Run the Vite dev server on `http://localhost:5173`; `/v1` is proxied to `http://localhost:4000` |
-| `make web_build` | Build the static assets into `web/dist` |
-| `make web_check` | Lint, format check, typecheck and build the web UI (fails on any error) |
-| `make dev-up` | Start the dev loop: UI `:5173` (Vite, hot reload), API `:4000` |
-| `make dev-restart` | Restart the loop: `dev-down`, then `dev-up` (no rebuild) |
-| `make dev-build` | Rebuild the `dev` and `web-dev` images after a Dockerfile or entrypoint change |
-| `make up` | Build and run the product stack: UI on `:5173`, API on `:4000` |
-
-The quickest way to see it needs no Node on the host — the images build the UI:
-
-```sh
-make setup
-make up                 # UI http://localhost:5173 — API http://localhost:4000
-```
-
-For the development loop, with hot reload — one command, no host Go or Node:
-
-```sh
-make setup
-make dev-up             # UI http://localhost:5173 + API http://localhost:4000
-```
-
-Both ports answer when it returns: the API runs inside the sandbox against the
-source (`make run_api`), and the UI is Vite in the `web-dev` service, proxying
-`/v1` to it. Editing a `.tsx` file reloads the browser; a `.go` file needs the
-API restarted (`make dev-restart`, or `make run_api` again inside
-`make dev-shell`).
-
-Host tools still work: `make run_api` and `make web_dev` are the same two
-processes outside containers.
-
-Sign up or log in through the CLI or the API, put the session token in
-`localStorage` as `eznit.token` in the browser, or use the login page.
-
-Node is pinned in `mise.toml` (the CI reads it via `node-version-file`).
-
-### The GUI binary
-
-`make build_gui` produces one executable that serves the UI it carries and
-opens a browser on it (`GUI_PORT`, default `8765`). The pages call `/v1` on the
-same origin, so the GUI answers those calls one of two ways:
-
-- **`GUI_API_URL` names a running API** — `/v1` is proxied there. This is the
-  launcher mode: the GUI needs no database configuration of its own, and
-  several windows can point at one server.
-- **otherwise the `DB_*` variables describe a database** — the API runs inside
-  the GUI process on the same listener, so one file is the whole product. The
-  GUI reads `API_UPLOADS` and `API_LOGS` like the API does, and `.env.local` /
-  `.env` if they are there.
-
-With neither, the window still opens and every `/v1` call answers `503` with
-the variable to set. A GUI that cannot reach the API or the database it was
-configured with says so the same way, instead of leaving the page with the
-static file server's 404.
-
-```sh
-# one file, with the database configuration from .env
-./build/gui/eznit-gui
-
-# or: a window in front of an API that is already running
-GUI_API_URL=http://localhost:4000 ./build/gui/eznit-gui
-```
+The UI assets are embedded in the binary, so the reference works with no internet
+access, and none of these routes needs a session. A test fails when the document
+and the router disagree.
 
 ## Security status
 
 This is a self-hosted tool, and it is not hardened. What is true today:
 
-- **The coverage is partial.** The API's domains, the middleware, the CLI, the
-  web UI and the OpenAPI document have tests; `cmd/cli`, `pkg/errors`,
-  `pkg/logger` and `pkg/types` have none. `make check` compiles and vets
-  everything. Treat a green run as "it builds, and the tested packages
-  passed" — not "it works".
-- **The first account is the admin.** It is the only one that may list, update
-  or delete other accounts; every account after it is an ordinary user.
-  Promote another with `UPDATE users SET is_admin = true WHERE email = ...`.
+- **Coverage is partial.** The API domains, the middleware, the CLI, the web UI and
+  the OpenAPI document have tests; `cmd/cli`, `pkg/errors`, `pkg/logger` and
+  `pkg/types` have none. A green `make check` means "it builds and the tested
+  packages passed" — not "it works".
+- **The first account is the admin.** It is the only one that may list, update or
+  delete other accounts. Promote another with
+  `UPDATE users SET is_admin = true WHERE email = ...`.
 - Files are stored unencrypted on the server's disk.
 - There is no rate limiting on `signup` or `login`.
 - Signup and login do not say whether an address has an account: a signup for a
-  taken address answers like a new one (and creates nothing), and a failed login
-  is one generic `401`. The server log keeps the difference.
-- Passwords are hashed; session tokens are random and stored in the database
-  with an expiry. The only `golang.org/x/crypto` package this repository links
-  is `bcrypt` — the module's SSH and S/MIME advisories do not apply to the code
-  that is actually compiled. CI now runs a reachable-vulnerability scan
-  (`govulncheck`), and `make vuln` runs the same scan locally. It fails only
-  when this code reaches a vulnerable function: a module-level advisory in a
-  package nothing calls — such as the unmaintained `openpgp` package in
-  `x/crypto`, which has no fix — is printed by the tool but does not fail the
-  gate. `make check` stays offline and does not scan.
-- A git-host token is stored only in the CLI's own config file (mode 0600).
-  It is never sent to the eznit API, never logged, never put in a URL, and
-  never written into a clone's `.git/config`. It is passed to `git` through
-  the child process's environment, which the same user's other processes can
-  read — the same exposure as any credential on a shared machine.
+  taken address answers like a new one, and a failed login is one generic `401`.
+- Passwords are hashed (bcrypt); session tokens are random and stored with an
+  expiry. CI runs a reachable-vulnerability scan (`govulncheck`); `make vuln` runs
+  it locally.
+- A git-host token stays in the CLI's own config file (mode 0600); the eznit API
+  never sees it.
 
-**Do not put this on a public interface as it stands.** It is fine on
-`localhost`, or behind a VPN you control.
+**Do not put this on a public interface as it stands.** It is fine on `localhost`,
+or behind a VPN you control. Local secret files (`.env`, `.env.local`,
+`secrets/db_password.txt`) must be mode `600` — see
+[Configuration](https://github.com/fiwon123/eznit/wiki/Configuration).
 
-### Local secret files
+The deferred hardening work is tracked on the
+[roadmap board](https://github.com/users/fiwon123/projects/12).
 
-`.env`, `.env.local` and `secrets/db_password.txt` must be mode `600` — they
-hold credentials, and the default umask makes them readable by every user on
-the machine. They are gitignored, so this cannot be fixed by a commit; set it
-on each checkout (`make setup` creates the first and the third with that mode
-already set):
+## Documentation
 
-```sh
-chmod 600 .env .env.local secrets/db_password.txt
-```
-
-## How to develop
-
-```sh
-make check     # gofmt, vet, test, build — the local verification gate
-make vuln      # scan for reachable dependency vulnerabilities (needs network)
-make run_api   # run the API against the configured database
-make run_cli   # run the CLI
-```
-
-`make check` needs no database, no container and no secret file: it compiles
-the API and the CLI, it does not run them. That is deliberate — the gate has to
-work on a fresh clone. It fails loudly if the Go toolchain is missing rather
-than skipping, and it lists the packages with no test files, because `go test`
-prints `[no test files]` and still exits 0.
-
-### Dev sandbox
-
-The commands above need a Go toolchain on the host. The sandbox removes that
-requirement: it is a container with Go **1.27.3** — the version in `go.mod`,
-the same one CI uses — and the workspace is bind-mounted into it, so the files
-you edit are the same files. The frontend has the same arrangement in
-`web-dev`: the Node from `mise.toml`, running Vite against the same bind mount.
-
-```sh
-make dev-up     # the loop: UI :5173 (Vite, hot reload) + API :4000
-make dev-shell  # a shell inside the sandbox
-make dev-down   # stop it (keeps the volumes)
-```
-
-`make dev-up` starts four things: PostgreSQL, the migrations, the sandbox with
-`make run_api` in it, and the Vite dev server. Both HTTP ports answer when it
-returns, and an edit on the host is visible in the other one immediately — the
-Go process recompiles on its next start (there is no file watcher: restart the
-API after a Go change), and Vite reloads the browser on a web change.
-
-`dev-up` does not rebuild an image, so a start is a start: nothing is compiled
-into an image layer, and it reads the same on the second run as on the first.
-Compose still builds the images the first time they are needed. An edit to a
-`Dockerfile`, `web/Dockerfile.dev`, or a script one of them `COPY`s is the one
-change the loop cannot pick up by itself — `make dev-build` rebuilds both
-images, and `make dev-restart` is `dev-down` followed by `dev-up`.
-
-| Role | Where | Port |
-| --- | --- | --- |
-| Frontend (the app) | `web-dev` service, Vite | **5173** |
-| Backend (the API) | `dev` service, `make run_api` | **4000** |
-
-| What you want | Commands | Ports |
-| --- | --- | --- |
-| the product, in containers | `make up` | UI `:5173`, API `:4000` |
-| the dev loop, against the source | `make dev-up` | UI `:5173`, API `:4000` |
-| the same loop with host toolchains | `make run_api` + `make web_dev` | API `:4000`, UI `:5173` |
-
-The two entry points are alternatives: `make up` and `make dev-up` publish the
-same two ports, so each refuses to start while the other one holds them, and
-names the command that clears the way (`make docker_down` or `make dev-down`)
-instead of failing on `bind: address already in use`.
-
-`Ctrl-C` stops the log stream and leaves the loop running — `make dev-down` is
-what stops it. The marker file `.dev/sandbox-start` (gitignored) is how the
-entrypoint knows to start the API rather than sleep; `dev-up` creates it and
-`dev-down` removes it, so a bare `docker compose up dev db migrate` is still a
-quiet sandbox with a shell.
-
-Inside the sandbox the configuration comes from the container, not from `.env`:
-compose sets `DB_HOST=db` and `DB_PORT=5432` because that is the in-network
-address, and the Makefile deliberately does not import the host's `.env` there.
-The database password stays a file secret the container reads from
-`/run/secrets/db_password`.
-
-The sandbox waits for the stack: compose starts PostgreSQL, waits for it to
-be healthy, runs the migrations, and only then starts the sandbox. A
-failed migration keeps the sandbox down rather than starting it against an
-unmigrated database.
-
-Everything also works without Make:
-
-```sh
-mkdir -p .dev && touch .dev/sandbox-start      # makes the sandbox run the API
-docker compose up dev web-dev db migrate       # the whole loop
-python scripts/dev-up.py dev-up                # native Windows: same thing
-```
-
-| Platform | How to run the dev flow |
+| Page | What it covers |
 | --- | --- |
-| Linux, macOS | `make dev-up` |
-| WSL2 | `make dev-up` (the host is Linux) |
-| Windows (native) | `python scripts/dev-up.py dev-up`, or `docker compose up dev web-dev db migrate` after creating the marker |
+| [Getting Started](https://github.com/fiwon123/eznit/wiki/Getting-Started) | Run the stack and put a file in and out |
+| [CLI Reference](https://github.com/fiwon123/eznit/wiki/CLI-Reference) | Every command, flag and the config file |
+| [Configuration](https://github.com/fiwon123/eznit/wiki/Configuration) | Every variable, secret and port |
+| [Development](https://github.com/fiwon123/eznit/wiki/Development) | The dev loop, sandbox, migrations and the gates |
+| [Troubleshooting](https://github.com/fiwon123/eznit/wiki/Troubleshooting) | The errors you are likely to hit |
+| [Releases](https://github.com/fiwon123/eznit/wiki/Releases) | How a release is cut and what the archives hold |
 
-`make dev-build` and `python scripts/dev-up.py dev-build` are the rebuild path
-on each: recreating the containers, which `dev-up` and `dev-restart` both do, is
-not a rebuild, and only an image change needs one.
+In the repository: [ARCHITECTURE.md](ARCHITECTURE.md) is the map of the request
+path, the data model and where a change belongs; [CONTRIBUTING.md](CONTRIBUTING.md)
+is how to send a change. The wiki's source lives at `docs/wiki/` — edit it through
+a pull request, not only in the wiki UI, or the next sync overwrites it.
 
-The `dev` and `web-dev` services are behind the `dev` Compose profile: plain
-`docker compose up` is the **product** (see [Run the stack](#run-the-stack)),
-and naming one of them explicitly enables the profile. `make dev-up` does
-exactly that, and creates the `.dev/sandbox-start` marker that tells the
-sandbox entrypoint to start the API instead of sleeping for a shell.
-
-The sandbox shares the Compose network with PostgreSQL, so the API started
-inside it (`make run_api`) reaches the database at `db:5432` with the stock
-`.env` — no `DB_HOST` override, and no password on the command line: the
-container reads the same file secret the API container reads.
-
-`make dev-opencode` runs the AI coding agent inside the sandbox, with the
-host's `~/.config/gh`, `~/.config/opencode` and `~/.gitconfig` mounted
-read-only. It needs a **Linux** opencode binary: on macOS and native Windows
-the target refuses with a clear message and the agent stays on the host (use
-WSL2, where the host binary *is* Linux). The container has no Docker socket —
-the agent inside it cannot manage containers, on purpose.
-
-### Layout
+## Repository layout
 
 ```
-cmd/             the three entrypoints: api, cli, gui
+cmd/             the entrypoints: api, cli, gui
 internal/domain/ one package per resource: users, sessions, files, templates
                  handler -> service -> repository, plus dto.go
-internal/platform/
-                 middleware (session guard), sql (connection), webui (SPA handler)
+internal/platform/ middleware (session guard), sql, webui (SPA), openapi
 pkg/             logger, errors, http/json helpers, path helpers, types
 db/migrations/   golang-migrate SQL, one up/down pair per change
 web/             React + TypeScript UI; embeds into the api/gui binaries
 ```
 
-The layering is strict: a handler decodes and writes, a service holds the
-rules, a repository is the only place that speaks SQL.
-
-[ARCHITECTURE.md](ARCHITECTURE.md) is the full map: the request path, the data
-model, where file bytes live, how the UI reaches the browser, and where a
-change belongs.
-
-### Migrations
-
-`db/migrations/` is append-only. Never edit a migration that has run
-somewhere — add a new numbered up/down pair.
-
-```sh
-make migrate_up
-make migrate_down      # one step
-make migrate_down_all
-```
-
-The migration targets read `DB_USER`, `DB_HOST` and `DB_NAME` from `.env` or
-`.env.local`; if they are missing, they say so instead of failing with an empty
-connection string.
-
-### Checking your change
-
-1. `make check` — the gate above
-2. If you touched the API, run the stack and exercise the route: the gate
-   compiles, it does not call anything
-3. If the change is user-visible in the CLI, read the output — a CLI has no
-   screenshot, and its output is the artifact
-
-### Releasing
-
-A release is a `v*` tag on `main`. `.github/workflows/release.yml` refuses a tag
-that does not point at a commit on `main`, builds the archives with
-`make release VERSION=<tag>` — the same target a developer runs — and publishes
-them with `gh release create`. Before publishing, a `windows-latest` job unpacks
-the Windows CLI archive and runs `eznit -v` and `ez -v`; `publish` needs it, so
-a binary that cannot start fails the release instead of shipping. The notes are
-built from the pull requests merged into `dev`: every feature PR is
-squash-merged, so `--generate-notes` would see the release commit and miss them.
-
-`make release` stages one folder per archive and compresses **the folder**, so a
-download extracts into a folder named after it instead of scattering files into
-the directory you ran the command in. `PLATFORMS` defaults to `windows/amd64`,
-`windows/arm64`, `linux/amd64` and `linux/arm64`; the platform is in the
-archive name, never in the binary name.
-
-| Asset | Contents |
-| --- | --- |
-| `eznit-cli_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux) | `eznit`, `ez`, `add_to_path.ps1` or `add_to_path.sh`, README, LICENSE |
-| `eznit-server_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux) | `eznit-server`, `eznit-gui`, `db/migrations/`, `scripts/run_migrate.sh`, `docker-compose.yml`, the example configuration and secret files, `RUNNING.md`, README, LICENSE |
-| `checksums.txt` | SHA-256 of every archive |
-
-Each archive is checked after it is written: exactly one top-level folder, named
-like the archive, and no `..` member. `make release` then runs
-`make verify-release`, which reads the finished archives — the names inside, the
-PE of every Windows binary, and (when `PROVENANCE_COMMIT` is set, as the
-workflow does) the revision and `vcs.modified=false`. Every Windows binary also
-carries an icon, a per-monitor DPI manifest and a version block, generated from
-`assets/logo.png` before the build and removed afterwards. The server bundle's
-`RUNNING.md` says which Compose services work from it and which need a source
-checkout.
-
-The workflow can also be run by hand (`workflow_dispatch`): that run builds the
-same archives and keeps them on the run, and publishes nothing. Only a tag
-publishes.
-
-## Troubleshooting
-
-**`ERROR: DB_USER, DB_HOST and DB_NAME are not set`**
-
-The migration targets need a database connection. Copy `.env.example` to
-`.env`, fill it in, and try again. `make check` and `make build` do not need it.
-`make setup` creates the file for you.
-
-**`make check` passes, but nothing seems tested**
-
-That is correct and expected — there are no test files yet. `make check`
-prints the list of packages it did not cover. Coverage is a tracked gap, not an
-oversight in the gate.
-
-**The API starts and immediately exits**
-
-Check the log for the connection error. The API reads `DB_PASSWORD_FILE` first
-and falls back to `DB_PASSWORD`; Compose sets the former from the Docker
-secret. If you are running the API by hand, set one of them.
-
-**Permission denied reading a secret file**
-
-The file is mode `600` and owned by another user. See
-[Local secret files](#local-secret-files).
-
-**`set: pipefail: invalid option name` (or `bad interpreter`) in the sandbox**
-
-The scripts run through the bind mount, so bash parses your working tree's
-bytes. A checkout made before the `.gitattributes` rule was added keeps CRLF
-endings, and `git status` stays clean while it does. Re-check the files out
-with LF endings:
-
-```sh
-git rm --cached -r . >/dev/null && git reset --hard
-```
-
-**`docker compose up` fails on a missing secret**
-
-The database secret is a file secret, so Compose refuses to start without it.
-`make setup` creates it from the committed example.
-
-**`EACCES: permission denied, mkdir '/home/devuser/.cache/opencode'`, or `mkdir /go/pkg/mod/cache: permission denied` in the sandbox**
-
-The sandbox's caches are Docker volumes, and Docker creates a mount destination
-the image does not contain **as root** — while the container runs as your UID.
-The image now creates those directories itself, so a sandbox built from the
-current `Dockerfile` is fine.
-
-A sandbox created **before** that fix keeps its old, root-owned volumes:
-Docker does not re-initialise a volume that already exists. Recreate them
-once:
-
-```sh
-make dev-reset     # docker compose down --volumes
-make dev-up
-```
-
-`make dev-reset` also drops the `postgres-data` and `api-data` volumes — the
-database and the uploaded files — which is why it is not called `reset`. The
-migrations run again on the next `make dev-up`.
-
-**`bind: address already in use` on port 4000 or 5173**
-
-The product and the dev loop publish the same two ports, and they are
-alternatives. Both entry points now check before they start anything and say
-which one is running, instead of failing halfway with Docker's message:
-
-```sh
-make docker_down      # stop the product, then: make dev-up
-make dev-down         # stop the dev loop, then: make up
-```
-
-When the port belongs to something that is not this stack (a `make run_api` in
-another terminal, a second checkout), move one of them:
-
-```sh
-HOST_PORT=4001 make dev-up                     # the sandbox API
-WEB_PORT=5174 make dev-up                      # the dev UI (HMR follows it)
-API_PORT=4001 docker compose up                # the product API
-WEB_PORT=5174 docker compose up                # the product UI
-```
-
-**The UI loads on `:5173` but every request fails**
-
-The Vite dev server proxies `/v1` to the API, so an API that is not running
-looks like a broken UI: the page renders and the data does not. Check the API
-first — `curl -s -o /dev/null -w '%{http_code}\n' localhost:4000/v1/healthcheck`
-— then the sandbox log for a compile error (`make dev-log`). With
-`make dev-up` the log stream is attached, so the error is usually on screen.
+The layering is strict: a handler decodes and writes, a service holds the rules, a
+repository is the only place that speaks SQL.
 
 ## Contributing
 
 Issues and pull requests are welcome. The short version: open an issue first,
-branch from `dev`, run `make check` (and `make web_check` for UI changes), and
-say in the pull request what ran and what did not. The full rules are in
-[CONTRIBUTING.md](CONTRIBUTING.md) and `AGENTS.md`.
+branch from `dev`, run `make check` (and `make web_check` for UI changes), and say
+in the pull request what ran and what did not. The full rules are in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 This project is developed with an AI agent. The review bar is the same: judge by
 tests and evidence, not by who wrote it.

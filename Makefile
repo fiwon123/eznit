@@ -612,6 +612,42 @@ screenshots: ## Capture README screenshots into docs/screenshots (needs the app 
 	@curl -fsS -o /dev/null "$(SCREENSHOTS_URL)" || { echo "ERROR: $(SCREENSHOTS_URL) is not answering — start the app with 'make up' (or 'make dev-up')" >&2; exit 1; }
 	@cd $(WEB_FOLDER) && BASE_URL="$(SCREENSHOTS_URL)" npm run screenshots
 
+# --- Wiki --------------------------------------------------------------------
+# The wiki's source is docs/wiki/. GitHub keeps a wiki in a separate git
+# repository (<repo>.wiki.git), so this copies the pages there and pushes them.
+# Edit pages here, through a pull request: a change made only in the wiki UI is
+# not in docs/wiki/ and the next sync overwrites it.
+WIKI_REPO ?= https://github.com/fiwon123/eznit.wiki.git
+WIKI_BRANCH ?= master
+WIKI_DIR := build/wiki
+
+wiki_push: ## Publish docs/wiki/*.md to the GitHub wiki
+	@command -v git >/dev/null 2>&1 || { echo "ERROR: git is required" >&2; exit 1; }
+	@if ! git ls-remote "$(WIKI_REPO)" >/dev/null 2>&1; then \
+		echo "ERROR: the wiki repository does not exist yet." >&2; \
+		echo "       GitHub creates <repo>.wiki.git only after the first page is" >&2; \
+		echo "       saved in the web UI — there is no API for it. Once only:" >&2; \
+		echo "         open https://github.com/fiwon123/eznit/wiki" >&2; \
+		echo "         click 'Create the first page', title it 'Home', save" >&2; \
+		echo "       then rerun 'make wiki_push'." >&2; \
+		exit 1; \
+	fi
+	@rm -rf "$(WIKI_DIR)"
+	@git clone --quiet "$(WIKI_REPO)" "$(WIKI_DIR)"
+	@cp docs/wiki/*.md "$(WIKI_DIR)"/
+	@git -C "$(WIKI_DIR)" add -A
+	@if git -C "$(WIKI_DIR)" commit -q -m "docs: sync wiki from docs/wiki"; then \
+		echo "[wiki] committed"; \
+	else \
+		echo "[wiki] no changes to publish"; \
+	fi
+	@if command -v gh >/dev/null 2>&1; then \
+		git -C "$(WIKI_DIR)" -c credential.helper='!gh auth git-credential' push origin HEAD:$(WIKI_BRANCH); \
+	else \
+		git -C "$(WIKI_DIR)" push origin HEAD:$(WIKI_BRANCH); \
+	fi
+	@echo "[wiki] published to $(WIKI_REPO) ($(WIKI_BRANCH))"
+
 # ---------------------------------------------------------------------------
 # Dev sandbox (multiplatform)
 #
