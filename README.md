@@ -84,7 +84,7 @@ Sign up or log in on the page, or paste the token from `eznit login` into
 | --- | --- | --- |
 | **Files** | `upload`, `list`, `download`, `delete`, `share` | bytes on your disk, indexed in PostgreSQL |
 | **Templates** | `template publish`, `list`, `show`, `apply`, `export`, `init` | a folder: text, binary, variables, commands |
-| **Commands** | `command add`, `list`, `show`, `remove` | a script kept once and pulled into templates by id |
+| **Commands** | `command add`, `list`, `show`, `remove`, `import`, `export` | a script kept once and pulled into templates by id; a crower pack imports/exports them |
 | **Repositories** | `repo auth`, `list`, `clone` | a clone; the token stays on your machine |
 
 A template may hold anything: `AGENTS.md`, `.opencode/agents/`, a `SKILL.md`,

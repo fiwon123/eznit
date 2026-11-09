@@ -16,20 +16,16 @@ machine next to it is solving the wrong problem.
   server and no account ([#184](https://github.com/fiwon123/eznit/issues/184),
   v0.14.0). The same path rules and limits are checked on read, and values are
   asked locally.
+- **Crower packs** — `eznit command export --crower pack.toml` and
+  `eznit command import --crower pack.toml` move the command library between
+  eznit and [crower](https://github.com/fiwon123/crower)
+  ([#185](https://github.com/fiwon123/eznit/issues/185), v0.15.0). A script maps
+  to `Exec`; `Steps` win on import, as they do in crower. Aliases, env, shell,
+  cwd and timeout are reported and not kept; binary commands cannot be exported.
 - `eznit template init` writes a starter with no server and no account.
 - The command library keeps a script once and pulls it into templates by id.
 - A GitHub token on your machine lists and clones repositories; the token never
   reaches the API.
-
-## 🐦 Crower packs — not implemented
-
-[#185](https://github.com/fiwon123/eznit/issues/185).
-
-[crower](https://github.com/fiwon123/crower) keeps shell aliases and multi-step
-commands in shareable TOML packs; eznit keeps scripts in a command library that
-templates pull in. They hold the same thing. The plan is
-`eznit command import|export --crower pack.toml`, so a workflow is written once
-and used by both.
 
 ## 📱 Device-to-device over cthrone — not implemented
 
