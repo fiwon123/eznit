@@ -197,21 +197,14 @@ is that the sandbox can now be run at all, which it could not before.
 
 ## Known gaps — read this before trusting a green run
 
-These are tracked issues, not surprises for a reviewer to find:
+The three tracked API gaps are closed: #108 (the file record answered `302` with
+the storage path, fixed in #117), #109 (the admin guard was a TODO) and #110
+(any session could read any account's email). The OpenAPI document describes the
+API that exists, the admin guard included.
 
-| Gap | Issue | Why it matters |
-| --- | --- | --- |
-| The users and the middleware packages have no tests | — | `make check` compiles and vets them; it executes nothing. `sessions` has a schema test only |
-| `GET /v1/users` and `GET /v1/users/{id}` answer with any account's email | #110 | any caller with a session can enumerate the instance's accounts |
-| `PUT` and `DELETE /v1/users/{id}` answer `401` for every caller | #109 | the admin guard is a TODO, so the routes are unreachable |
-| `GET /v1/files/{id}` answers `302` with the storage record, `Path` included | #108 | a client that follows redirects reads nothing, and the body leaks where the bytes live |
-
-The OpenAPI document (`internal/platform/openapi/openapi.yaml`) records these
-three as known gaps instead of promising what the code does not do.
-
-**The files, sessions and templates domains, the CLI, the schema helper, the
-web UI, the OpenAPI package and the path helper have tests; the rest of the
-repository does not.**
+**The files, sessions, users and templates domains, the CLI, the schema helper,
+the middleware, the web UI, the OpenAPI package and the path helper have tests;
+`cmd/cli`, `pkg/errors`, `pkg/logger` and `pkg/types` have none.**
 `go test ./...` prints `[no test files]` for the packages without one, and
 still exits 0. A green `Test` step in CI means
 "the packages with tests passed" — name the packages when you report a
@@ -283,8 +276,11 @@ can set them for you.
 seed anything. (`make docker_up_all` starts the dev sandbox and the stack,
 excluding the product API — the two both publish port 4000, and the product UI
 on 5173 collides with `make web_dev`.) The first `signup`
-through the CLI or the API creates the first user. There is no admin account
-and no way to promote one from the CLI yet.
+through the CLI or the API creates the first user, and **that first account is
+the instance's admin** — it is the only one that may list, update or delete
+other accounts. Promote another account with
+`UPDATE users SET is_admin = true WHERE email = '<address>';`; no route grants
+the flag, on purpose.
 
 ## Agents
 

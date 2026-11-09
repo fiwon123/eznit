@@ -319,10 +319,14 @@ GUI_API_URL=http://localhost:4000 ./build/gui/eznit-gui
 
 This is a self-hosted tool, and it is not hardened. What is true today:
 
-- **The coverage is partial.** The files domain, the CLI and the path helper
-  have tests; the users, sessions, middleware and platform packages have
-  none. `make check` compiles and vets everything. Treat a green run as
-  "it builds, and the tested packages passed" — not "it works".
+- **The coverage is partial.** The API's domains, the middleware, the CLI, the
+  web UI and the OpenAPI document have tests; `cmd/cli`, `pkg/errors`,
+  `pkg/logger` and `pkg/types` have none. `make check` compiles and vets
+  everything. Treat a green run as "it builds, and the tested packages
+  passed" — not "it works".
+- **The first account is the admin.** It is the only one that may list, update
+  or delete other accounts; every account after it is an ordinary user.
+  Promote another with `UPDATE users SET is_admin = true WHERE email = ...`.
 - Files are stored unencrypted on the server's disk.
 - There is no rate limiting on `signup` or `login`.
 - Passwords are hashed; session tokens are random and stored in the database

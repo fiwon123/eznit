@@ -87,6 +87,11 @@ A CLI command, end to end:
 3. **`internal/platform/middleware`** runs first on a guarded route: it asks the
    sessions service whether the token is valid, and puts the caller's user id in
    the request context. No token, no handler.
+   An admin route — the account list, the update and the delete of one account —
+   wears `AuthAdmin` instead: the same session check, then one more question to
+   the users service, whether the account's `is_admin` column is set. A live
+   session that is not an admin gets `403`, and a guard wired without an answer
+   to that question refuses everything.
    A public read — the catalogue, a public template's detail and files, the
    shared-file list and the bytes of a public file — wears `OptionalUser`
    instead: a token, when there is one, is resolved the same way, and a request
@@ -195,7 +200,7 @@ the gate fails otherwise.
 
 | Table | Holds |
 | --- | --- |
-| `users` | id, email, password hash, created_at, updated_at |
+| `users` | id, email, password hash, created_at, updated_at, is_admin — the first account created is the admin |
 | `files` | id, user_id, name, ext, content_type, path, version, timestamps |
 | `files_history` | file_id, path, version — one row per stored version: upload writes the first, an update adds the next, and earlier rows are never rewritten |
 | `sessions` | token (primary key), user_id, is_active, created_at, expires_at |
@@ -318,8 +323,7 @@ tracked, not forgotten:
   to `4000` (what the CLI, the GUI and the docs expect), and the compose file
   also uses it for the published host port. It is not a way to move the service
   behind a proxy without changing the proxy target.
-- **Several packages have no tests.** `internal/domain/users`,
-  `internal/platform/middleware`, `pkg/errors`, `pkg/logger` and `pkg/types`
-  are compiled and vetted, not exercised. `internal/domain/sessions` has a
-  schema test (its reads match its struct and the migrations), not a
+- **Four packages have no tests.** `cmd/cli`, `pkg/errors`, `pkg/logger` and
+  `pkg/types` are compiled and vetted, not exercised. `internal/domain/sessions`
+  has a schema test (its reads match its struct and the migrations), not a
   behaviour test.

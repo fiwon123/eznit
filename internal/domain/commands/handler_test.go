@@ -83,7 +83,7 @@ func newTestRouter(t *testing.T, repo Repository, userID uuid.UUID) *chi.Mux {
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
 
-	guard := middleware.NewGuard(sessions.NewService(newFakeSessionsRepository(session), log), log)
+	guard := middleware.NewGuard(sessions.NewService(newFakeSessionsRepository(session), log), nil, log)
 	handler := NewHandler(NewService(repo, t.TempDir(), log), guard, log)
 
 	router := chi.NewRouter()
