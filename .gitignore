@@ -49,6 +49,12 @@ __pycache__/
 # project
 build/
 build/*
+# The GUI binary at the repository root is a build output — `make build_gui`
+# writes build/gui/. A stray copy must never be committed (it was, once).
+/gui
+# Windows resource object, generated from assets/logo.png between the tool run
+# and the build and removed afterwards. A committed one is stale.
+*.syso
 .zed/*
 secrets/db_password.txt
 

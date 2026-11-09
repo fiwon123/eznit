@@ -31,6 +31,7 @@ A Go API, CLI client, and web UI for uploading, listing, and retrieving your own
   - [Migrations](#migrations)
   - [Checking your change](#checking-your-change)
 - [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
 - [License](#license)
 
 ## About
@@ -605,6 +606,16 @@ looks like a broken UI: the page renders and the data does not. Check the API
 first — `curl -s -o /dev/null -w '%{http_code}\n' localhost:4000/v1/healthcheck`
 — then the sandbox log for a compile error (`make dev-log`). With
 `make dev-up` the log stream is attached, so the error is usually on screen.
+
+## Contributing
+
+Issues and pull requests are welcome. The short version: open an issue first,
+branch from `dev`, run `make check` (and `make web_check` for UI changes), and
+say in the pull request what ran and what did not. The full rules are in
+[CONTRIBUTING.md](CONTRIBUTING.md) and `AGENTS.md`.
+
+This project is developed with an AI agent. The review bar is the same: judge by
+tests and evidence, not by who wrote it.
 
 ## License
 
