@@ -121,6 +121,77 @@ func do(t *testing.T, router *chi.Mux, method, path, token, body string) *httpte
 	return recorder
 }
 
+// The signup route answers the same for an address that already has an account
+// as for a new one, and creates nothing.
+func TestTheSignupRouteDoesNotRevealWhetherAnEmailIsRegistered(t *testing.T) {
+	taken := User{ID: uuid.New(), Email: "taken@example.com"}
+	repo := newFakeRepository(taken)
+	router := newTestRouter(t, repo, uuid.New())
+
+	body := `{"email":"taken@example.com","password":"secret","confirm_password":"secret"}`
+	recorder := do(t, router, http.MethodPost, "/v1/signup", "", body)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("POST /v1/signup = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	if len(repo.created) != 0 {
+		t.Errorf("expected no account to be created, got %d", len(repo.created))
+	}
+}
+
+// The login route answers the same whichever half of the pair is wrong.
+func TestTheLoginRouteDoesNotRevealWhetherAnEmailIsRegistered(t *testing.T) {
+	hash, err := hashPassword("right-password")
+	if err != nil {
+		t.Fatalf("failed to hash the test password: %v", err)
+	}
+
+	owner := User{ID: uuid.New(), Email: "owner@example.com", Password: hash}
+	router := newTestRouter(t, newFakeRepository(owner), uuid.New())
+
+	bodies := make([]string, 0, 2)
+
+	for _, body := range []string{
+		`{"email":"nobody@example.com","password":"whatever"}`,
+		`{"email":"owner@example.com","password":"wrong"}`,
+	} {
+		recorder := do(t, router, http.MethodPost, "/v1/login", "", body)
+		if recorder.Code != http.StatusUnauthorized {
+			t.Fatalf("POST /v1/login = %d, want %d", recorder.Code, http.StatusUnauthorized)
+		}
+
+		bodies = append(bodies, recorder.Body.String())
+	}
+
+	if bodies[0] != bodies[1] {
+		t.Errorf("the two failures answer differently: %q and %q", bodies[0], bodies[1])
+	}
+}
+
+// The pair that matches still gets a token through the route, not only in the
+// service: closing the oracle must not close the door.
+func TestTheLoginRouteAnswersWithAToken(t *testing.T) {
+	hash, err := hashPassword("right-password")
+	if err != nil {
+		t.Fatalf("failed to hash the test password: %v", err)
+	}
+
+	owner := User{ID: uuid.New(), Email: "owner@example.com", Password: hash}
+	router := newTestRouter(t, newFakeRepository(owner), uuid.New())
+
+	body := `{"email":"owner@example.com","password":"right-password"}`
+	recorder := do(t, router, http.MethodPost, "/v1/login", "", body)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("POST /v1/login = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	if !strings.Contains(recorder.Body.String(), "token") {
+		t.Errorf("the answer carries no token: %s", recorder.Body.String())
+	}
+}
+
 // The account list is the admin's view: a session that is not an admin does not
 // get to enumerate the instance's accounts.
 func TestTheUserListRefusesASessionThatIsNotAnAdmin(t *testing.T) {

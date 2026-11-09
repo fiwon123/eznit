@@ -40,6 +40,12 @@ info:
     files) and the shared-file list (`GET /v1/files/shared`, plus the bytes of
     a file marked public). Those operations carry `security: []`.
 
+    The two public account operations do not answer whether an address has an
+    account: a signup for a taken address gets the same `200` as a new one (and
+    creates nothing), and a login answers one `401 invalid credentials` whether
+    the address is unknown or the password is wrong. The server log keeps the
+    difference; the response does not.
+
     Anonymous is not a bypass: the visibility rule is the same one an account
     gets, minus the caller's own rows. An anonymous catalogue lists the
     templates their owners published and nothing else, and a private template
@@ -97,6 +103,10 @@ paths:
       operationId: signup
       tags: [users]
       summary: Create an account
+      description: |
+        Answers `200` whether the account was created or the address already had
+        one — the response does not say which, and an address that is taken is
+        left untouched. The server log keeps the difference.
       security: []
       requestBody:
         required: true
@@ -106,19 +116,13 @@ paths:
               $ref: "#/components/schemas/SignupRequest"
       responses:
         "200":
-          description: The account was created.
+          description: The account was created, or the address already had one.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "409":
-          description: That email already has an account.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -127,6 +131,9 @@ paths:
       operationId: login
       tags: [users]
       summary: Exchange credentials for a session token
+      description: |
+        A pair that does not match answers one `401 invalid credentials`,
+        whether the address has no account or the password is wrong.
       security: []
       requestBody:
         required: true
@@ -147,13 +154,13 @@ paths:
                       data:
                         $ref: "#/components/schemas/LoginResponse"
         "400":
-          description: The body could not be decoded, or the password is wrong.
+          description: The body could not be decoded.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: No account has that email.
+        "401":
+          description: The address and the password did not match an account.
           content:
             application/json:
               schema:
