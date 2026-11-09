@@ -2,19 +2,23 @@
 
 ## Project Objective
 
-Self-hosted file storage: a Go API and a CLI client for uploading, listing and
-retrieving your own files, backed by PostgreSQL.
+Self-hosted project setup: a Go API, a CLI and a web UI for keeping the files a
+project needs — templates, scripts and configuration — and putting them on any
+machine, backed by PostgreSQL.
 
 ### Problem
 
-Storing a file somewhere you control should not require a subscription or a
-third-party account, and it should not require a web browser to get the file
-back out.
+Setting up a project on a second machine should not mean retyping it from
+memory, paying for a service, or reading a README to reconstruct which files
+were edited. The same is true for getting a file back out: it should not
+require a third-party account or a browser.
 
 ### Goal
 
 An API and a CLI that cover the whole loop — sign up, log in, upload, list,
-download, update, delete — on a Compose stack a single developer can run.
+download, update, delete, and publish or apply a template — on a Compose stack a
+single developer can run, with an offline starter (`template init`) that needs
+no server at all.
 
 ### Main Technology
 

@@ -10,9 +10,28 @@ fill it in, and try again. `make check` and `make build` do not need it.
 
 ## `make check` passes, but nothing seems tested
 
-That is correct and expected — several packages have no test files. `make check`
-prints the list of packages it did not cover. Coverage is a tracked gap, not an
-oversight in the gate.
+`make check` prints the packages it did not cover at the end of a green run.
+That list is short now — `cmd/cli` is the only package with no test file — but a
+green `make check` still means "the tested packages passed and the rest
+compiled", not "it works". SQL is covered by `make test_integration`, not by
+`make check`.
+
+## `template apply` stops without writing anything
+
+One of the target files already exists. `apply` refuses to overwrite without
+`--force`, and it checks every file before writing any of them. Move the
+conflict, or rerun with `--force`.
+
+## `template publish` skips a file, or the server refuses one
+
+Symlinks are skipped (a template is files, not links), and the limits are 256 KiB
+per text file, 4 MiB of text per template, 10 MiB per binary file, 32 MiB in
+total and 200 files. The CLI checks them before uploading and names the file.
+
+## `template apply <id>` answers 401
+
+A private template needs a session: run `eznit login`. Public templates apply
+without one.
 
 ## The API starts and immediately exits
 

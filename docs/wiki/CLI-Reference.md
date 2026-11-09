@@ -13,7 +13,11 @@ eznit --debug <cmd> # debug-level logs
 than take flags. Subcommands take flags, and several of them (`template
 publish`/`show`/`apply`/`init`, `repo auth`) also prompt for values.
 
-## 💻 Core commands
+Jump to: [Templates](#-templates) · [Commands library](#-commands-library) ·
+[Git hosts](#-git-hosts) · [Files and account](#-files-and-account) ·
+[The config file](#-the-config-file)
+
+## 🗂️ Files and account
 
 | Command | Prompts / flags | What it does |
 | --- | --- | --- |

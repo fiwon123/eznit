@@ -6,8 +6,9 @@ empty field here means a placeholder somewhere else.
 ## Identity
 
 - **Name**: eznit
-- **One line**: Self-hosted file storage — a Go API, a CLI client and a web UI
-  for uploading, listing and retrieving your own files, backed by PostgreSQL.
+- **One line**: Self-hosted project setup — a Go API, a CLI client and a web UI
+  for keeping a project's files (templates, scripts, configuration) and pulling
+  them onto any machine, backed by PostgreSQL.
 - **Repository**: https://github.com/fiwon123/eznit
 - **License**: MIT (see `LICENSE`)
 - **Status**: pre-1.0. The API, the CLI and the web UI work end to end
