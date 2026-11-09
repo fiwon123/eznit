@@ -1,10 +1,10 @@
-# Configuration
+# 🧰 Configuration
 
 eznit is configured through environment variables and two local files. The API
 loads `.env.local` and `.env` through `godotenv` (`.env.local` overrides `.env`);
 Compose sets the in-network values itself.
 
-## API environment
+## 🔌 API environment
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -27,13 +27,13 @@ The password is a **Docker file secret** in the local stack:
 `DB_PASSWORD_FILE` points at it. Prefer the file over `DB_PWD`; the latter puts
 the password in the process environment.
 
-## CLI environment
+## 💻 CLI environment
 
-See [CLI Reference](https://github.com/fiwon123/eznit/wiki/CLI-Reference#cli-environment-variables) for `CLI_API_HOST`,
+See [CLI Reference](https://github.com/fiwon123/eznit/wiki/CLI-Reference#-cli-environment-variables) for `CLI_API_HOST`,
 `CLI_API_PORT`, `CLI_DOWNLOADS`, `CLI_LOGS`, `EZNIT_CONFIG`, `EZNIT_REPOS` and
 `EZNIT_GITHUB_API`.
 
-## GUI environment
+## 🪟 GUI environment
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -46,7 +46,7 @@ With `GUI_API_URL` set, the GUI is a window in front of an existing API. With no
 one file is the whole product. With neither, the window opens and every `/v1`
 call answers `503` naming the variable to set.
 
-## Ports
+## 🌐 Ports
 
 | Role | Product (`make up`) | Dev loop (`make dev-up`) |
 | --- | --- | --- |
@@ -57,7 +57,7 @@ call answers `503` naming the variable to set.
 The two entry points publish the same ports and are alternatives; each refuses to
 start while the other runs and names the command that clears the way.
 
-## Files and secrets
+## 🔐 Files and secrets
 
 | File | Committed? | Holds |
 | --- | --- | --- |
@@ -78,7 +78,7 @@ chmod 600 .env .env.local secrets/db_password.txt
 None of these is ever committed, logged or printed. The logger records a token
 **fingerprint**, never a token.
 
-## Example `.env`
+## 📝 Example `.env`
 
 The committed `.env.example` is the template; a minimal local file is:
 

@@ -1,4 +1,4 @@
-# CLI Reference
+# 💻 CLI Reference
 
 The CLI talks to the eznit API and keeps its own state in a local config file. It
 is one binary, `eznit`, with an alias `ez`.
@@ -13,7 +13,7 @@ eznit --debug <cmd> # debug-level logs
 than take flags. Subcommands take flags, and several of them (`template
 publish`/`show`/`apply`/`init`, `repo auth`) also prompt for values.
 
-## Core commands
+## 💻 Core commands
 
 | Command | Prompts / flags | What it does |
 | --- | --- | --- |
@@ -44,7 +44,7 @@ eznit list        # note the id
 eznit download    # id file: <id>  / destination folder path: ./out
 ```
 
-## Templates
+## 🧩 Templates
 
 A template is a folder structure — agent instructions, prompts, editor config —
 that can be published and applied to another project. Text files travel as they
@@ -64,7 +64,7 @@ are; binary files are sent as base64 and stored on disk by the server.
 **Limits** (enforced by the server): 256 KiB per text file and 4 MiB of text per
 template; 10 MiB per binary file and 32 MiB per template counting both.
 
-## Commands library
+## 📑 Commands library
 
 A command is a file kept once in your library and pulled into templates by id, so
 one copy is updated once.
@@ -83,7 +83,7 @@ eznit template publish . --commands <command-id>=scripts/fmt.sh
 
 A name is unique per user, not globally.
 
-## Git hosts
+## 🐙 Git hosts
 
 `eznit` can list the repositories a GitHub token can reach and clone one. The
 token is a **personal access token** and it stays on your machine: it is kept in
@@ -103,14 +103,14 @@ user's other processes can read (`/proc/<pid>/environ`) — the cost of keeping 
 token out of a file git owns. `eznit logout` removes the session token and leaves the host token in
 place; `eznit repo auth --remove` removes that one.
 
-## The config file
+## 🧾 The config file
 
 `~/.eznit/config.json` (mode `0600`) holds the session token (`token`) and, if you
 stored one, the git-host token (`github_token`). The two are written separately and
 neither erases the other. `EZNIT_CONFIG` points the file elsewhere (a test or a
 profile).
 
-## CLI environment variables
+## 🌱 CLI environment variables
 
 | Variable | Default | Meaning |
 | --- | --- | --- |

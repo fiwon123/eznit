@@ -1,9 +1,9 @@
-# Development
+# 🔧 Development
 
 How to run eznit from source, the sandbox that removes the host-toolchain
 requirement, and the gates a change must pass.
 
-## The gates
+## ✅ The gates
 
 ```sh
 make check     # gofmt, vet, test, build — the local verification gate
@@ -23,7 +23,7 @@ with tests passed", not coverage** — name the packages when you report a resul
 Both feature gates run locally: CI runs on release pull requests (`dev` → `main`)
 and on manual dispatch only.
 
-## Make targets
+## 🎯 Make targets
 
 | Target | What it does |
 | --- | --- |
@@ -41,7 +41,7 @@ and on manual dispatch only.
 `make build_api` and `make build_gui` build the web UI first, because both binaries
 carry a copy of it. `make check` stays Go-only; the web has its own gate.
 
-## The dev sandbox
+## 🧪 The dev sandbox
 
 The commands above need a Go toolchain on the host. The sandbox removes that
 requirement: a container with Go **1.27.3** — the version in `go.mod`, the same one
@@ -108,7 +108,7 @@ a **Linux** opencode binary: on macOS and native Windows the target refuses and 
 agent stays on the host (use WSL2). The container has no Docker socket — the agent
 inside it cannot manage containers, on purpose.
 
-## Migrations
+## 🧱 Migrations
 
 `db/migrations/` is append-only history: a numbered `.up.sql`/`.down.sql` pair per
 change, applied by `golang-migrate`. **Never edit a migration that has run
@@ -126,7 +126,7 @@ The migration targets read `DB_USER`, `DB_HOST` and `DB_NAME` from `.env` or
 `.env.local`; if they are missing, they say so instead of failing with an empty
 connection string.
 
-## Checking your change
+## 🔍 Checking your change
 
 1. `make check` — the gate above, and `make web_check` for the UI.
 2. If you touched the API, run the stack and exercise the route: the gate
@@ -134,7 +134,7 @@ connection string.
 3. If the change is user-visible in the CLI, read the output — a CLI has no
    screenshot, and its output is the artifact.
 
-## Where a change belongs
+## 🧭 Where a change belongs
 
 [ARCHITECTURE.md](https://github.com/fiwon123/eznit/blob/dev/ARCHITECTURE.md) has
 the full map. The short version:
