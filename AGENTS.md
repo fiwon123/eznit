@@ -202,9 +202,12 @@ the storage path, fixed in #117), #109 (the admin guard was a TODO) and #110
 (any session could read any account's email). The OpenAPI document describes the
 API that exists, the admin guard included.
 
-**The files, sessions, users and templates domains, the CLI, the schema helper,
-the middleware, the web UI, the OpenAPI package and the path helper have tests;
-`cmd/cli`, `pkg/errors`, `pkg/logger` and `pkg/types` have none.**
+**The files, sessions, users, templates and commands domains, the CLI, the
+schema helper, the middleware, the web UI, the OpenAPI package, the path
+helper, the logger, the error type and the response envelope have tests;
+`cmd/cli` has none** — it is the kong wiring the `internal/cli` tests cover
+one layer down. Database behaviour is not covered by `make check` at all; the
+integration suite in #180 targets that.
 `go test ./...` prints `[no test files]` for the packages without one, and
 still exits 0. A green `Test` step in CI means
 "the packages with tests passed" — name the packages when you report a
