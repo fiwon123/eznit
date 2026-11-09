@@ -91,6 +91,11 @@ A command name is unique per user, not globally. `command remove` answers
 `409` while a template still references it — a published template does not
 quietly lose a script.
 
+The library round-trips through a crower pack
+([CLI Reference](https://github.com/fiwon123/eznit/wiki/CLI-Reference#-commands-library)),
+for moving the same commands to a workflow manager that already uses
+[crower](https://github.com/fiwon123/crower).
+
 ## 📦 Take it with you (no server)
 
 A template can leave the server as one file, and come back out on a machine that

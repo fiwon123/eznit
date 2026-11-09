@@ -31,6 +31,8 @@ type CommandCmd struct {
 	List   CommandListCmd   `cmd:"" help:"list your commands"`
 	Show   CommandShowCmd   `cmd:"" help:"show one command"`
 	Remove CommandRemoveCmd `cmd:"" help:"remove a command from your library"`
+	Export CommandExportCmd `cmd:"" help:"write the library to a crower TOML pack"`
+	Import CommandImportCmd `cmd:"" help:"read commands from a crower TOML pack"`
 }
 
 // CommandAddCmd adds a file to the library.

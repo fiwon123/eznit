@@ -9,6 +9,7 @@ require (
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.12.3
+	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/swaggo/files/v2 v2.0.2
 	go.uber.org/zap v1.28.0
 	go.uber.org/zap/exp v0.3.0
