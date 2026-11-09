@@ -121,12 +121,12 @@ a file in your home directory unless you point `--target` there.
 | 🐧 Linux arm64 | `eznit-cli_<tag>_linux_arm64.tar.gz` | `eznit-server_<tag>_linux_arm64.tar.gz` |
 | 🪟 Windows amd64 | `eznit-cli_<tag>_windows_amd64.zip` | `eznit-server_<tag>_windows_amd64.zip` |
 | 🪟 Windows arm64 | `eznit-cli_<tag>_windows_arm64.zip` | `eznit-server_<tag>_windows_arm64.zip` |
+| 🍎 macOS amd64 | `eznit-cli_<tag>_darwin_amd64.tar.gz` | `eznit-server_<tag>_darwin_amd64.tar.gz` |
+| 🍎 macOS arm64 | `eznit-cli_<tag>_darwin_arm64.tar.gz` | `eznit-server_<tag>_darwin_arm64.tar.gz` |
 
 The CLI archive carries `eznit` and `ez`; the server bundle carries
 `eznit-server`, `eznit-gui`, the migrations, the Compose services and
 `RUNNING.md`. Verify a download against `checksums.txt` from the release page.
-macOS builds from source today; archives are planned
-([#187](https://github.com/fiwon123/eznit/issues/187)).
 
 ## 🔒 Security status
 
@@ -173,8 +173,8 @@ This project says what it verified.
   test starts the API and makes an HTTP call that reaches a query.
 - **The Windows server bundle is built, never started.** CI smoke-tests the
   Windows CLI; the server and the Compose stack are not run on Windows.
-- **The ARM64 binaries are built, never executed** on ARM hardware.
-- **The macOS build is not shipped** and not built in CI.
+- **The ARM64 binaries are built, never executed** on ARM hardware, and the
+  macOS archives are cross-compiled on Linux and never started on a Mac.
 - **The browser UI has no automated test**; the screenshots are captured by
   hand.
 

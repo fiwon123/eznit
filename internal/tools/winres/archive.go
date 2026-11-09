@@ -138,6 +138,12 @@ func verifyArchive(path string, opts archiveOptions) []string {
 	}
 
 	windows := strings.Contains(base, "_windows_")
+	darwin := strings.Contains(base, "_darwin_")
+
+	darwinCPU, darwinNamed := DarwinMachineForArchive(base)
+	if darwin && !darwinNamed {
+		report("is a darwin archive whose name does not say amd64 or arm64, so its binary cannot be checked")
+	}
 
 	// The binaries the project promises, at the folder's root.
 	var binaries []string
@@ -181,6 +187,15 @@ func verifyArchive(path string, opts archiveOptions) []string {
 				}
 			} else if err := info.VerifyConsole(); err != nil {
 				report("%s: %v", filepath.Base(member), err)
+			}
+		}
+
+		if darwin && darwinNamed {
+			cpu, err := InspectMachO(data)
+			if err != nil {
+				report("%s: %v", filepath.Base(member), err)
+			} else if cpu != darwinCPU {
+				report("%s: Mach-O CPU is %v, want %v", filepath.Base(member), cpu, darwinCPU)
 			}
 		}
 
