@@ -154,7 +154,7 @@ func (h *Handler) getUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	resp, appError := h.service.GetUser(r.Context(), parseID, callerID)
 	if appError != nil {
-		h.logger.Warn("user not found")
+		h.logger.Warn("get user failed", slog.Int("status", appError.StatusCode()))
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
 		return
 	}

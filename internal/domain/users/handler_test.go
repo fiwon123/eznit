@@ -3,6 +3,7 @@ package users
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -293,9 +294,9 @@ func TestUpdateUserRefusesASessionThatIsNotAnAdmin(t *testing.T) {
 		t.Fatalf("PUT /v1/users/{id} = %d, want %d", recorder.Code, http.StatusForbidden)
 	}
 
-	stored, ok := repo.GetUser(stranger.ID)
-	if !ok {
-		t.Fatal("the refused update removed the account")
+	stored, err := repo.GetUser(stranger.ID)
+	if err != nil {
+		t.Fatalf("the refused update removed the account: %v", err)
 	}
 
 	if stored.Email != stranger.Email {
@@ -316,8 +317,8 @@ func TestDeleteUserLetsAnAdminDeleteAnAccount(t *testing.T) {
 		t.Fatalf("DELETE /v1/users/{id} = %d, want %d", recorder.Code, http.StatusOK)
 	}
 
-	if _, ok := repo.GetUser(owner.ID); ok {
-		t.Error("the account was not deleted")
+	if _, err := repo.GetUser(owner.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("the account was not deleted: %v", err)
 	}
 }
 
@@ -334,8 +335,8 @@ func TestTheDeleteRouteRefusesTheSignedInAccount(t *testing.T) {
 		t.Fatalf("DELETE /v1/users/{own id} = %d, want %d", recorder.Code, http.StatusConflict)
 	}
 
-	if _, ok := repo.GetUser(admin.ID); !ok {
-		t.Error("the refused delete removed the account")
+	if _, err := repo.GetUser(admin.ID); err != nil {
+		t.Errorf("the refused delete removed the account: %v", err)
 	}
 }
 
@@ -352,7 +353,7 @@ func TestDeleteUserRefusesASessionThatIsNotAnAdmin(t *testing.T) {
 		t.Fatalf("DELETE /v1/users/{id} = %d, want %d", recorder.Code, http.StatusForbidden)
 	}
 
-	if _, ok := repo.GetUser(stranger.ID); !ok {
-		t.Error("the refused delete removed the account")
+	if _, err := repo.GetUser(stranger.ID); err != nil {
+		t.Errorf("the refused delete removed the account: %v", err)
 	}
 }

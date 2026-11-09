@@ -2,12 +2,14 @@ package users
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
+	apperrors "github.com/fiwon123/eznit/pkg/errors"
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/google/uuid"
 )
@@ -20,6 +22,20 @@ import (
 // queries against the migrations too.
 type fakeRepository struct {
 	users []User
+
+	// readFails makes the account reads (GetUser, GetUserByEmail, GetUsers,
+	// UserExists) report a failure that is not "no such row", the way a
+	// database that is down would. HasUsers and CommandsInUseByOthers have
+	// their own knobs, so a test can fail one question at a time.
+	readFails bool
+
+	// writeFails makes the create and the update report a failure.
+	writeFails bool
+
+	// updateRaced and deleteRaced make the write answer "not found" for a row
+	// the fake still holds: a concurrent delete between the read and the write.
+	updateRaced bool
+	deleteRaced bool
 
 	// hasUsersFails makes HasUsers report that it could not answer, the way a
 	// database that is down would.
@@ -48,80 +64,118 @@ func newFakeRepository(users ...User) *fakeRepository {
 	return &fakeRepository{users: users}
 }
 
-func (r *fakeRepository) HasUsers() (bool, bool) {
+func (r *fakeRepository) HasUsers() (bool, error) {
 	if r.hasUsersFails {
-		return false, false
+		return false, errDatabaseDown
 	}
-	return len(r.users) > 0, true
+	return len(r.users) > 0, nil
 }
 
-func (r *fakeRepository) GetUsers() ([]User, bool) {
-	return r.users, true
+func (r *fakeRepository) GetUsers() ([]User, error) {
+	if r.readFails {
+		return nil, errDatabaseDown
+	}
+	return r.users, nil
 }
 
-func (r *fakeRepository) GetUser(id uuid.UUID) (*User, bool) {
+func (r *fakeRepository) GetUser(id uuid.UUID) (*User, error) {
+	if r.readFails {
+		return nil, errDatabaseDown
+	}
+
 	for index := range r.users {
 		if r.users[index].ID == id {
 			user := r.users[index]
-			return &user, true
+			return &user, nil
 		}
 	}
-	return nil, false
+	return nil, ErrNotFound
 }
 
-func (r *fakeRepository) GetUserByEmail(email string) (*User, bool) {
+func (r *fakeRepository) GetUserByEmail(email string) (*User, error) {
+	if r.readFails {
+		return nil, errDatabaseDown
+	}
+
 	for index := range r.users {
 		if r.users[index].Email == email {
 			user := r.users[index]
-			return &user, true
+			return &user, nil
 		}
 	}
-	return nil, false
+	return nil, ErrNotFound
 }
 
-func (r *fakeRepository) UserExists(email string) bool {
-	_, ok := r.GetUserByEmail(email)
-	return ok
+func (r *fakeRepository) UserExists(email string) (bool, error) {
+	_, err := r.GetUserByEmail(email)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
-func (r *fakeRepository) CreateUser(user User) bool {
+func (r *fakeRepository) CreateUser(user User) error {
+	if r.writeFails {
+		return errDatabaseDown
+	}
+
 	user.ID = uuid.New()
 	r.users = append(r.users, user)
 	r.created = append(r.created, user)
-	return true
+	return nil
 }
 
-func (r *fakeRepository) DeleteUser(user User) (OwnerStorage, bool) {
+func (r *fakeRepository) DeleteUser(user User) (OwnerStorage, error) {
 	if r.deleteFails {
-		return OwnerStorage{}, false
+		return OwnerStorage{}, errDatabaseDown
+	}
+
+	if r.deleteRaced {
+		return OwnerStorage{}, ErrNotFound
 	}
 
 	for index := range r.users {
 		if r.users[index].ID == user.ID {
 			r.users = append(r.users[:index], r.users[index+1:]...)
-			return r.ownerStorage, true
+			return r.ownerStorage, nil
 		}
 	}
 
-	return OwnerStorage{}, false
+	return OwnerStorage{}, ErrNotFound
 }
 
-func (r *fakeRepository) CommandsInUseByOthers(userID uuid.UUID) (bool, bool) {
+func (r *fakeRepository) CommandsInUseByOthers(userID uuid.UUID) (bool, error) {
 	if r.commandInUseCheckFails {
-		return false, false
+		return false, errDatabaseDown
 	}
 
-	return r.commandInUseByOthers, true
+	return r.commandInUseByOthers, nil
 }
 
-func (r *fakeRepository) UpdateUser(user User) bool {
+// errDatabaseDown stands in for every way a query can fail without answering:
+// it must never be read as "not found".
+var errDatabaseDown = errors.New("the database is down")
+
+func (r *fakeRepository) UpdateUser(user User) error {
+	if r.writeFails {
+		return errDatabaseDown
+	}
+
+	if r.updateRaced {
+		return ErrNotFound
+	}
+
 	for index := range r.users {
 		if r.users[index].ID == user.ID {
 			r.users[index] = user
-			return true
+			return nil
 		}
 	}
-	return false
+	return ErrNotFound
 }
 
 // newTestService returns a service backed by the given repository and a logger
@@ -451,8 +505,8 @@ func TestDeleteUserRemovesTheAccountAndItsBytes(t *testing.T) {
 		t.Fatalf("expected the account to be deleted, got %v", appError)
 	}
 
-	if _, ok := repo.GetUser(owner.ID); ok {
-		t.Error("the account is still in the repository")
+	if _, err := repo.GetUser(owner.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("the account is still in the repository: %v", err)
 	}
 
 	for _, folder := range folders {
@@ -489,8 +543,8 @@ func TestDeleteUserRefusesWhenAnotherAccountsTemplateUsesACommand(t *testing.T) 
 		t.Errorf("expected status %d, got %d", http.StatusConflict, appError.StatusCode())
 	}
 
-	if _, ok := repo.GetUser(owner.ID); !ok {
-		t.Error("the refused delete removed the account")
+	if _, err := repo.GetUser(owner.ID); err != nil {
+		t.Errorf("the refused delete removed the account: %v", err)
 	}
 
 	if _, err := os.Stat(userFolder); err != nil {
@@ -514,8 +568,8 @@ func TestDeleteUserRefusesToDeleteTheSignedInAccount(t *testing.T) {
 		t.Errorf("expected status %d, got %d", http.StatusConflict, appError.StatusCode())
 	}
 
-	if _, ok := repo.GetUser(admin.ID); !ok {
-		t.Error("the refused delete removed the account")
+	if _, err := repo.GetUser(admin.ID); err != nil {
+		t.Errorf("the refused delete removed the account: %v", err)
 	}
 }
 
@@ -552,8 +606,8 @@ func TestDeleteUserReportsAFailedCommandCheckAsServerError(t *testing.T) {
 		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, appError.StatusCode())
 	}
 
-	if _, ok := repo.GetUser(owner.ID); !ok {
-		t.Error("the delete went ahead without an answer")
+	if _, err := repo.GetUser(owner.ID); err != nil {
+		t.Errorf("the delete went ahead without an answer: %v", err)
 	}
 }
 
@@ -566,5 +620,155 @@ func TestDeleteUserReportsAMissingAccountAsNotFound(t *testing.T) {
 
 	if appError.StatusCode() != http.StatusNotFound {
 		t.Errorf("expected status %d, got %d", http.StatusNotFound, appError.StatusCode())
+	}
+}
+
+// A read that fails is not "the account does not exist". Every route that reads
+// an account before acting on it has to keep the two apart (#148).
+func TestAFailedReadIsNotNotFound(t *testing.T) {
+	owner := User{ID: uuid.New(), Email: "owner@example.com"}
+
+	tests := []struct {
+		name string
+		call func(*Service) *apperrors.AppError
+	}{
+		{
+			name: "the caller's own record",
+			call: func(s *Service) *apperrors.AppError {
+				_, appError := s.GetUser(context.Background(), owner.ID, owner.ID)
+				return appError
+			},
+		},
+		{
+			name: "a login",
+			call: func(s *Service) *apperrors.AppError {
+				_, appError := s.LoginUser(context.Background(), LoginRequest{Email: owner.Email, Password: "whatever"})
+				return appError
+			},
+		},
+		{
+			name: "a delete",
+			call: func(s *Service) *apperrors.AppError {
+				_, appError := s.DeleteUser(context.Background(), DeleteRequest{Id: owner.ID}, uuid.New())
+				return appError
+			},
+		},
+		{
+			name: "an update",
+			call: func(s *Service) *apperrors.AppError {
+				_, appError := s.UpdateUser(context.Background(), UpdateRequest{Id: owner.ID, Email: owner.Email, Password: "secret"})
+				return appError
+			},
+		},
+		{
+			name: "a signup",
+			call: func(s *Service) *apperrors.AppError {
+				_, appError := s.CreateUser(context.Background(), signup(owner.Email))
+				return appError
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := newFakeRepository(owner)
+			repo.readFails = true
+
+			appError := tt.call(newTestService(t, repo))
+			if appError == nil {
+				t.Fatal("expected the read failure to be reported")
+			}
+
+			if appError.StatusCode() != http.StatusInternalServerError {
+				t.Errorf("expected status %d, got %d (%s)", http.StatusInternalServerError, appError.StatusCode(), appError.Error())
+			}
+		})
+	}
+}
+
+// A write that fails is a 500: the account was not created or changed, and the
+// answer must not claim it was.
+func TestAFailedWriteIsAServerError(t *testing.T) {
+	owner := User{ID: uuid.New(), Email: "owner@example.com"}
+
+	tests := []struct {
+		name string
+		call func(*Service) *apperrors.AppError
+	}{
+		{
+			name: "a signup",
+			call: func(s *Service) *apperrors.AppError {
+				_, appError := s.CreateUser(context.Background(), signup("new@example.com"))
+				return appError
+			},
+		},
+		{
+			name: "an update",
+			call: func(s *Service) *apperrors.AppError {
+				_, appError := s.UpdateUser(context.Background(), UpdateRequest{Id: owner.ID, Email: owner.Email, Password: "secret"})
+				return appError
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := newFakeRepository(owner)
+			repo.writeFails = true
+
+			appError := tt.call(newTestService(t, repo))
+			if appError == nil {
+				t.Fatal("expected the write failure to be reported")
+			}
+
+			if appError.StatusCode() != http.StatusInternalServerError {
+				t.Errorf("expected status %d, got %d (%s)", http.StatusInternalServerError, appError.StatusCode(), appError.Error())
+			}
+		})
+	}
+}
+
+// A write that finds the row gone — another request deleted it between the read
+// and the write — is a 404, not a failure and not a success.
+func TestAWriteThatRacedADeleteIsNotFound(t *testing.T) {
+	owner := User{ID: uuid.New(), Email: "owner@example.com"}
+
+	tests := []struct {
+		name string
+		call func(*Service) *apperrors.AppError
+		race func(*fakeRepository)
+	}{
+		{
+			name: "an update",
+			call: func(s *Service) *apperrors.AppError {
+				_, appError := s.UpdateUser(context.Background(), UpdateRequest{Id: owner.ID, Email: owner.Email, Password: "secret"})
+				return appError
+			},
+			race: func(repo *fakeRepository) { repo.updateRaced = true },
+		},
+		{
+			name: "a delete",
+			call: func(s *Service) *apperrors.AppError {
+				_, appError := s.DeleteUser(context.Background(), DeleteRequest{Id: owner.ID}, uuid.New())
+				return appError
+			},
+			race: func(repo *fakeRepository) { repo.deleteRaced = true },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := newFakeRepository(owner)
+			tt.race(repo)
+
+			appError := tt.call(newTestService(t, repo))
+			if appError == nil {
+				t.Fatal("expected the race to be reported")
+			}
+
+			if appError.StatusCode() != http.StatusNotFound {
+				t.Errorf("expected status %d, got %d (%s)", http.StatusNotFound, appError.StatusCode(), appError.Error())
+			}
+		})
 	}
 }
