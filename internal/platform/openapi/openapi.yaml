@@ -279,7 +279,15 @@ paths:
       tags: [users]
       summary: Delete an account
       description: |
-        An administrator's operation.
+        An administrator's operation. The account is deleted as a whole: its
+        sessions, its files and their history, its templates (with their files,
+        variables and command references) and its commands go with it, and the
+        bytes those rows named are removed from disk.
+
+        Two deletes are refused with `409`: the account the caller is signed in
+        with, and an account whose command a template still pulls in — the
+        schema keeps that reference `RESTRICT` so a published template does not
+        quietly lose a script, the same rule `DELETE /v1/commands/{id}` follows.
       responses:
         "200":
           description: The account was deleted.
@@ -295,6 +303,14 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: The caller is signed in with this account, or a template still pulls in a command it owns.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /v1/files:
     get:

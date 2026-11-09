@@ -3,6 +3,8 @@ package users
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/fiwon123/eznit/pkg/logger"
@@ -25,6 +27,20 @@ type fakeRepository struct {
 	// created collects the rows the service asked to insert, so a refusal can
 	// be checked to have created nothing.
 	created []User
+
+	// commandInUseByOthers is the answer to "does another account's template
+	// pull in one of mine?", and commandInUseCheckFails makes the question
+	// unanswerable.
+	commandInUseByOthers   bool
+	commandInUseCheckFails bool
+
+	// deleteFails makes the row delete report failure, the way a database that
+	// is down would.
+	deleteFails bool
+
+	// ownerStorage is what a successful delete reports for the disk: the
+	// template and command ids whose folders the service has to remove.
+	ownerStorage OwnerStorage
 }
 
 func newFakeRepository(users ...User) *fakeRepository {
@@ -74,14 +90,27 @@ func (r *fakeRepository) CreateUser(user User) bool {
 	return true
 }
 
-func (r *fakeRepository) DeleteUser(user User) bool {
+func (r *fakeRepository) DeleteUser(user User) (OwnerStorage, bool) {
+	if r.deleteFails {
+		return OwnerStorage{}, false
+	}
+
 	for index := range r.users {
 		if r.users[index].ID == user.ID {
 			r.users = append(r.users[:index], r.users[index+1:]...)
-			return true
+			return r.ownerStorage, true
 		}
 	}
-	return false
+
+	return OwnerStorage{}, false
+}
+
+func (r *fakeRepository) CommandsInUseByOthers(userID uuid.UUID) (bool, bool) {
+	if r.commandInUseCheckFails {
+		return false, false
+	}
+
+	return r.commandInUseByOthers, true
 }
 
 func (r *fakeRepository) UpdateUser(user User) bool {
@@ -101,12 +130,20 @@ func (r *fakeRepository) UpdateUser(user User) bool {
 func newTestService(t *testing.T, repo Repository) *Service {
 	t.Helper()
 
+	return newTestServiceAt(t, repo, t.TempDir())
+}
+
+// newTestServiceAt is newTestService with a chosen upload root, for the tests
+// that check what a delete leaves on disk.
+func newTestServiceAt(t *testing.T, repo Repository, uploadFolder string) *Service {
+	t.Helper()
+
 	log, err := logger.NewConsole(t.TempDir(), false, true)
 	if err != nil {
 		t.Fatalf("failed to create the test logger: %v", err)
 	}
 
-	return NewService(repo, nil, log)
+	return NewService(repo, uploadFolder, nil, log)
 }
 
 func signup(email string) SignupRequest {
@@ -281,5 +318,164 @@ func TestIsAdminAnswersFromTheAccount(t *testing.T) {
 				t.Errorf("IsAdmin(%s) = %t, want %t", tt.id, got, tt.wants)
 			}
 		})
+	}
+}
+
+// writeFolder creates a folder with one file in it, standing in for the bytes
+// an account left on disk.
+func writeFolder(t *testing.T, folder string) {
+	t.Helper()
+
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		t.Fatalf("failed to create %s: %v", folder, err)
+	}
+
+	if err := os.WriteFile(filepath.Join(folder, "stored"), []byte("bytes"), 0o600); err != nil {
+		t.Fatalf("failed to write into %s: %v", folder, err)
+	}
+}
+
+// Deleting an account removes the rows and the bytes: the account's own upload
+// folder, and the binary folders of the templates and commands it owned.
+func TestDeleteUserRemovesTheAccountAndItsBytes(t *testing.T) {
+	owner := User{ID: uuid.New(), Email: "owner@example.com"}
+	repo := newFakeRepository(owner)
+
+	templateID := uuid.New()
+	commandID := uuid.New()
+	repo.ownerStorage = OwnerStorage{
+		TemplateIDs: []uuid.UUID{templateID},
+		CommandIDs:  []uuid.UUID{commandID},
+	}
+
+	uploadFolder := t.TempDir()
+	folders := []string{
+		filepath.Join(uploadFolder, owner.ID.String()),
+		filepath.Join(uploadFolder, "templates", templateID.String()),
+		filepath.Join(uploadFolder, "commands", commandID.String()),
+	}
+	for _, folder := range folders {
+		writeFolder(t, folder)
+	}
+
+	if _, appError := newTestServiceAt(t, repo, uploadFolder).DeleteUser(context.Background(), DeleteRequest{Id: owner.ID}, uuid.New()); appError != nil {
+		t.Fatalf("expected the account to be deleted, got %v", appError)
+	}
+
+	if _, ok := repo.GetUser(owner.ID); ok {
+		t.Error("the account is still in the repository")
+	}
+
+	for _, folder := range folders {
+		if _, err := os.Stat(folder); !os.IsNotExist(err) {
+			t.Errorf("expected %s to be gone, stat returned %v", folder, err)
+		}
+	}
+
+	if _, err := os.Stat(uploadFolder); err != nil {
+		t.Errorf("the delete removed the upload root itself: %v", err)
+	}
+}
+
+// A command still referenced by a template refuses the delete: the schema keeps
+// that reference RESTRICT so a published template does not quietly lose a
+// script. The API only lets a template reference its owner's commands, so this
+// state comes from data written outside it — the pre-check turns a schema
+// refusal into a 409 rather than a failed transaction.
+func TestDeleteUserRefusesWhenAnotherAccountsTemplateUsesACommand(t *testing.T) {
+	owner := User{ID: uuid.New(), Email: "owner@example.com"}
+	repo := newFakeRepository(owner)
+	repo.commandInUseByOthers = true
+
+	uploadFolder := t.TempDir()
+	userFolder := filepath.Join(uploadFolder, owner.ID.String())
+	writeFolder(t, userFolder)
+
+	_, appError := newTestServiceAt(t, repo, uploadFolder).DeleteUser(context.Background(), DeleteRequest{Id: owner.ID}, uuid.New())
+	if appError == nil {
+		t.Fatal("expected the delete to be refused")
+	}
+
+	if appError.StatusCode() != http.StatusConflict {
+		t.Errorf("expected status %d, got %d", http.StatusConflict, appError.StatusCode())
+	}
+
+	if _, ok := repo.GetUser(owner.ID); !ok {
+		t.Error("the refused delete removed the account")
+	}
+
+	if _, err := os.Stat(userFolder); err != nil {
+		t.Errorf("the refused delete removed bytes: %v", err)
+	}
+}
+
+// An admin deleting the account it is signed in with is refused: the request
+// would drop its own session, and on an instance with a single admin it would
+// leave nobody able to reach the admin routes.
+func TestDeleteUserRefusesToDeleteTheSignedInAccount(t *testing.T) {
+	admin := User{ID: uuid.New(), Email: "admin@example.com", IsAdmin: true}
+	repo := newFakeRepository(admin)
+
+	_, appError := newTestService(t, repo).DeleteUser(context.Background(), DeleteRequest{Id: admin.ID}, admin.ID)
+	if appError == nil {
+		t.Fatal("expected the self-delete to be refused")
+	}
+
+	if appError.StatusCode() != http.StatusConflict {
+		t.Errorf("expected status %d, got %d", http.StatusConflict, appError.StatusCode())
+	}
+
+	if _, ok := repo.GetUser(admin.ID); !ok {
+		t.Error("the refused delete removed the account")
+	}
+}
+
+// A database failure is not "the account does not exist": the route answers
+// 500, which is what #144 was filed about.
+func TestDeleteUserReportsAFailedDeleteAsServerError(t *testing.T) {
+	owner := User{ID: uuid.New(), Email: "owner@example.com"}
+	repo := newFakeRepository(owner)
+	repo.deleteFails = true
+
+	_, appError := newTestService(t, repo).DeleteUser(context.Background(), DeleteRequest{Id: owner.ID}, uuid.New())
+	if appError == nil {
+		t.Fatal("expected the delete to fail")
+	}
+
+	if appError.StatusCode() != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, appError.StatusCode())
+	}
+}
+
+// A check that cannot be answered is a 500 too: the delete must not go ahead
+// on a guess about what still references the account.
+func TestDeleteUserReportsAFailedCommandCheckAsServerError(t *testing.T) {
+	owner := User{ID: uuid.New(), Email: "owner@example.com"}
+	repo := newFakeRepository(owner)
+	repo.commandInUseCheckFails = true
+
+	_, appError := newTestService(t, repo).DeleteUser(context.Background(), DeleteRequest{Id: owner.ID}, uuid.New())
+	if appError == nil {
+		t.Fatal("expected the delete to fail")
+	}
+
+	if appError.StatusCode() != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, appError.StatusCode())
+	}
+
+	if _, ok := repo.GetUser(owner.ID); !ok {
+		t.Error("the delete went ahead without an answer")
+	}
+}
+
+// A missing account is a 404 — and only that is.
+func TestDeleteUserReportsAMissingAccountAsNotFound(t *testing.T) {
+	_, appError := newTestService(t, newFakeRepository()).DeleteUser(context.Background(), DeleteRequest{Id: uuid.New()}, uuid.New())
+	if appError == nil {
+		t.Fatal("expected the delete to be refused")
+	}
+
+	if appError.StatusCode() != http.StatusNotFound {
+		t.Errorf("expected status %d, got %d", http.StatusNotFound, appError.StatusCode())
 	}
 }

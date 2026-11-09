@@ -157,19 +157,121 @@ func (r *sqlRepository) CreateUser(user User) bool {
 	return true
 }
 
-// Delete a user based on user model data
-func (r *sqlRepository) DeleteUser(user User) bool {
-	r.logger.Debug("DeleteUser", slog.String("id", user.ID.String()))
+// Report whether a template that is not the account's own pulls in one of its
+// commands. That is the one delete the schema refuses
+// (`template_commands.command_id` is ON DELETE RESTRICT), and the service
+// answers 409 for it instead of letting the transaction fail. The API only lets
+// a template reference its owner's commands, so this is data written outside
+// it — defence in depth, not a case the routes can produce.
+func (r *sqlRepository) CommandsInUseByOthers(userID uuid.UUID) (bool, bool) {
+	r.logger.Debug("CommandsInUseByOthers", slog.String("id", userID.String()))
 
-	exec := "DELETE FROM users WHERE id=$1"
+	var inUse bool
 
-	_, err := r.db.Exec(exec, user.ID)
-	if err != nil {
-		r.logger.Error("delete user", slog.Any("error", err))
-		return false
+	query := `SELECT EXISTS (
+		SELECT 1
+		FROM template_commands tc
+		JOIN commands c ON c.id = tc.command_id
+		JOIN templates t ON t.id = tc.template_id
+		WHERE c.user_id = $1 AND t.user_id <> $1
+	)`
+
+	if err := r.db.QueryRow(query, userID).Scan(&inUse); err != nil {
+		r.logger.Error("commands in use by others", slog.Any("error", err))
+		return false, false
 	}
 
-	return true
+	return inUse, true
+}
+
+// Delete an account and every row that hangs off it.
+//
+// The order matters and it is why this is one transaction: the templates go
+// first (so the account's own references to its commands go with them), then
+// the commands, then the user row, whose cascades sweep sessions, files and
+// their history. The templates and commands are deleted here rather than left
+// to the user row's cascade because their ids are the folders the caller has to
+// remove from disk.
+func (r *sqlRepository) DeleteUser(user User) (OwnerStorage, bool) {
+	r.logger.Debug("DeleteUser", slog.String("id", user.ID.String()))
+
+	var owner OwnerStorage
+
+	tx, err := r.db.Beginx()
+	if err != nil {
+		r.logger.Error("begin delete user", slog.Any("error", err))
+		return owner, false
+	}
+	defer tx.Rollback()
+
+	templateIDs, ok := deleteReturningIDs(tx, "DELETE FROM templates WHERE user_id=$1 RETURNING id", user.ID, r.logger)
+	if !ok {
+		return owner, false
+	}
+
+	commandIDs, ok := deleteReturningIDs(tx, "DELETE FROM commands WHERE user_id=$1 RETURNING id", user.ID, r.logger)
+	if !ok {
+		return owner, false
+	}
+
+	result, err := tx.Exec("DELETE FROM users WHERE id=$1", user.ID)
+	if err != nil {
+		r.logger.Error("delete user", slog.Any("error", err))
+		return owner, false
+	}
+
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		r.logger.Error("delete user", slog.Any("error", err))
+		return owner, false
+	}
+
+	if deleted == 0 {
+		// The account was read a moment ago, so this is a delete that raced
+		// another one. There is nothing left to remove; the caller is told the
+		// delete failed rather than that the account never existed.
+		r.logger.Warn("delete user affected no row", slog.String("id", user.ID.String()))
+		return owner, false
+	}
+
+	if err := tx.Commit(); err != nil {
+		r.logger.Error("commit delete user", slog.Any("error", err))
+		return owner, false
+	}
+
+	owner.TemplateIDs = templateIDs
+	owner.CommandIDs = commandIDs
+
+	return owner, true
+}
+
+// deleteReturningIDs runs a DELETE that names its removed rows and collects
+// their ids. A query that fails is logged and reported as false, so the caller
+// rolls the transaction back.
+func deleteReturningIDs(tx *sqlx.Tx, query string, userID uuid.UUID, log *logger.Config) ([]uuid.UUID, bool) {
+	rows, err := tx.Queryx(query, userID)
+	if err != nil {
+		log.Error("delete rows", slog.Any("error", err))
+		return nil, false
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			log.Error("scan deleted id", slog.Any("error", err))
+			return nil, false
+		}
+		ids = append(ids, id)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Error("read deleted ids", slog.Any("error", err))
+		return nil, false
+	}
+
+	return ids, true
 }
 
 // update a user based on user model data
