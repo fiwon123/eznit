@@ -118,8 +118,8 @@ func recordingRepository(t *testing.T) (*sqlRepository, *recordingDriver) {
 func TestGetFilesForUserSendsTheOwnerFilter(t *testing.T) {
 	repo, recorder := recordingRepository(t)
 
-	if _, ok := repo.GetFilesForUser(uuid.New()); !ok {
-		t.Fatal("expected the query to succeed")
+	if _, err := repo.GetFilesForUser(uuid.New()); err != nil {
+		t.Fatalf("expected the query to succeed: %v", err)
 	}
 
 	query := recorder.lastQuery()
