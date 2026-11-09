@@ -121,6 +121,7 @@ func whatAnswersV1(logger *logger.Config) (http.Handler, string) {
 			DB:           db,
 			Logger:       logger,
 			UploadFolder: os.Getenv("API_UPLOADS"),
+			RateLimit:    api.RateLimitFromEnv(),
 		}),
 		"the API in this process, backed by PostgreSQL at " + os.Getenv("DB_HOST")
 }

@@ -51,6 +51,7 @@ func main() {
 		DB:           db,
 		Logger:       logger,
 		UploadFolder: os.Getenv("API_UPLOADS"),
+		RateLimit:    api.RateLimitFromEnv(),
 	})
 
 	logger.Info("Initialized routes!")

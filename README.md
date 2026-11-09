@@ -151,7 +151,9 @@ This is a self-hosted tool, and it is not hardened. What is true today:
   delete other accounts. Promote another with
   `UPDATE users SET is_admin = true WHERE email = ...`.
 - Files are stored unencrypted on the server's disk.
-- There is no rate limiting on `signup` or `login`.
+- `signup` and `login` are rate-limited per IP and per address (`429` with
+  `Retry-After`). The limiter is in-process per instance and configurable; it is a
+  guard, not a distributed guarantee.
 - Signup and login do not say whether an address has an account: a signup for a
   taken address answers like a new one, and a failed login is one generic `401`.
 - Passwords are hashed (bcrypt); session tokens are random and stored with an

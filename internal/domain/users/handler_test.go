@@ -92,7 +92,7 @@ func newTestRouter(t *testing.T, repo Repository, userID uuid.UUID) *chi.Mux {
 	service := NewService(repo, t.TempDir(), sessionsService, log)
 	guard := middleware.NewGuard(sessionsService, service, log)
 
-	handler := NewHandler(service, sessionsService, guard, log)
+	handler := NewHandler(service, sessionsService, guard, log, RateLimitPolicy{})
 
 	router := chi.NewRouter()
 	handler.RegisterRoutes(router)
