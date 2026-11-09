@@ -122,6 +122,7 @@ make run_api   # run the API against the configured database
 make run_cli   # run the CLI
 make build     # the local binaries into ./build
 make release   # one-folder archives for every platform into ./build/dist
+make verify-release  # check the archives: layout, names, PE, provenance
 make web_check # lint, format check, typecheck and build the web UI
 make web_build # build the web UI into web/dist
 make web_dev   # run the Vite dev server

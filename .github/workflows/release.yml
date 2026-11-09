@@ -86,6 +86,10 @@ jobs:
         working-directory: web
 
       - name: Build the archives
+        env:
+          # Every binary must report this revision and vcs.modified=false;
+          # `make verify-release` fails the build otherwise.
+          PROVENANCE_COMMIT: ${{ github.sha }}
         run: make release VERSION="${{ steps.version.outputs.version }}"
 
       # `make release` writes the hash list next to the archives it produced.
