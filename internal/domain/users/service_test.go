@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/fiwon123/eznit/internal/domain/sessions"
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/google/uuid"
 )
@@ -318,6 +319,94 @@ func TestIsAdminAnswersFromTheAccount(t *testing.T) {
 				t.Errorf("IsAdmin(%s) = %t, want %t", tt.id, got, tt.wants)
 			}
 		})
+	}
+}
+
+// A signup for an address that already has an account answers exactly like a
+// real one, and creates nothing: the response must not say which addresses are
+// registered.
+func TestSignupDoesNotRevealWhetherAnEmailIsRegistered(t *testing.T) {
+	taken := User{ID: uuid.New(), Email: "taken@example.com"}
+	repo := newFakeRepository(taken)
+
+	message, appError := newTestService(t, repo).CreateUser(context.Background(), signup(taken.Email))
+	if appError != nil {
+		t.Fatalf("expected the answer a real signup gets, got %v", appError)
+	}
+
+	if message != "user created!" {
+		t.Errorf("expected the answer a real signup gets, got %q", message)
+	}
+
+	if len(repo.created) != 0 {
+		t.Errorf("expected no account to be created, got %d", len(repo.created))
+	}
+}
+
+// An address with no account and a wrong password get the same 401 and the same
+// message: a caller learns that the pair did not work, not which half failed.
+func TestLoginDoesNotRevealWhetherAnEmailIsRegistered(t *testing.T) {
+	hash, err := hashPassword("right-password")
+	if err != nil {
+		t.Fatalf("failed to hash the test password: %v", err)
+	}
+
+	owner := User{ID: uuid.New(), Email: "owner@example.com", Password: hash}
+	svc := newTestService(t, newFakeRepository(owner))
+
+	tests := []struct {
+		name    string
+		request LoginRequest
+	}{
+		{"an address with no account", LoginRequest{Email: "nobody@example.com", Password: "whatever"}},
+		{"a wrong password", LoginRequest{Email: owner.Email, Password: "wrong"}},
+	}
+
+	var first string
+	for index, tt := range tests {
+		_, appError := svc.LoginUser(context.Background(), tt.request)
+		if appError == nil {
+			t.Fatalf("%s: expected the login to fail", tt.name)
+		}
+
+		if appError.StatusCode() != http.StatusUnauthorized {
+			t.Errorf("%s: expected status %d, got %d", tt.name, http.StatusUnauthorized, appError.StatusCode())
+		}
+
+		if index == 0 {
+			first = appError.Error()
+			continue
+		}
+
+		if appError.Error() != first {
+			t.Errorf("the two failures answer differently: %q and %q", first, appError.Error())
+		}
+	}
+}
+
+// The right pair still gets a token: closing the oracle must not close the door.
+func TestLoginAnswersWithAToken(t *testing.T) {
+	hash, err := hashPassword("right-password")
+	if err != nil {
+		t.Fatalf("failed to hash the test password: %v", err)
+	}
+
+	owner := User{ID: uuid.New(), Email: "owner@example.com", Password: hash}
+
+	log, err := logger.NewConsole(t.TempDir(), false, true)
+	if err != nil {
+		t.Fatalf("failed to create the test logger: %v", err)
+	}
+
+	svc := NewService(newFakeRepository(owner), t.TempDir(), sessions.NewService(newFakeSessionsRepository(), log), log)
+
+	resp, appError := svc.LoginUser(context.Background(), LoginRequest{Email: owner.Email, Password: "right-password"})
+	if appError != nil {
+		t.Fatalf("expected the login to succeed, got %v", appError)
+	}
+
+	if resp.Token == "" {
+		t.Error("expected a token")
 	}
 }
 

@@ -98,6 +98,10 @@ func (s *Service) IsAdmin(ctx context.Context, id uuid.UUID) bool {
 }
 
 // Check if user credentials are valid
+//
+// Both ways a login can fail answer the same thing. Login is public, and a
+// difference between "no such address" and "wrong password" tells a caller
+// which addresses have accounts; the server log keeps the distinction.
 func (s *Service) LoginUser(ctx context.Context, req LoginRequest) (LoginResponse, *errors.AppError) {
 	s.logger.Debug("LoginUser", slog.String("email", req.Email))
 
@@ -105,13 +109,13 @@ func (s *Service) LoginUser(ctx context.Context, req LoginRequest) (LoginRespons
 
 	user, ok := db.GetUserByEmail(req.Email)
 	if !ok {
-		s.logger.Error("user not found")
-		return LoginResponse{}, errors.NewAppError(http.StatusNotFound, "user not found")
+		s.logger.Warn("login for an address with no account", slog.String("email", req.Email))
+		return LoginResponse{}, invalidCredentials()
 	}
 
 	if !checkPasswordHash(req.Password, user.Password) {
-		s.logger.Error("passwords not match")
-		return LoginResponse{}, errors.NewAppError(http.StatusBadRequest, "passwords not match")
+		s.logger.Warn("login with a wrong password", slog.String("email", req.Email))
+		return LoginResponse{}, invalidCredentials()
 	}
 
 	s.logger.Debug("user logged in")
@@ -125,6 +129,12 @@ func (s *Service) LoginUser(ctx context.Context, req LoginRequest) (LoginRespons
 	return LoginResponse{
 		Token: token,
 	}, nil
+}
+
+// invalidCredentials is the one answer a failed login gets, whatever failed:
+// the caller learns that the pair did not work, not which half was wrong.
+func invalidCredentials() *errors.AppError {
+	return errors.NewAppError(http.StatusUnauthorized, "invalid credentials")
 }
 
 // Create a new user based on signup request
@@ -142,11 +152,6 @@ func (s *Service) CreateUser(ctx context.Context, req SignupRequest) (string, *e
 
 	db := s.db
 
-	if db.UserExists(req.Email) {
-		s.logger.Warn("user already exists", slog.String("email", req.Email))
-		return "", errors.NewAppError(http.StatusConflict, "user already exists")
-	}
-
 	if req.Password == "" {
 		s.logger.Warn("password is empty")
 		return "", errors.NewAppError(http.StatusBadRequest, "password is empty")
@@ -155,6 +160,20 @@ func (s *Service) CreateUser(ctx context.Context, req SignupRequest) (string, *e
 	if req.Password != req.ConfirmPassword {
 		s.logger.Warn("passwords do not match")
 		return "", errors.NewAppError(http.StatusBadRequest, "passwords do not match")
+	}
+
+	if db.UserExists(req.Email) {
+		// Signup is public, and "user already exists" tells a caller which
+		// addresses have accounts. The answer is the same as a real signup,
+		// and the hash is computed anyway so the two paths take about as long.
+		// The log keeps the truth for the operator.
+		if _, err := hashPassword(req.Password); err != nil {
+			s.logger.Error("password error", slog.Any("error", err))
+			return "", errors.NewAppError(http.StatusInternalServerError, "failed to create new user")
+		}
+
+		s.logger.Info("signup for an address that already has an account", slog.String("email", req.Email))
+		return "user created!", nil
 	}
 
 	hasUsers, ok := db.HasUsers()

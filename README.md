@@ -329,6 +329,9 @@ This is a self-hosted tool, and it is not hardened. What is true today:
   Promote another with `UPDATE users SET is_admin = true WHERE email = ...`.
 - Files are stored unencrypted on the server's disk.
 - There is no rate limiting on `signup` or `login`.
+- Signup and login do not say whether an address has an account: a signup for a
+  taken address answers like a new one (and creates nothing), and a failed login
+  is one generic `401`. The server log keeps the difference.
 - Passwords are hashed; session tokens are random and stored in the database
   with an expiry. The only `golang.org/x/crypto` package this repository links
   is `bcrypt` — the module's SSH and S/MIME advisories do not apply to the code
