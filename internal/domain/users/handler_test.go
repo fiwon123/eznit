@@ -32,39 +32,39 @@ func newFakeSessionsRepository(s ...sessions.Session) *fakeSessionsRepository {
 	return repo
 }
 
-func (r *fakeSessionsRepository) GetSession(token string) *sessions.Session {
+func (r *fakeSessionsRepository) GetSession(token string) (*sessions.Session, error) {
 	session, ok := r.sessions[token]
 	if !ok {
-		return nil
+		return nil, sessions.ErrNotFound
 	}
-	return &session
+	return &session, nil
 }
 
-func (r *fakeSessionsRepository) GetSessionByUserID(userID uuid.UUID) (*sessions.Session, bool) {
+func (r *fakeSessionsRepository) GetSessionByUserID(userID uuid.UUID) (*sessions.Session, error) {
 	for _, session := range r.sessions {
 		if session.UserID == userID {
-			return &session, true
+			return &session, nil
 		}
 	}
-	return nil, false
+	return nil, sessions.ErrNotFound
 }
 
-func (r *fakeSessionsRepository) CreateSession(s sessions.Session) bool {
+func (r *fakeSessionsRepository) CreateSession(s sessions.Session) error {
 	r.sessions[s.Token] = s
-	return true
+	return nil
 }
 
-func (r *fakeSessionsRepository) UpdateSession(s sessions.Session) bool {
+func (r *fakeSessionsRepository) UpdateSession(s sessions.Session) error {
 	r.sessions[s.Token] = s
-	return true
+	return nil
 }
 
-func (r *fakeSessionsRepository) GetUserIDByToken(token string) (uuid.UUID, bool) {
+func (r *fakeSessionsRepository) GetUserIDByToken(token string) (uuid.UUID, error) {
 	session, ok := r.sessions[token]
 	if !ok {
-		return uuid.UUID{}, false
+		return uuid.UUID{}, sessions.ErrNotFound
 	}
-	return session.UserID, true
+	return session.UserID, nil
 }
 
 // newTestRouter returns a router with the users routes registered and one live
@@ -92,7 +92,7 @@ func newTestRouter(t *testing.T, repo Repository, userID uuid.UUID) *chi.Mux {
 	service := NewService(repo, t.TempDir(), sessionsService, log)
 	guard := middleware.NewGuard(sessionsService, service, log)
 
-	handler := NewHandler(service, sessionsService, guard, log)
+	handler := NewHandler(service, sessionsService, guard, log, RateLimitPolicy{})
 
 	router := chi.NewRouter()
 	handler.RegisterRoutes(router)
@@ -165,9 +165,27 @@ func TestTheLoginRouteDoesNotRevealWhetherAnEmailIsRegistered(t *testing.T) {
 		bodies = append(bodies, recorder.Body.String())
 	}
 
-	if bodies[0] != bodies[1] {
-		t.Errorf("the two failures answer differently: %q and %q", bodies[0], bodies[1])
+	// Compare the fields that could tell the two failures apart, not the
+	// timestamp: it is wall-clock time and differs whenever the requests
+	// straddle a second boundary, which made this test flaky (#170).
+	var failures []loginFailure
+	for _, body := range bodies {
+		var failure loginFailure
+		if err := json.Unmarshal([]byte(body), &failure); err != nil {
+			t.Fatalf("decode the failure body: %v", err)
+		}
+		failures = append(failures, failure)
 	}
+	if failures[0] != failures[1] {
+		t.Errorf("the two failures answer differently: %+v and %+v", failures[0], failures[1])
+	}
+}
+
+// loginFailure is the part of a failed login an observer can use to tell which
+// half of the pair was wrong — everything except the timestamp.
+type loginFailure struct {
+	StatusCode int    `json:"status_code"`
+	Error      string `json:"error"`
 }
 
 // The pair that matches still gets a token through the route, not only in the

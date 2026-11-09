@@ -2,15 +2,16 @@ package files
 
 import (
 	"context"
+	stderrors "errors"
 	"io"
 	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
+	"github.com/fiwon123/eznit/internal/platform/storage"
 	"github.com/fiwon123/eznit/pkg/errors"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
@@ -63,8 +64,8 @@ func (s *service) GetFilesForUser(ctx context.Context) (ListResponse, *errors.Ap
 
 	s.logger.Debug("GetFilesForUser", slog.String("userID", userID.String()))
 
-	files, ok := s.db.GetFilesForUser(userID)
-	if !ok {
+	files, err := s.db.GetFilesForUser(userID)
+	if err != nil {
 		return ListResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to get failes for user")
 	}
 
@@ -93,8 +94,8 @@ func (s *service) GetFilesForUser(ctx context.Context) (ListResponse, *errors.Ap
 // It is public: the rows are the files their owners shared, so a visitor
 // without a session reads the same list an account does.
 func (s *service) ListSharedFiles(ctx context.Context) (SharedListResponse, *errors.AppError) {
-	files, ok := s.db.ListSharedFiles()
-	if !ok {
+	files, err := s.db.ListSharedFiles()
+	if err != nil {
 		return SharedListResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to get shared files")
 	}
 
@@ -135,11 +136,18 @@ func (s *service) ShareFile(ctx context.Context, id uuid.UUID, isPublic bool) (s
 		return "", errors.NewAppError(http.StatusUnauthorized, "unauthorized")
 	}
 
-	if !s.db.IsUserOwner(id, userID) {
+	owner, err := s.db.IsUserOwner(id, userID)
+	if err != nil {
+		return "", errors.NewAppError(http.StatusInternalServerError, "failed to read file")
+	}
+	if !owner {
 		return "", errors.NewAppError(http.StatusNotFound, "file not found")
 	}
 
-	if !s.db.SetFilePublic(id, userID, isPublic) {
+	if err := s.db.SetFilePublic(id, userID, isPublic); err != nil {
+		if stderrors.Is(err, ErrNotFound) {
+			return "", errors.NewAppError(http.StatusNotFound, "file not found")
+		}
 		return "", errors.NewAppError(http.StatusInternalServerError, "failed to update file")
 	}
 
@@ -155,8 +163,10 @@ func (s *service) GetFile(ctx context.Context, id uuid.UUID) (*File, *errors.App
 
 	s.logger.Debug("GetFile", slog.String("id", id.String()))
 
-	file, ok := s.db.GetFile(id)
-	if !ok {
+	file, err := s.db.GetFile(id)
+	if err != nil {
+		// Preserve the old answer: this internal read already reported absence
+		// as a failure at this call site.
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get file")
 	}
 
@@ -174,8 +184,11 @@ func (s *service) GetFileForUser(ctx context.Context, id uuid.UUID) (*File, *err
 
 	s.logger.Debug("GetFileForUser", slog.String("id", id.String()), slog.String("userID", userID.String()))
 
-	file, ok := s.db.GetFileForUser(id, userID)
-	if !ok {
+	file, err := s.db.GetFileForUser(id, userID)
+	if err != nil {
+		if !stderrors.Is(err, ErrNotFound) {
+			return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get file")
+		}
 		s.logger.Warn("file not found for user")
 		// The file does not exist, or it belongs to somebody else. Both
 		// answer the same way: a caller must not be able to tell an id
@@ -196,13 +209,20 @@ func (s *service) GetFileForDownload(ctx context.Context, id uuid.UUID) (*File, 
 	userID := userIDOrNil(ctx)
 
 	if userID != uuid.Nil {
-		if file, ok := s.db.GetFileForUser(id, userID); ok {
+		file, err := s.db.GetFileForUser(id, userID)
+		if err == nil {
 			return file, nil
+		}
+		if !stderrors.Is(err, ErrNotFound) {
+			return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get file")
 		}
 	}
 
-	file, ok := s.db.GetSharedFile(id)
-	if !ok {
+	file, err := s.db.GetSharedFile(id)
+	if err != nil {
+		if !stderrors.Is(err, ErrNotFound) {
+			return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get file")
+		}
 		return nil, errors.NewAppError(http.StatusNotFound, "file not found")
 	}
 
@@ -266,7 +286,7 @@ func (s *service) StorageFile(ctx context.Context, file multipart.File, header *
 		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
 	}
 	version := 1
-	finalPath := filepath.Join(s.uploadFolder, userID.String(), fileID.String(), strconv.Itoa(version)+"_"+fileName)
+	finalPath := storage.FilePath(s.uploadFolder, userID, fileID, version, fileName)
 
 	// The name is validated and the path is built from it, so the write
 	// lands inside the upload root. The check is here anyway: it is the
@@ -286,13 +306,11 @@ func (s *service) StorageFile(ctx context.Context, file multipart.File, header *
 		ContentType: contentType,
 	}
 
-	ok = s.db.StorageFile(storageFile)
-	if !ok {
+	if err = s.db.StorageFile(storageFile); err != nil {
 		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
 	}
 
-	ok = s.db.StorageFileHistory(storageFile)
-	if !ok {
+	if err = s.db.StorageFileHistory(storageFile); err != nil {
 		return "", errors.NewAppError(http.StatusInternalServerError, "storage file failed!")
 	}
 
@@ -330,26 +348,26 @@ func (s *service) DeleteFileForUser(ctx context.Context, id uuid.UUID, userID uu
 		return "", errors.NewAppError(http.StatusBadRequest, "invalid id")
 	}
 
-	file, ok := s.db.GetFileForUser(id, userID)
-	if !ok {
+	file, err := s.db.GetFileForUser(id, userID)
+	if err != nil {
+		if !stderrors.Is(err, ErrNotFound) {
+			return "", errors.NewAppError(http.StatusInternalServerError, "failed to get file")
+		}
 		s.logger.Warn("file not found")
 		return "", errors.NewAppError(http.StatusBadRequest, "file not found")
 	}
 
-	err := os.RemoveAll(filepath.Dir(file.Path))
-	if err != nil {
+	if err := os.RemoveAll(filepath.Dir(file.Path)); err != nil {
 		s.logger.Warn("filepath not exists, but will continue to delete", slog.Any("error", err))
 	}
 
-	ok = s.db.DeleteFileHistoryForUser(id, userID)
-	if !ok {
-		s.logger.Error("can't delete file history")
+	if err := s.db.DeleteFileHistoryForUser(id, userID); err != nil {
+		s.logger.Error("can't delete file history", slog.Any("error", err))
 		return "", errors.NewAppError(http.StatusInternalServerError, "can't delete file")
 	}
 
-	ok = s.db.DeleteFileForUser(id, userID)
-	if !ok {
-		s.logger.Error("can't delete file")
+	if err := s.db.DeleteFileForUser(id, userID); err != nil {
+		s.logger.Error("can't delete file", slog.Any("error", err))
 		return "", errors.NewAppError(http.StatusInternalServerError, "can't delete file")
 	}
 
@@ -362,13 +380,20 @@ func (s *service) DeleteFileForUser(ctx context.Context, id uuid.UUID, userID uu
 func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, id uuid.UUID, userID uuid.UUID) (string, *errors.AppError) {
 	s.logger.Debug("UpdateFile", slog.String("id", id.String()))
 
-	if !s.db.IsUserOwner(id, userID) {
+	owner, err := s.db.IsUserOwner(id, userID)
+	if err != nil {
+		return "", errors.NewAppError(http.StatusInternalServerError, "failed to read file")
+	}
+	if !owner {
 		s.logger.Warn("not owner")
 		return "", errors.NewAppError(http.StatusConflict, "not owner")
 	}
 
-	fileInfo, ok := s.db.GetFile(id)
-	if !ok {
+	fileInfo, err := s.db.GetFile(id)
+	if err != nil {
+		if !stderrors.Is(err, ErrNotFound) {
+			return "", errors.NewAppError(http.StatusInternalServerError, "failed to get file")
+		}
 		s.logger.Warn("file not found")
 		return "", errors.NewAppError(http.StatusBadRequest, "file not found")
 	}
@@ -383,7 +408,7 @@ func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *m
 	ext := filepath.Ext(fileName)
 
 	cleanName := strings.ReplaceAll(fileName, ext, "")
-	finalPath := filepath.Join(s.uploadFolder, fileInfo.UserID.String(), fileInfo.ID.String(), strconv.Itoa(newVersion)+"_"+fileName)
+	finalPath := storage.FilePath(s.uploadFolder, fileInfo.UserID, fileInfo.ID, newVersion, fileName)
 
 	if !helper.PathIsInside(s.uploadFolder, finalPath) {
 		s.logger.Error("the storage path is outside the upload folder", slog.String("path", finalPath))
@@ -399,7 +424,7 @@ func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *m
 		Path:    finalPath,
 	}
 
-	err := helper.CreatePathIfNotExists(s.uploadFolder)
+	err = helper.CreatePathIfNotExists(s.uploadFolder)
 	if err != nil {
 		s.logger.Error("create path failed", slog.Any("error", err))
 		return "", errors.NewAppError(http.StatusInternalServerError, "update file failed")
@@ -421,14 +446,12 @@ func (s *service) UpdateFile(ctx context.Context, file multipart.File, header *m
 	// The new version gets its own history row; the rows of the versions
 	// before it are left alone. An update is a new version, not a rewrite of
 	// the old one (#65).
-	ok = s.db.StorageFileHistory(updateFile)
-	if !ok {
-		s.logger.Error("can't store the file history")
+	if err := s.db.StorageFileHistory(updateFile); err != nil {
+		s.logger.Error("can't store the file history", slog.Any("error", err))
 		return "", errors.NewAppError(http.StatusInternalServerError, "update file failed")
 	}
 
-	ok = s.db.UpdateFile(updateFile)
-	if !ok {
+	if err := s.db.UpdateFile(updateFile); err != nil {
 		return "", errors.NewAppError(http.StatusInternalServerError, "update file failed")
 	}
 

@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"sort"
 
 	"github.com/google/uuid"
@@ -31,7 +32,7 @@ func newFakeRepository(commands ...Command) *fakeRepository {
 	return repo
 }
 
-func (r *fakeRepository) ListCommands(userID uuid.UUID) ([]Command, bool) {
+func (r *fakeRepository) ListCommands(userID uuid.UUID) ([]Command, error) {
 	var owned []Command
 
 	for _, command := range r.commands {
@@ -42,59 +43,59 @@ func (r *fakeRepository) ListCommands(userID uuid.UUID) ([]Command, bool) {
 
 	sort.Slice(owned, func(i, j int) bool { return owned[i].Name < owned[j].Name })
 
-	return owned, true
+	return owned, nil
 }
 
-func (r *fakeRepository) GetCommand(id uuid.UUID, userID uuid.UUID) (*Command, bool) {
+func (r *fakeRepository) GetCommand(id uuid.UUID, userID uuid.UUID) (*Command, error) {
 	command, ok := r.commands[id]
 	if !ok || command.UserID != userID {
-		return nil, false
+		return nil, ErrNotFound
 	}
 
-	return &command, true
+	return &command, nil
 }
 
-func (r *fakeRepository) GetCommandByName(userID uuid.UUID, name string) (*Command, bool) {
+func (r *fakeRepository) GetCommandByName(userID uuid.UUID, name string) (*Command, error) {
 	for _, command := range r.commands {
 		if command.UserID == userID && command.Name == name {
-			return &command, true
+			return &command, nil
 		}
 	}
 
-	return nil, false
+	return nil, ErrNotFound
 }
 
-func (r *fakeRepository) CreateCommand(command Command) bool {
+func (r *fakeRepository) CreateCommand(command Command) error {
 	if r.createFails {
-		return false
+		return errors.New("create failed")
 	}
 
 	r.commands[command.ID] = command
 
-	return true
+	return nil
 }
 
-func (r *fakeRepository) UpdateCommand(command Command) bool {
+func (r *fakeRepository) UpdateCommand(command Command) error {
 	if _, ok := r.commands[command.ID]; !ok {
-		return false
+		return ErrNotFound
 	}
 
 	r.commands[command.ID] = command
 
-	return true
+	return nil
 }
 
-func (r *fakeRepository) DeleteCommand(id uuid.UUID, userID uuid.UUID) bool {
+func (r *fakeRepository) DeleteCommand(id uuid.UUID, userID uuid.UUID) error {
 	command, ok := r.commands[id]
 	if !ok || command.UserID != userID {
-		return false
+		return ErrNotFound
 	}
 
 	delete(r.commands, id)
 
-	return true
+	return nil
 }
 
-func (r *fakeRepository) CommandInUse(id uuid.UUID) bool {
-	return r.inUse[id]
+func (r *fakeRepository) CommandInUse(id uuid.UUID) (bool, error) {
+	return r.inUse[id], nil
 }

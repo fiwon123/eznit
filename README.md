@@ -46,7 +46,7 @@ While it runs (it streams the stack's logs; Ctrl-C stops the attached services):
 | --- | --- |
 | Web UI | http://localhost:5173 |
 | API | http://localhost:4000 |
-| Docs (Swagger UI) | http://localhost:4000/docs |
+| Docs (Swagger UI) | http://localhost:5173/docs (proxied) or http://localhost:4000/docs |
 
 Uploaded bytes live on the `api-data` volume, so they survive `docker compose down`
 (use `docker compose down -v` to remove them too).
@@ -129,7 +129,8 @@ Every `/v1` operation is described in one OpenAPI 3.1 document, served by the AP
 itself:
 
 - **`http://localhost:4000/docs`** — Swagger UI, with an **Authorize** button and
-  "Try it out" on every operation.
+  "Try it out" on every operation. In the product stack the `web` service proxies
+  `/docs` too, so `http://localhost:5173/docs` serves the same page.
 - **`http://localhost:4000/v1/openapi.yaml`** — the document, committed at
   `internal/platform/openapi/openapi.yaml`.
 - **`http://localhost:4000/v1/openapi.json`** — the same document as JSON.
@@ -151,7 +152,9 @@ This is a self-hosted tool, and it is not hardened. What is true today:
   delete other accounts. Promote another with
   `UPDATE users SET is_admin = true WHERE email = ...`.
 - Files are stored unencrypted on the server's disk.
-- There is no rate limiting on `signup` or `login`.
+- `signup` and `login` are rate-limited per IP and per address (`429` with
+  `Retry-After`). The limiter is in-process per instance and configurable; it is a
+  guard, not a distributed guarantee.
 - Signup and login do not say whether an address has an account: a signup for a
   taken address answers like a new one, and a failed login is one generic `401`.
 - Passwords are hashed (bcrypt); session tokens are random and stored with an

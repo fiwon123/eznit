@@ -3,15 +3,16 @@ package templates
 import (
 	"context"
 	"encoding/base64"
+	stderrors "errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/fiwon123/eznit/internal/platform/storage"
 	"github.com/fiwon123/eznit/pkg/errors"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
@@ -103,8 +104,8 @@ func (s *service) ListTemplates(ctx context.Context, kind string) (ListResponse,
 		return ListResponse{}, errors.NewAppError(http.StatusBadRequest, "invalid template kind")
 	}
 
-	templates, ok := s.db.ListTemplates(userID, kind, listLimit)
-	if !ok {
+	templates, err := s.db.ListTemplates(userID, kind, listLimit)
+	if err != nil {
 		return ListResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to get templates")
 	}
 
@@ -125,8 +126,8 @@ func (s *service) ListTemplatesForUser(ctx context.Context) (ListResponse, *erro
 
 	s.logger.Debug("ListTemplatesForUser", slog.String("userID", userID.String()))
 
-	templates, ok := s.db.ListTemplatesForUser(userID)
-	if !ok {
+	templates, err := s.db.ListTemplatesForUser(userID)
+	if err != nil {
 		return ListResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to get templates")
 	}
 
@@ -181,9 +182,12 @@ func (s *service) GetTemplate(ctx context.Context, id uuid.UUID) (*TemplateDetai
 
 	s.logger.Debug("GetTemplate", slog.String("id", id.String()))
 
-	template, ok := s.db.GetTemplate(id)
-	if !ok {
-		return nil, errors.NewAppError(http.StatusNotFound, "template not found")
+	template, err := s.db.GetTemplate(id)
+	if err != nil {
+		if stderrors.Is(err, ErrNotFound) {
+			return nil, errors.NewAppError(http.StatusNotFound, "template not found")
+		}
+		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get template")
 	}
 
 	if !template.IsPublic && template.UserID != userID {
@@ -207,18 +211,18 @@ func (s *service) GetTemplate(ctx context.Context, id uuid.UUID) (*TemplateDetai
 
 // detail reads the files and the variables of a template and assembles it.
 func (s *service) detail(template *Template) (*TemplateDetail, *errors.AppError) {
-	files, ok := s.db.GetTemplateFiles(template.ID)
-	if !ok {
+	files, err := s.db.GetTemplateFiles(template.ID)
+	if err != nil {
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get template files")
 	}
 
-	variables, ok := s.db.GetTemplateVariables(template.ID)
-	if !ok {
+	variables, err := s.db.GetTemplateVariables(template.ID)
+	if err != nil {
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get template variables")
 	}
 
-	commands, ok := s.db.GetTemplateCommands(template.ID)
-	if !ok {
+	commands, err := s.db.GetTemplateCommands(template.ID)
+	if err != nil {
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get template commands")
 	}
 
@@ -324,14 +328,14 @@ func (s *service) PublishTemplate(ctx context.Context, request PublishRequest) (
 		return nil, appError
 	}
 
-	if !s.db.CreateTemplate(template, files, variables, commands) {
+	if err := s.db.CreateTemplate(template, files, variables, commands); err != nil {
 		// The rows were not written, so nothing points at the bytes.
 		s.removeTemplateStorage(template.ID)
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to publish template")
 	}
 
-	stored, ok := s.db.GetTemplate(template.ID)
-	if !ok {
+	stored, err := s.db.GetTemplate(template.ID)
+	if err != nil {
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to publish template")
 	}
 
@@ -349,10 +353,16 @@ func (s *service) UpdateTemplate(ctx context.Context, id uuid.UUID, request Publ
 
 	s.logger.Debug("UpdateTemplate", slog.String("id", id.String()))
 
-	existing, ok := s.db.GetTemplate(id)
-	if !ok || existing.UserID != userID {
-		// A template the caller does not own is a template that does not
-		// exist as far as the caller is concerned.
+	existing, err := s.db.GetTemplate(id)
+	if err != nil {
+		if stderrors.Is(err, ErrNotFound) {
+			// A template the caller does not own is a template that does not
+			// exist as far as the caller is concerned.
+			return nil, errors.NewAppError(http.StatusNotFound, "template not found")
+		}
+		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get template")
+	}
+	if existing.UserID != userID {
 		return nil, errors.NewAppError(http.StatusNotFound, "template not found")
 	}
 
@@ -366,8 +376,8 @@ func (s *service) UpdateTemplate(ctx context.Context, id uuid.UUID, request Publ
 
 	// The rows of the version being replaced, so their bytes can go once the
 	// new version is stored.
-	replaced, ok := s.db.GetTemplateFiles(id)
-	if !ok {
+	replaced, err := s.db.GetTemplateFiles(id)
+	if err != nil {
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to update template")
 	}
 
@@ -375,7 +385,7 @@ func (s *service) UpdateTemplate(ctx context.Context, id uuid.UUID, request Publ
 		return nil, appError
 	}
 
-	if !s.db.UpdateTemplate(template, files, variables, commands) {
+	if err := s.db.UpdateTemplate(template, files, variables, commands); err != nil {
 		// The new rows were not written: the bytes they would have pointed
 		// at are unreferenced.
 		s.removeStoredFiles(files)
@@ -385,8 +395,8 @@ func (s *service) UpdateTemplate(ctx context.Context, id uuid.UUID, request Publ
 	// The old rows are gone; their bytes are not.
 	s.removeStoredFiles(replaced)
 
-	stored, ok := s.db.GetTemplate(id)
-	if !ok {
+	stored, err := s.db.GetTemplate(id)
+	if err != nil {
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to update template")
 	}
 
@@ -403,8 +413,11 @@ func (s *service) DeleteTemplate(ctx context.Context, id uuid.UUID) (string, *er
 
 	s.logger.Debug("DeleteTemplate", slog.String("id", id.String()))
 
-	if !s.db.DeleteTemplate(id, userID) {
-		return "", errors.NewAppError(http.StatusNotFound, "template not found")
+	if err := s.db.DeleteTemplate(id, userID); err != nil {
+		if stderrors.Is(err, ErrNotFound) {
+			return "", errors.NewAppError(http.StatusNotFound, "template not found")
+		}
+		return "", errors.NewAppError(http.StatusInternalServerError, "failed to delete template")
 	}
 
 	// The files and the variables went with the row (the schema cascades);
@@ -423,17 +436,20 @@ func (s *service) visibleFiles(ctx context.Context, id uuid.UUID) ([]TemplateFil
 
 	s.logger.Debug("visibleFiles", slog.String("id", id.String()))
 
-	template, ok := s.db.GetTemplate(id)
-	if !ok {
-		return nil, errors.NewAppError(http.StatusNotFound, "template not found")
+	template, err := s.db.GetTemplate(id)
+	if err != nil {
+		if stderrors.Is(err, ErrNotFound) {
+			return nil, errors.NewAppError(http.StatusNotFound, "template not found")
+		}
+		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get template")
 	}
 
 	if !template.IsPublic && template.UserID != userID {
 		return nil, errors.NewAppError(http.StatusNotFound, "template not found")
 	}
 
-	files, ok := s.db.GetTemplateFiles(id)
-	if !ok {
+	files, err := s.db.GetTemplateFiles(id)
+	if err != nil {
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get template files")
 	}
 
@@ -525,7 +541,7 @@ func (s *service) TemplateArchive(ctx context.Context, id uuid.UUID) ([]ArchiveE
 
 // templateStorageDir is where every binary file of a template lives.
 func (s *service) templateStorageDir(templateID uuid.UUID) string {
-	return filepath.Join(s.uploadFolder, "templates", templateID.String())
+	return storage.TemplateDir(s.uploadFolder, templateID)
 }
 
 // storagePathOf is where a binary file lives, relative to the upload root.
@@ -535,12 +551,12 @@ func (s *service) templateStorageDir(templateID uuid.UUID) string {
 // path separator there. The file's own directory is its id, so two files with
 // the same name in different folders cannot collide.
 func storagePathOf(templateID, fileID uuid.UUID, filePath string) string {
-	return path.Join("templates", templateID.String(), fileID.String(), path.Base(filePath))
+	return storage.TemplateStoragePath(templateID, fileID, filePath)
 }
 
 // absoluteStoragePath is the location a row points at, on this machine.
-func (s *service) absoluteStoragePath(storagePath string) string {
-	return filepath.Join(s.uploadFolder, filepath.FromSlash(storagePath))
+func (s *service) absoluteStoragePath(storedPath string) string {
+	return storage.AbsolutePath(s.uploadFolder, storedPath)
 }
 
 // writeBinaryFiles writes the bytes of the binary files of a template.
@@ -640,17 +656,20 @@ func (s *service) contentOfCommand(command TemplateCommand) ([]byte, error) {
 func (s *service) visibleCommands(ctx context.Context, id uuid.UUID) ([]TemplateCommand, *errors.AppError) {
 	userID := userIDOrNil(ctx)
 
-	template, ok := s.db.GetTemplate(id)
-	if !ok {
-		return nil, errors.NewAppError(http.StatusNotFound, "template not found")
+	template, err := s.db.GetTemplate(id)
+	if err != nil {
+		if stderrors.Is(err, ErrNotFound) {
+			return nil, errors.NewAppError(http.StatusNotFound, "template not found")
+		}
+		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get template")
 	}
 
 	if !template.IsPublic && template.UserID != userID {
 		return nil, errors.NewAppError(http.StatusNotFound, "template not found")
 	}
 
-	commands, ok := s.db.GetTemplateCommands(id)
-	if !ok {
+	commands, err := s.db.GetTemplateCommands(id)
+	if err != nil {
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get template commands")
 	}
 
@@ -705,8 +724,8 @@ func (s *service) buildCommands(requestCommands []PublishCommand, userID uuid.UU
 		return commands, nil
 	}
 
-	owned, ok := s.db.OwnedCommandIDs(userID, ids)
-	if !ok {
+	owned, err := s.db.OwnedCommandIDs(userID, ids)
+	if err != nil {
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to validate the template commands")
 	}
 
@@ -1004,7 +1023,7 @@ func (s *service) resolveSlug(requested string, name string, currentID uuid.UUID
 		// An update keeps the slug the template already has. The slug is
 		// the address of the template, so renaming it should not move it.
 		if currentID != uuid.Nil {
-			if existing, ok := s.db.GetTemplate(currentID); ok {
+			if existing, err := s.db.GetTemplate(currentID); err == nil {
 				return existing.Slug, nil
 			}
 		}
@@ -1018,11 +1037,16 @@ func (s *service) resolveSlug(requested string, name string, currentID uuid.UUID
 
 	// The template may keep its own slug: an update that does not change the
 	// slug is not a conflict with itself.
-	if s.db.SlugExists(slug) {
+	slugTaken, err := s.db.SlugExists(slug)
+	if err != nil {
+		return "", errors.NewAppError(http.StatusInternalServerError, "failed to check the template slug")
+	}
+
+	if slugTaken {
 		owned := false
 
 		if currentID != uuid.Nil {
-			if existing, ok := s.db.GetTemplate(currentID); ok && existing.Slug == slug {
+			if existing, err := s.db.GetTemplate(currentID); err == nil && existing.Slug == slug {
 				owned = true
 			}
 		}

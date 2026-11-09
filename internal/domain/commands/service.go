@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"encoding/base64"
+	stderrors "errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/fiwon123/eznit/internal/platform/storage"
 	"github.com/fiwon123/eznit/pkg/errors"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
@@ -64,8 +66,8 @@ func (s *service) ListCommands(ctx context.Context) (ListResponse, *errors.AppEr
 		return ListResponse{}, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
 	}
 
-	stored, ok := s.db.ListCommands(userID)
-	if !ok {
+	stored, err := s.db.ListCommands(userID)
+	if err != nil {
 		return ListResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to list the commands")
 	}
 
@@ -105,9 +107,12 @@ func (s *service) GetCommand(ctx context.Context, id uuid.UUID) (*CommandData, *
 		return nil, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
 	}
 
-	command, ok := s.db.GetCommand(id, userID)
-	if !ok {
-		return nil, errors.NewAppError(http.StatusNotFound, "command not found")
+	command, err := s.db.GetCommand(id, userID)
+	if err != nil {
+		if stderrors.Is(err, ErrNotFound) {
+			return nil, errors.NewAppError(http.StatusNotFound, "command not found")
+		}
+		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get the command")
 	}
 
 	data := CommandData{
@@ -150,10 +155,12 @@ func (s *service) CreateCommand(ctx context.Context, request CommandRequest) (*C
 		return nil, appError
 	}
 
-	if _, ok := s.db.GetCommandByName(userID, command.Name); ok {
+	if _, err := s.db.GetCommandByName(userID, command.Name); err == nil {
 		// The name is how a user refers to a command, so a duplicate is a
 		// conflict, not a new entry.
 		return nil, errors.NewAppError(http.StatusConflict, "a command with that name already exists")
+	} else if !stderrors.Is(err, ErrNotFound) {
+		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to create the command")
 	}
 
 	id, err := uuid.NewV7()
@@ -169,7 +176,7 @@ func (s *service) CreateCommand(ctx context.Context, request CommandRequest) (*C
 		return nil, appError
 	}
 
-	if !s.db.CreateCommand(command) {
+	if err := s.db.CreateCommand(command); err != nil {
 		s.removeCommandStorage(command.ID)
 		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to create the command")
 	}
@@ -185,9 +192,12 @@ func (s *service) UpdateCommand(ctx context.Context, id uuid.UUID, request Comma
 		return nil, errors.NewAppError(http.StatusUnauthorized, "unauthorized")
 	}
 
-	existing, ok := s.db.GetCommand(id, userID)
-	if !ok {
-		return nil, errors.NewAppError(http.StatusNotFound, "command not found")
+	existing, err := s.db.GetCommand(id, userID)
+	if err != nil {
+		if stderrors.Is(err, ErrNotFound) {
+			return nil, errors.NewAppError(http.StatusNotFound, "command not found")
+		}
+		return nil, errors.NewAppError(http.StatusInternalServerError, "failed to get the command")
 	}
 
 	command, appError := s.build(request, userID, id)
@@ -196,8 +206,10 @@ func (s *service) UpdateCommand(ctx context.Context, id uuid.UUID, request Comma
 	}
 
 	if command.Name != existing.Name {
-		if other, ok := s.db.GetCommandByName(userID, command.Name); ok && other.ID != id {
+		if other, err := s.db.GetCommandByName(userID, command.Name); err == nil && other.ID != id {
 			return nil, errors.NewAppError(http.StatusConflict, "a command with that name already exists")
+		} else if err != nil && !stderrors.Is(err, ErrNotFound) {
+			return nil, errors.NewAppError(http.StatusInternalServerError, "failed to update the command")
 		}
 	}
 
@@ -208,7 +220,7 @@ func (s *service) UpdateCommand(ctx context.Context, id uuid.UUID, request Comma
 		return nil, appError
 	}
 
-	if !s.db.UpdateCommand(command) {
+	if err := s.db.UpdateCommand(command); err != nil {
 		// The row still describes the old version. Only the bytes of the
 		// new one are removed — the old bytes are what the row points at,
 		// and they are not the new version's to delete.
@@ -234,18 +246,28 @@ func (s *service) DeleteCommand(ctx context.Context, id uuid.UUID) (string, *err
 		return "", errors.NewAppError(http.StatusUnauthorized, "unauthorized")
 	}
 
-	if _, ok := s.db.GetCommand(id, userID); !ok {
-		return "", errors.NewAppError(http.StatusNotFound, "command not found")
+	if _, err := s.db.GetCommand(id, userID); err != nil {
+		if stderrors.Is(err, ErrNotFound) {
+			return "", errors.NewAppError(http.StatusNotFound, "command not found")
+		}
+		return "", errors.NewAppError(http.StatusInternalServerError, "failed to get the command")
 	}
 
 	// A template that pulls the command in keeps it: deleting it would
 	// remove a file from a published template without its owner asking.
-	if s.db.CommandInUse(id) {
+	inUse, err := s.db.CommandInUse(id)
+	if err != nil {
+		return "", errors.NewAppError(http.StatusInternalServerError, "failed to check the command")
+	}
+	if inUse {
 		return "", errors.NewAppError(http.StatusConflict, "the command is used by a template")
 	}
 
-	if !s.db.DeleteCommand(id, userID) {
-		return "", errors.NewAppError(http.StatusNotFound, "command not found")
+	if err := s.db.DeleteCommand(id, userID); err != nil {
+		if stderrors.Is(err, ErrNotFound) {
+			return "", errors.NewAppError(http.StatusNotFound, "command not found")
+		}
+		return "", errors.NewAppError(http.StatusInternalServerError, "failed to delete the command")
 	}
 
 	s.removeCommandStorage(id)
@@ -341,17 +363,17 @@ func (s *service) decodeBinary(encoded string) ([]byte, *errors.AppError) {
 // upload root, with forward slashes so the row reads the same on every
 // machine.
 func storagePathOf(command Command) string {
-	return "commands/" + command.ID.String() + "/" + command.Name
+	return storage.CommandStoragePath(command.ID, command.Name)
 }
 
 // absoluteStoragePath is the location a row points at, on this machine.
-func (s *service) absoluteStoragePath(storagePath string) string {
-	return filepath.Join(s.uploadFolder, filepath.FromSlash(storagePath))
+func (s *service) absoluteStoragePath(storedPath string) string {
+	return storage.AbsolutePath(s.uploadFolder, storedPath)
 }
 
 // commandStorageDir is the directory of one command's bytes.
 func (s *service) commandStorageDir(id uuid.UUID) string {
-	return filepath.Join(s.uploadFolder, "commands", id.String())
+	return storage.CommandDir(s.uploadFolder, id)
 }
 
 // writeBinaryFile writes the bytes of a binary command. A text command has
@@ -423,6 +445,6 @@ func (s *service) removeStoredFile(command Command) {
 // enforced in the schema (a count is not a constraint Postgres expresses
 // cheaply), so a listing checks it and a create refuses beyond it.
 func (s *service) libraryIsFull(userID uuid.UUID) bool {
-	stored, ok := s.db.ListCommands(userID)
-	return ok && len(stored) >= maxLibraryEntries
+	stored, err := s.db.ListCommands(userID)
+	return err == nil && len(stored) >= maxLibraryEntries
 }
