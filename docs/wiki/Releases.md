@@ -23,9 +23,8 @@ The flow is `dev` → `main` → tag:
 `main`, builds the archives with `make release VERSION=<tag>` — the same target a
 developer runs — and publishes them with `gh release create`.
 
-The release notes are built from the pull requests merged into `dev`: every feature
-PR is squash-merged, so `--generate-notes` would see only the release commit and
-miss them.
+The release notes are built from the pull requests merged into `dev`, grouped by
+label, so they read as a changelog rather than a raw commit list.
 
 ## The workflow's gates
 

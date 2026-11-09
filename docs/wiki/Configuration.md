@@ -11,16 +11,16 @@ Compose sets the in-network values itself.
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_NAME` | — | PostgreSQL connection |
 | `DB_PASSWORD_FILE` | — | path to a file holding the password — **preferred** |
 | `DB_PWD` | — | the password inline, for a throwaway local database |
-| `API_UPLOADS` | `./uploads` | the upload root (where file bytes live) |
+| `API_UPLOADS` | (unset) | the upload root (where file bytes live); set it in `.env` — the example uses `./uploads`, and there is no built-in fallback |
 | `API_LOGS` | `./logs` | where the API writes logs (rotating files, `lumberjack`) |
 | `API_WEB_DIST` | `web/dist` | where to find a built UI, when one exists |
-| `API_SERVE_WEB` | `true` | serve the UI from this process; the compose `api` service sets `false` |
+| `API_SERVE_WEB` | `true` | serve the UI from this process; the compose `api` and `dev` services set `false` |
 | `API_PORT` | `4000` | the bind port |
 
-> **`API_PORT` only moves the bind port.** It does not change what the CLI, the
-> GUI or the docs expect (`:4000`), and the compose file also uses it for the
-> published host port. It is not a way to put the service behind a proxy without
-> also changing the proxy target.
+> **`API_PORT` only moves the bind port.** It does not change what the CLI or the
+> docs expect (`:4000`), and the compose file also uses it for the published host
+> port. It is not a way to put the service behind a proxy without also changing the
+> proxy target.
 
 The password is a **Docker file secret** in the local stack:
 `secrets/db_password.txt` is mounted at `/run/secrets/db_password`, and
@@ -39,7 +39,7 @@ See [CLI Reference](https://github.com/fiwon123/eznit/wiki/CLI-Reference#cli-env
 | --- | --- | --- |
 | `GUI_API_URL` | — | proxy `/v1` to a running API instead of running one |
 | `GUI_PORT` | `8765` | the window's own port |
-| `GUI_LOGS` | — | GUI log folder |
+| `GUI_LOGS` | `./logs/` | GUI log folder |
 
 With `GUI_API_URL` set, the GUI is a window in front of an existing API. With no
 `GUI_API_URL` and the `DB_*` variables set, it runs the API in its own process, so

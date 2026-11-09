@@ -10,7 +10,8 @@ eznit --debug <cmd> # debug-level logs
 ```
 
 **The core commands are interactive** — they prompt for what they need rather
-than take flags. Subcommands (templates, commands, repos) take flags.
+than take flags. Subcommands take flags, and several of them (`template
+publish`/`show`/`apply`/`init`, `repo auth`) also prompt for values.
 
 ## Core commands
 
@@ -29,8 +30,9 @@ than take flags. Subcommands (templates, commands, repos) take flags.
 
 Every command that reads or writes your own rows needs a session: the API requires
 the token, and the CLI sends the one `login` stored. The exceptions are `signup`,
-`login`, and the public reads — the catalogue (`template list`, `template show`,
-and `template apply` of a public template) and shared files.
+`login`, and the public template catalogue (`template list`, `template show`, and
+`template apply` of a public template). Shared files are readable anonymously
+through the API and the web UI, but `eznit download` always needs a session.
 
 A typical first pass:
 
@@ -50,8 +52,8 @@ are; binary files are sent as base64 and stored on disk by the server.
 
 | Command | Flags | What it does |
 | --- | --- | --- |
-| `eznit template publish [folder]` | `--public`, `--command <id>=<path>` (repeatable) | Publish a folder as a template; `--command` pulls a library command in |
-| `eznit template list` | `--kind <terminal>`, `--mine` | The catalogue: public templates and your own |
+| `eznit template publish [folder]` | `--public`, `--commands <id>=<path>` (repeatable/comma-separated) | Publish a folder as a template; `--commands` pulls a library command in |
+| `eznit template list` | `--kind <terminal>`, `--mine` | The catalogue: public templates and your own; `--mine` shows only yours |
 | `eznit template show [id]` | — | One template, its files and its variables |
 | `eznit template apply [id]` | `--target <dir>`, `--force` | Write a template into a folder |
 | `eznit template init` | `--kind <terminal>`, `--target <dir>`, `--force` | Write a starter template locally (no server) |
@@ -76,7 +78,7 @@ one copy is updated once.
 
 ```sh
 eznit command add scripts/fmt.sh --name fmt
-eznit template publish . --command <command-id>=scripts/fmt.sh
+eznit template publish . --commands <command-id>=scripts/fmt.sh
 ```
 
 A name is unique per user, not globally.
@@ -96,7 +98,9 @@ token is a **personal access token** and it stays on your machine: it is kept in
 The clone runs `git` directly, with the token supplied through the child process's
 environment (`http.extraheader`), so it is never in the command line, never in the
 URL, and never written into the clone's `.git/config`. The remote stays the plain
-HTTPS URL. `eznit logout` removes the session token and leaves the host token in
+HTTPS URL. The residual exposure is that child's environment, which the same
+user's other processes can read (`/proc/<pid>/environ`) — the cost of keeping the
+token out of a file git owns. `eznit logout` removes the session token and leaves the host token in
 place; `eznit repo auth --remove` removes that one.
 
 ## The config file

@@ -11,8 +11,8 @@ make vuln      # reachable-dependency vulnerability scan (needs network)
 make web_check # oxlint, oxfmt, tsc --noEmit, vite build — the web gate
 ```
 
-`make check` needs no database, no container and no secret file: it compiles the
-API and the CLI, it does not run them. That is deliberate — the gate has to work on
+`make check` needs no database, no container and no secret file: it compiles every
+Go module (`api`, `cli`, `gui`, `winres`), it does not run them. That is deliberate — the gate has to work on
 a fresh clone. It fails loudly if the Go toolchain is missing rather than skipping,
 and it lists the packages with no test files, because `go test` prints
 `[no test files]` and still exits 0. **A green `make check` means "the packages

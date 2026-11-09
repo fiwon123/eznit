@@ -40,7 +40,7 @@ make setup
 make up             # or: docker compose up
 ```
 
-When it returns:
+While it runs (it streams the stack's logs; Ctrl-C stops the attached services):
 
 | What | Where |
 | --- | --- |
@@ -53,17 +53,21 @@ Uploaded bytes live on the `api-data` volume, so they survive `docker compose do
 
 ### Your first file
 
+The CLI is a separate binary. Build it with Go on the host, or download it from
+[Releases](https://github.com/fiwon123/eznit/releases). `make build_cli` cross-compiles
+`build/cli/linux/eznit` and `build/cli/windows/eznit.exe`.
+
 ```sh
-make build
-./build/cli/eznit signup     # Enter Email / Password / Confirm
-./build/cli/eznit login      # stores a session token in ~/.eznit/config.json (0600)
-./build/cli/eznit upload     # file path: ./notes.txt
-./build/cli/eznit list       # the files you own; note an id
-./build/cli/eznit download   # id file: <id>  / destination folder path: ./out
+make build_cli                     # needs Go only
+./build/cli/linux/eznit signup     # Enter Email / Password / Confirm
+./build/cli/linux/eznit login      # stores a session token in ~/.eznit/config.json (0600)
+./build/cli/linux/eznit upload     # file path: ./notes.txt
+./build/cli/linux/eznit list       # the files you own; note an id
+./build/cli/linux/eznit download   # id file: <id>  / destination folder path: ./out
 ```
 
-The core commands prompt for what they need. Need Go or Node on the host? You do
-not — the images build the UI. Want the source loop with live reload? See
+The core commands prompt for what they need. Running the stack needs only Docker;
+building the CLI needs Go. Want the source loop with live reload? See
 [Getting Started](https://github.com/fiwon123/eznit/wiki/Getting-Started) and
 [Development](https://github.com/fiwon123/eznit/wiki/Development).
 
@@ -102,7 +106,9 @@ eznit repo clone <owner/name>     # clone a repo the stored GitHub token can rea
 ```
 
 A session is required for anything that touches your own rows; `signup`, `login`
-and the public reads (catalogue, shared files) are the exceptions.
+and the public template catalogue are the exceptions. (Shared files are readable
+anonymously through the API and the web UI, but `eznit download` always needs a
+session.)
 
 ### Web UI
 
@@ -136,10 +142,11 @@ and the router disagree.
 
 This is a self-hosted tool, and it is not hardened. What is true today:
 
-- **Coverage is partial.** The API domains, the middleware, the CLI, the web UI and
-  the OpenAPI document have tests; `cmd/cli`, `pkg/errors`, `pkg/logger` and
-  `pkg/types` have none. A green `make check` means "it builds and the tested
-  packages passed" — not "it works".
+- **Coverage is partial.** The API domains, the middleware, the CLI, the web UI
+  handler and the OpenAPI document have tests; `cmd/cli`, `pkg/errors`,
+  `pkg/logger` and `pkg/types` have none, and the pages' browser behaviour has no
+  automated test. A green `make check` means "it builds and the tested packages
+  passed" — not "it works".
 - **The first account is the admin.** It is the only one that may list, update or
   delete other accounts. Promote another with
   `UPDATE users SET is_admin = true WHERE email = ...`.

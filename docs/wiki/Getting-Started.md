@@ -21,9 +21,11 @@ make setup
 ```
 
 Without `make`, copy `.env.example` to `.env` and
-`secrets/db_password.txt.example` to `secrets/db_password.txt` by hand. The
-database password is a Docker file secret read through `DB_PASSWORD_FILE`; it is
-never an environment variable.
+`secrets/db_password.txt.example` to `secrets/db_password.txt` by hand, then
+`chmod 600 .env secrets/db_password.txt` (see [Configuration](https://github.com/fiwon123/eznit/wiki/Configuration)) —
+`cp` under a normal umask leaves them world-readable. The database password is a
+Docker file secret read through `DB_PASSWORD_FILE`; it is never an environment
+variable.
 
 Then one command brings up the product:
 
@@ -57,24 +59,24 @@ Uploaded bytes live on the `api-data` volume, so they survive
 
 ## Your first file
 
-The CLI talks to the API on `:4000`. Build it (or use a release archive — see
-[Releases](https://github.com/fiwon123/eznit/wiki/Releases)):
+The CLI talks to the API on `:4000`. Build it with Go on the host (or use a release
+archive — see [Releases](https://github.com/fiwon123/eznit/wiki/Releases)):
 
 ```sh
-make build
-./build/cli/eznit --help
+make build_cli                  # needs Go; writes build/cli/linux/eznit and build/cli/windows/eznit.exe
+./build/cli/linux/eznit --help
 ```
 
 The core commands are interactive: they prompt for what they need.
 
 ```sh
-./build/cli/eznit signup     # Enter Email / Password / Confirm
-./build/cli/eznit login      # stores a session token in ~/.eznit/config.json (mode 0600)
-./build/cli/eznit upload     # file path: ./notes.txt
-./build/cli/eznit list       # the files you own
-./build/cli/eznit download   # id file: <id from list>  / destination folder path:
-./build/cli/eznit delete     # id file: <id>
-./build/cli/eznit logout     # removes the session token
+./build/cli/linux/eznit signup     # Enter Email / Password / Confirm
+./build/cli/linux/eznit login      # stores a session token in ~/.eznit/config.json (mode 0600)
+./build/cli/linux/eznit upload     # file path: ./notes.txt
+./build/cli/linux/eznit list       # the files you own
+./build/cli/linux/eznit download   # id file: <id from list>  / destination folder path:
+./build/cli/linux/eznit delete     # id file: <id>
+./build/cli/linux/eznit logout     # removes the session token
 ```
 
 `signup` and `login` are the only unauthenticated identity commands; everything
@@ -97,6 +99,10 @@ docker compose up db migrate
 
 DB_HOST=localhost DB_PORT=5432 ./eznit-server               # serves the embedded UI on :4000
 ```
+
+Set the database password for the host-run server too: `DB_PWD`, or
+`DB_PASSWORD_FILE` pointing at `secrets/db_password.txt`. A .env without a
+password would otherwise connect with an empty one.
 
 Plain `docker compose up` is the source-checkout path — in a bundle it would try
 to build an image the archive does not contain. `eznit-gui` opens a window on the
