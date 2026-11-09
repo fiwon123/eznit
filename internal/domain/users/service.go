@@ -2,13 +2,14 @@ package users
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/fiwon123/eznit/internal/domain/sessions"
-	"github.com/fiwon123/eznit/pkg/errors"
+	apperrors "github.com/fiwon123/eznit/pkg/errors"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/google/uuid"
@@ -38,12 +39,13 @@ func NewService(db Repository, uploadFolder string, session *sessions.Service, l
 }
 
 // Return a user list containing all registered users data
-func (s *Service) GetUsers(ctx context.Context) ([]UserData, *errors.AppError) {
+func (s *Service) GetUsers(ctx context.Context) ([]UserData, *apperrors.AppError) {
 	s.logger.Debug("GetUsers")
 
-	usersModel, ok := s.db.GetUsers()
-	if !ok {
-		return nil, errors.NewAppError(http.StatusInternalServerError, "can't get users")
+	usersModel, err := s.db.GetUsers()
+	if err != nil {
+		s.logger.Error("get users failed", slog.Any("error", err))
+		return nil, apperrors.NewAppError(http.StatusInternalServerError, "can't get users")
 	}
 
 	resp := []UserData{}
@@ -61,18 +63,22 @@ func (s *Service) GetUsers(ctx context.Context) ([]UserData, *errors.AppError) {
 // The record is the caller's own: any other id answers "not found" exactly
 // like an id that does not exist, because whether an account exists is not
 // something a session gets to probe.
-func (s *Service) GetUser(ctx context.Context, id, callerID uuid.UUID) (*UserData, *errors.AppError) {
+func (s *Service) GetUser(ctx context.Context, id, callerID uuid.UUID) (*UserData, *apperrors.AppError) {
 	s.logger.Debug("GetUser", slog.String("id", id.String()))
 
 	if id != callerID {
 		s.logger.Warn("user is not the caller", slog.String("id", id.String()))
-		return nil, errors.NewAppError(http.StatusNotFound, "user not found")
+		return nil, apperrors.NewAppError(http.StatusNotFound, "user not found")
 	}
 
-	user, ok := s.db.GetUser(id)
-	if !ok {
+	user, err := s.db.GetUser(id)
+	if errors.Is(err, ErrNotFound) {
 		s.logger.Error("User not found")
-		return nil, errors.NewAppError(http.StatusNotFound, "user not found")
+		return nil, apperrors.NewAppError(http.StatusNotFound, "user not found")
+	}
+	if err != nil {
+		s.logger.Error("get user failed", slog.Any("error", err))
+		return nil, apperrors.NewAppError(http.StatusInternalServerError, "failed to read the user")
 	}
 
 	resp := &UserData{
@@ -88,9 +94,9 @@ func (s *Service) GetUser(ctx context.Context, id, callerID uuid.UUID) (*UserDat
 // admin routes answers 403 when this answers false, so an account the service
 // cannot read is exactly as powerless as one that is not an admin.
 func (s *Service) IsAdmin(ctx context.Context, id uuid.UUID) bool {
-	user, ok := s.db.GetUser(id)
-	if !ok {
-		s.logger.Warn("admin check on an unreadable account", slog.String("id", id.String()))
+	user, err := s.db.GetUser(id)
+	if err != nil {
+		s.logger.Warn("admin check on an unreadable account", slog.String("id", id.String()), slog.Any("error", err))
 		return false
 	}
 
@@ -102,15 +108,21 @@ func (s *Service) IsAdmin(ctx context.Context, id uuid.UUID) bool {
 // Both ways a login can fail answer the same thing. Login is public, and a
 // difference between "no such address" and "wrong password" tells a caller
 // which addresses have accounts; the server log keeps the distinction.
-func (s *Service) LoginUser(ctx context.Context, req LoginRequest) (LoginResponse, *errors.AppError) {
+func (s *Service) LoginUser(ctx context.Context, req LoginRequest) (LoginResponse, *apperrors.AppError) {
 	s.logger.Debug("LoginUser", slog.String("email", req.Email))
 
 	db := s.db
 
-	user, ok := db.GetUserByEmail(req.Email)
-	if !ok {
+	user, err := db.GetUserByEmail(req.Email)
+	if errors.Is(err, ErrNotFound) {
 		s.logger.Warn("login for an address with no account", slog.String("email", req.Email))
 		return LoginResponse{}, invalidCredentials()
+	}
+	if err != nil {
+		// A read that failed is not a bad password: the caller may retry, and
+		// the answer must not say the credentials were checked.
+		s.logger.Error("login read failed", slog.Any("error", err))
+		return LoginResponse{}, apperrors.NewAppError(http.StatusInternalServerError, "failed to log in")
 	}
 
 	if !checkPasswordHash(req.Password, user.Password) {
@@ -122,7 +134,7 @@ func (s *Service) LoginUser(ctx context.Context, req LoginRequest) (LoginRespons
 	token, ok := s.session.CreateToken(user.ID)
 	if !ok {
 		s.logger.Error("create token failed")
-		return LoginResponse{}, errors.NewAppError(http.StatusInternalServerError, "failed to create a new session")
+		return LoginResponse{}, apperrors.NewAppError(http.StatusInternalServerError, "failed to create a new session")
 	}
 
 	s.logger.Debug("user token", slog.String("token_fp", helper.Fingerprint(token)))
@@ -133,8 +145,8 @@ func (s *Service) LoginUser(ctx context.Context, req LoginRequest) (LoginRespons
 
 // invalidCredentials is the one answer a failed login gets, whatever failed:
 // the caller learns that the pair did not work, not which half was wrong.
-func invalidCredentials() *errors.AppError {
-	return errors.NewAppError(http.StatusUnauthorized, "invalid credentials")
+func invalidCredentials() *apperrors.AppError {
+	return apperrors.NewAppError(http.StatusUnauthorized, "invalid credentials")
 }
 
 // Create a new user based on signup request
@@ -147,54 +159,60 @@ func invalidCredentials() *errors.AppError {
 // empty table can both read "no accounts yet" and both become admins. The
 // window is one fresh instance wide, and closing it needs a transaction this
 // service does not own; it is a known limitation, not an accident.
-func (s *Service) CreateUser(ctx context.Context, req SignupRequest) (string, *errors.AppError) {
+func (s *Service) CreateUser(ctx context.Context, req SignupRequest) (string, *apperrors.AppError) {
 	s.logger.Debug("CreateUser", slog.String("email", req.Email))
 
 	db := s.db
 
 	if req.Password == "" {
 		s.logger.Warn("password is empty")
-		return "", errors.NewAppError(http.StatusBadRequest, "password is empty")
+		return "", apperrors.NewAppError(http.StatusBadRequest, "password is empty")
 	}
 
 	if req.Password != req.ConfirmPassword {
 		s.logger.Warn("passwords do not match")
-		return "", errors.NewAppError(http.StatusBadRequest, "passwords do not match")
+		return "", apperrors.NewAppError(http.StatusBadRequest, "passwords do not match")
 	}
 
-	if db.UserExists(req.Email) {
+	taken, err := db.UserExists(req.Email)
+	if err != nil {
+		s.logger.Error("can't check whether the address has an account", slog.Any("error", err))
+		return "", apperrors.NewAppError(http.StatusInternalServerError, "failed to create new user")
+	}
+
+	if taken {
 		// Signup is public, and "user already exists" tells a caller which
 		// addresses have accounts. The answer is the same as a real signup,
 		// and the hash is computed anyway so the two paths take about as long.
 		// The log keeps the truth for the operator.
 		if _, err := hashPassword(req.Password); err != nil {
 			s.logger.Error("password error", slog.Any("error", err))
-			return "", errors.NewAppError(http.StatusInternalServerError, "failed to create new user")
+			return "", apperrors.NewAppError(http.StatusInternalServerError, "failed to create new user")
 		}
 
 		s.logger.Info("signup for an address that already has an account", slog.String("email", req.Email))
 		return "user created!", nil
 	}
 
-	hasUsers, ok := db.HasUsers()
-	if !ok {
-		s.logger.Error("can't tell whether an account exists yet")
-		return "", errors.NewAppError(http.StatusInternalServerError, "failed to create new user")
+	hasUsers, err := db.HasUsers()
+	if err != nil {
+		s.logger.Error("can't tell whether an account exists yet", slog.Any("error", err))
+		return "", apperrors.NewAppError(http.StatusInternalServerError, "failed to create new user")
 	}
 
 	hash, err := hashPassword(req.Password)
 	if err != nil {
 		s.logger.Error("password error", slog.Any("error", err))
-		return "", errors.NewAppError(http.StatusInternalServerError, "failed to create new user")
+		return "", apperrors.NewAppError(http.StatusInternalServerError, "failed to create new user")
 	}
 
-	if !db.CreateUser(User{
+	if err := db.CreateUser(User{
 		Email:    req.Email,
 		Password: hash,
 		IsAdmin:  !hasUsers,
-	}) {
-		s.logger.Error("create user failed")
-		return "", errors.NewAppError(http.StatusInternalServerError, "failed to create new user")
+	}); err != nil {
+		s.logger.Error("create user failed", slog.Any("error", err))
+		return "", apperrors.NewAppError(http.StatusInternalServerError, "failed to create new user")
 	}
 
 	s.logger.Debug("user created!")
@@ -214,36 +232,44 @@ func (s *Service) CreateUser(ctx context.Context, req SignupRequest) (string, *e
 // reference RESTRICT so a published template does not quietly lose a script,
 // which is the rule commands.DeleteCommand already follows. A database failure
 // is a 500, never the 404 that used to be answered for every failure (#144).
-func (s *Service) DeleteUser(ctx context.Context, req DeleteRequest, callerID uuid.UUID) (string, *errors.AppError) {
+func (s *Service) DeleteUser(ctx context.Context, req DeleteRequest, callerID uuid.UUID) (string, *apperrors.AppError) {
 	s.logger.Debug("DeleteUser", slog.String("id", req.Id.String()))
 
 	if req.Id == callerID {
 		s.logger.Warn("the caller tried to delete the account it is signed in with", slog.String("id", req.Id.String()))
-		return "", errors.NewAppError(http.StatusConflict, "you cannot delete the account you are signed in with")
+		return "", apperrors.NewAppError(http.StatusConflict, "you cannot delete the account you are signed in with")
 	}
 
 	db := s.db
 
-	user, ok := db.GetUser(req.Id)
-	if !ok {
-		return "", errors.NewAppError(http.StatusNotFound, "user not exists")
+	user, err := db.GetUser(req.Id)
+	if errors.Is(err, ErrNotFound) {
+		return "", apperrors.NewAppError(http.StatusNotFound, "user not exists")
+	}
+	if err != nil {
+		s.logger.Error("read the account to delete", slog.Any("error", err))
+		return "", apperrors.NewAppError(http.StatusInternalServerError, "failed to delete user")
 	}
 
-	inUse, ok := db.CommandsInUseByOthers(req.Id)
-	if !ok {
-		s.logger.Error("failed to check whether a template uses the account's commands")
-		return "", errors.NewAppError(http.StatusInternalServerError, "failed to delete user")
+	inUse, err := db.CommandsInUseByOthers(req.Id)
+	if err != nil {
+		s.logger.Error("failed to check whether a template uses the account's commands", slog.Any("error", err))
+		return "", apperrors.NewAppError(http.StatusInternalServerError, "failed to delete user")
 	}
 
 	if inUse {
 		s.logger.Warn("a template of another account pulls in one of this account's commands")
-		return "", errors.NewAppError(http.StatusConflict, "a template still uses a command owned by this account")
+		return "", apperrors.NewAppError(http.StatusConflict, "a template still uses a command owned by this account")
 	}
 
-	owner, ok := db.DeleteUser(*user)
-	if !ok {
-		s.logger.Error("delete user failed")
-		return "", errors.NewAppError(http.StatusInternalServerError, "failed to delete user")
+	owner, err := db.DeleteUser(*user)
+	if errors.Is(err, ErrNotFound) {
+		// It was read a moment ago: another request deleted it first.
+		return "", apperrors.NewAppError(http.StatusNotFound, "user not exists")
+	}
+	if err != nil {
+		s.logger.Error("delete user failed", slog.Any("error", err))
+		return "", apperrors.NewAppError(http.StatusInternalServerError, "failed to delete user")
 	}
 
 	s.removeAccountStorage(req.Id, owner)
@@ -286,32 +312,42 @@ func (s *Service) removeAccountStorage(userID uuid.UUID, owner OwnerStorage) {
 }
 
 // Update user based on update request
-func (s *Service) UpdateUser(ctx context.Context, req UpdateRequest) (string, *errors.AppError) {
+func (s *Service) UpdateUser(ctx context.Context, req UpdateRequest) (string, *apperrors.AppError) {
 	s.logger.Debug("UpdateUser", slog.String("id", req.Id.String()))
 
 	if req.Password == "" {
 		s.logger.Error("password is empty")
-		return "", errors.NewAppError(http.StatusBadRequest, "password is empty")
+		return "", apperrors.NewAppError(http.StatusBadRequest, "password is empty")
 	}
 
 	db := s.db
 
-	user, ok := db.GetUser(req.Id)
-	if !ok {
-		return "", errors.NewAppError(http.StatusNotFound, "user not exists")
+	user, err := db.GetUser(req.Id)
+	if errors.Is(err, ErrNotFound) {
+		return "", apperrors.NewAppError(http.StatusNotFound, "user not exists")
+	}
+	if err != nil {
+		s.logger.Error("read the account to update", slog.Any("error", err))
+		return "", apperrors.NewAppError(http.StatusInternalServerError, "failed to update user")
 	}
 
 	hash, err := hashPassword(req.Password)
 	if err != nil {
 		s.logger.Error("password error", slog.Any("error", err))
-		return "", errors.NewAppError(http.StatusInternalServerError, "failed to update user")
+		return "", apperrors.NewAppError(http.StatusInternalServerError, "failed to update user")
 	}
 
 	user.Email = req.Email
 	user.Password = hash
 
-	if !db.UpdateUser(*user) {
-		return "", errors.NewAppError(http.StatusInternalServerError, "failed to update user")
+	err = db.UpdateUser(*user)
+	if errors.Is(err, ErrNotFound) {
+		// It was read a moment ago: another request deleted it first.
+		return "", apperrors.NewAppError(http.StatusNotFound, "user not exists")
+	}
+	if err != nil {
+		s.logger.Error("update user failed", slog.Any("error", err))
+		return "", apperrors.NewAppError(http.StatusInternalServerError, "failed to update user")
 	}
 
 	s.logger.Debug("user updated!")

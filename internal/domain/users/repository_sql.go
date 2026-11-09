@@ -1,6 +1,9 @@
 package users
 
 import (
+	"database/sql"
+	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/fiwon123/eznit/pkg/logger"
@@ -33,7 +36,7 @@ func NewRepository(db *sqlx.DB, logger *logger.Config) *sqlRepository {
 const userColumns = `id, email, password, created_at, updated_at, is_admin`
 
 // Get a list of users
-func (r *sqlRepository) GetUsers() ([]User, bool) {
+func (r *sqlRepository) GetUsers() ([]User, error) {
 	var users []User
 
 	r.logger.Debug("GetUsers")
@@ -42,7 +45,7 @@ func (r *sqlRepository) GetUsers() ([]User, bool) {
 	rows, err := r.db.Query(query)
 	if err != nil {
 		r.logger.Error("get users rows", slog.Any("error", err))
-		return nil, false
+		return nil, fmt.Errorf("read users: %w", err)
 	}
 	defer rows.Close()
 
@@ -51,7 +54,7 @@ func (r *sqlRepository) GetUsers() ([]User, bool) {
 		err := rows.Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt, &user.UpdatedAt, &user.IsAdmin)
 		if err != nil {
 			r.logger.Error("scan row", slog.Any("error", err))
-			return nil, false
+			return nil, fmt.Errorf("read users: %w", err)
 		}
 
 		users = append(users, user)
@@ -59,15 +62,15 @@ func (r *sqlRepository) GetUsers() ([]User, bool) {
 
 	if err := rows.Err(); err != nil {
 		r.logger.Error("read users rows", slog.Any("error", err))
-		return nil, false
+		return nil, fmt.Errorf("read users: %w", err)
 	}
 
-	return users, true
+	return users, nil
 }
 
 // Report whether the table holds any account, which is what makes the account
 // being created the instance's first — and its admin.
-func (r *sqlRepository) HasUsers() (bool, bool) {
+func (r *sqlRepository) HasUsers() (bool, error) {
 	r.logger.Debug("HasUsers")
 
 	var exists bool
@@ -75,64 +78,65 @@ func (r *sqlRepository) HasUsers() (bool, bool) {
 	query := "SELECT EXISTS (SELECT 1 FROM users)"
 	if err := r.db.QueryRow(query).Scan(&exists); err != nil {
 		r.logger.Error("has users", slog.Any("error", err))
-		return false, false
+		return false, fmt.Errorf("read users: %w", err)
 	}
 
-	return exists, true
+	return exists, nil
 }
 
 // Get only a user
-func (r *sqlRepository) GetUser(id uuid.UUID) (*User, bool) {
+func (r *sqlRepository) GetUser(id uuid.UUID) (*User, error) {
 	r.logger.Debug("GetUser", slog.String("id", id.String()))
 
 	query := "SELECT " + userColumns + " FROM users WHERE id=$1"
 	row := r.db.QueryRow(query, id)
 
 	var user User
-	if err := row.Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt, &user.UpdatedAt, &user.IsAdmin); err != nil {
+	err := row.Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt, &user.UpdatedAt, &user.IsAdmin)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
 		r.logger.Error("get user", slog.Any("error", err))
-		return nil, false
+		return nil, fmt.Errorf("read user: %w", err)
 	}
 
-	return &user, true
+	return &user, nil
 }
 
 // Get user by email
-func (r *sqlRepository) GetUserByEmail(email string) (*User, bool) {
+func (r *sqlRepository) GetUserByEmail(email string) (*User, error) {
 	r.logger.Debug("GetUserByEmail", slog.String("email", email))
 
 	query := "SELECT " + userColumns + " FROM users WHERE email=$1"
 	row := r.db.QueryRow(query, email)
 
 	var user User
-	if err := row.Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt, &user.UpdatedAt, &user.IsAdmin); err != nil {
+	err := row.Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt, &user.UpdatedAt, &user.IsAdmin)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
 		r.logger.Error("get user by email", slog.Any("error", err))
-		return nil, false
+		return nil, fmt.Errorf("read user by email: %w", err)
 	}
 
-	return &user, true
+	return &user, nil
 }
 
 // Verify if user is already registered based on email
-func (r *sqlRepository) UserExists(email string) bool {
+func (r *sqlRepository) UserExists(email string) (bool, error) {
 	r.logger.Debug("UserExists", slog.String("email", email))
 
 	var count int
 
 	query := "SELECT COUNT(*) FROM users WHERE email=$1"
-	err := r.db.QueryRow(query, email).Scan(&count)
-
-	if err != nil {
+	if err := r.db.QueryRow(query, email).Scan(&count); err != nil {
 		r.logger.Error("user exists", slog.Any("error", err))
-		return false
+		return false, fmt.Errorf("read user existence: %w", err)
 	}
 
-	if count == 0 {
-		r.logger.Debug("user not found")
-		return false
-	}
-
-	return true
+	return count > 0, nil
 }
 
 // createUserQuery writes an account, the admin flag included: the service
@@ -145,16 +149,15 @@ const createUserQuery = "INSERT INTO users (email,password,is_admin) VALUES ($1,
 const updateUserQuery = "UPDATE users SET email=$2, password=$3 WHERE id=$1"
 
 // Create a new user based on user model data
-func (r *sqlRepository) CreateUser(user User) bool {
+func (r *sqlRepository) CreateUser(user User) error {
 	r.logger.Debug("CreateUser", slog.String("email", user.Email))
 
-	_, err := r.db.Exec(createUserQuery, user.Email, user.Password, user.IsAdmin)
-	if err != nil {
+	if _, err := r.db.Exec(createUserQuery, user.Email, user.Password, user.IsAdmin); err != nil {
 		r.logger.Error("create user", slog.Any("error", err))
-		return false
+		return fmt.Errorf("create user: %w", err)
 	}
 
-	return true
+	return nil
 }
 
 // Report whether a template that is not the account's own pulls in one of its
@@ -163,7 +166,7 @@ func (r *sqlRepository) CreateUser(user User) bool {
 // answers 409 for it instead of letting the transaction fail. The API only lets
 // a template reference its owner's commands, so this is data written outside
 // it — defence in depth, not a case the routes can produce.
-func (r *sqlRepository) CommandsInUseByOthers(userID uuid.UUID) (bool, bool) {
+func (r *sqlRepository) CommandsInUseByOthers(userID uuid.UUID) (bool, error) {
 	r.logger.Debug("CommandsInUseByOthers", slog.String("id", userID.String()))
 
 	var inUse bool
@@ -178,10 +181,10 @@ func (r *sqlRepository) CommandsInUseByOthers(userID uuid.UUID) (bool, bool) {
 
 	if err := r.db.QueryRow(query, userID).Scan(&inUse); err != nil {
 		r.logger.Error("commands in use by others", slog.Any("error", err))
-		return false, false
+		return false, fmt.Errorf("read command references: %w", err)
 	}
 
-	return inUse, true
+	return inUse, nil
 }
 
 // Delete an account and every row that hangs off it.
@@ -192,7 +195,7 @@ func (r *sqlRepository) CommandsInUseByOthers(userID uuid.UUID) (bool, bool) {
 // their history. The templates and commands are deleted here rather than left
 // to the user row's cascade because their ids are the folders the caller has to
 // remove from disk.
-func (r *sqlRepository) DeleteUser(user User) (OwnerStorage, bool) {
+func (r *sqlRepository) DeleteUser(user User) (OwnerStorage, error) {
 	r.logger.Debug("DeleteUser", slog.String("id", user.ID.String()))
 
 	var owner OwnerStorage
@@ -200,59 +203,58 @@ func (r *sqlRepository) DeleteUser(user User) (OwnerStorage, bool) {
 	tx, err := r.db.Beginx()
 	if err != nil {
 		r.logger.Error("begin delete user", slog.Any("error", err))
-		return owner, false
+		return owner, fmt.Errorf("delete user: %w", err)
 	}
 	defer tx.Rollback()
 
-	templateIDs, ok := deleteReturningIDs(tx, "DELETE FROM templates WHERE user_id=$1 RETURNING id", user.ID, r.logger)
-	if !ok {
-		return owner, false
+	templateIDs, err := deleteReturningIDs(tx, "DELETE FROM templates WHERE user_id=$1 RETURNING id", user.ID, r.logger)
+	if err != nil {
+		return owner, err
 	}
 
-	commandIDs, ok := deleteReturningIDs(tx, "DELETE FROM commands WHERE user_id=$1 RETURNING id", user.ID, r.logger)
-	if !ok {
-		return owner, false
+	commandIDs, err := deleteReturningIDs(tx, "DELETE FROM commands WHERE user_id=$1 RETURNING id", user.ID, r.logger)
+	if err != nil {
+		return owner, err
 	}
 
 	result, err := tx.Exec("DELETE FROM users WHERE id=$1", user.ID)
 	if err != nil {
 		r.logger.Error("delete user", slog.Any("error", err))
-		return owner, false
+		return owner, fmt.Errorf("delete user: %w", err)
 	}
 
 	deleted, err := result.RowsAffected()
 	if err != nil {
 		r.logger.Error("delete user", slog.Any("error", err))
-		return owner, false
+		return owner, fmt.Errorf("delete user: %w", err)
 	}
 
 	if deleted == 0 {
 		// The account was read a moment ago, so this is a delete that raced
-		// another one. There is nothing left to remove; the caller is told the
-		// delete failed rather than that the account never existed.
+		// another one: there is nothing left to remove.
 		r.logger.Warn("delete user affected no row", slog.String("id", user.ID.String()))
-		return owner, false
+		return owner, ErrNotFound
 	}
 
 	if err := tx.Commit(); err != nil {
 		r.logger.Error("commit delete user", slog.Any("error", err))
-		return owner, false
+		return owner, fmt.Errorf("delete user: %w", err)
 	}
 
 	owner.TemplateIDs = templateIDs
 	owner.CommandIDs = commandIDs
 
-	return owner, true
+	return owner, nil
 }
 
 // deleteReturningIDs runs a DELETE that names its removed rows and collects
-// their ids. A query that fails is logged and reported as false, so the caller
-// rolls the transaction back.
-func deleteReturningIDs(tx *sqlx.Tx, query string, userID uuid.UUID, log *logger.Config) ([]uuid.UUID, bool) {
+// their ids. A query that fails is returned, so the caller rolls the
+// transaction back.
+func deleteReturningIDs(tx *sqlx.Tx, query string, userID uuid.UUID, log *logger.Config) ([]uuid.UUID, error) {
 	rows, err := tx.Queryx(query, userID)
 	if err != nil {
 		log.Error("delete rows", slog.Any("error", err))
-		return nil, false
+		return nil, fmt.Errorf("delete owned rows: %w", err)
 	}
 	defer rows.Close()
 
@@ -261,28 +263,40 @@ func deleteReturningIDs(tx *sqlx.Tx, query string, userID uuid.UUID, log *logger
 		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {
 			log.Error("scan deleted id", slog.Any("error", err))
-			return nil, false
+			return nil, fmt.Errorf("delete owned rows: %w", err)
 		}
 		ids = append(ids, id)
 	}
 
 	if err := rows.Err(); err != nil {
 		log.Error("read deleted ids", slog.Any("error", err))
-		return nil, false
+		return nil, fmt.Errorf("delete owned rows: %w", err)
 	}
 
-	return ids, true
+	return ids, nil
 }
 
 // update a user based on user model data
-func (r *sqlRepository) UpdateUser(user User) bool {
+func (r *sqlRepository) UpdateUser(user User) error {
 	r.logger.Debug("UpdateUser", slog.String("id", user.ID.String()))
 
-	_, err := r.db.Exec(updateUserQuery, user.ID, user.Email, user.Password)
+	result, err := r.db.Exec(updateUserQuery, user.ID, user.Email, user.Password)
 	if err != nil {
 		r.logger.Error("update user", slog.Any("error", err))
-		return false
+		return fmt.Errorf("update user: %w", err)
 	}
 
-	return true
+	updated, err := result.RowsAffected()
+	if err != nil {
+		r.logger.Error("update user", slog.Any("error", err))
+		return fmt.Errorf("update user: %w", err)
+	}
+
+	if updated == 0 {
+		// The account was read a moment ago, so this is an update that raced a
+		// delete: there is nothing left to update.
+		return ErrNotFound
+	}
+
+	return nil
 }
