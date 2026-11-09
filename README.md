@@ -146,8 +146,10 @@ This is a self-hosted tool, and it is not hardened. What is true today:
 - **Coverage is partial.** The API domains, the middleware, the CLI, the web UI
   handler, the OpenAPI document, the logger and the response envelope have
   tests; `cmd/cli` has none, and the pages' browser behaviour has no automated
-  test. No test runs SQL against a database. A green `make check` means "it
-  builds and the tested packages passed" — not "it works".
+  test. `make test_integration` is what runs SQL: it applies and reverses every
+  migration and drives each repository against a real PostgreSQL. A green
+  `make check` means "it builds and the tested packages passed" — not "it
+  works"; `make check` alone never touches a database.
 - **The first account is the admin.** It is the only one that may list, update or
   delete other accounts. Promote another with
   `UPDATE users SET is_admin = true WHERE email = ...`.
