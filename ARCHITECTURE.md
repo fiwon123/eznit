@@ -244,7 +244,7 @@ The build reaches the process two ways:
 
 A `web/dist` holding only the committed placeholder has no UI in it: `HasIndex`
 asks for `index.html`, so the API falls back to the embedded copy, or to serving
-the API alone. See [README.md](README.md#web-ui) for the authoring commands.
+the API alone. See [README.md](README.md#-web-ui) for the authoring commands.
 
 ## Configuration and secrets
 

@@ -1,4 +1,4 @@
-# Troubleshooting
+# 🧯 Troubleshooting
 
 The errors you are most likely to hit, and the fix.
 
@@ -23,7 +23,7 @@ running the API by hand, set one of them.
 ## Permission denied reading a secret file
 
 The file is mode `600` and owned by another user. See
-[Configuration](https://github.com/fiwon123/eznit/wiki/Configuration#files-and-secrets).
+[Configuration](https://github.com/fiwon123/eznit/wiki/Configuration#-files-and-secrets).
 
 ## `set: pipefail: invalid option name` (or `bad interpreter`) in the sandbox
 

@@ -1,9 +1,9 @@
-# Releases
+# 📦 Releases
 
 eznit ships downloadable archives, published by GitHub Actions when a `v*` tag is
 pushed. This page describes how a release is cut and what the archives contain.
 
-## How a release is cut
+## 🏁 How a release is cut
 
 The flow is `dev` → `main` → tag:
 
@@ -26,7 +26,7 @@ developer runs — and publishes them with `gh release create`.
 The release notes are built from the pull requests merged into `dev`, grouped by
 label, so they read as a changelog rather than a raw commit list.
 
-## The workflow's gates
+## 🚦 The workflow's gates
 
 - **guard** — the tag is on `main`, and the version/commit are resolved once.
 - **build** — the archives plus `checksums.txt`, built with read-only permissions.
@@ -40,7 +40,7 @@ label, so they read as a changelog rather than a raw commit list.
 run, and **publishes nothing** — the way to exercise the pipeline without a tag. A
 green dry run does not prove the publish step; only a real tag does.
 
-## What the archives contain
+## 📦 What the archives contain
 
 `make release` stages one folder per archive and compresses **the folder**, so a
 download extracts into a folder named after it instead of scattering files into the
@@ -62,13 +62,13 @@ does) the revision and `vcs.modified=false`. Every Windows binary also carries a
 icon, a per-monitor DPI manifest and a version block, generated from
 `assets/logo.png` before the build and removed afterwards.
 
-## Verify a download
+## ✅ Verify a download
 
 ```sh
 sha256sum -c checksums.txt          # macOS: shasum -a 256 -c checksums.txt
 ```
 
-## Running a download
+## 🏃 Running a download
 
 A release archive is a **server bundle**, not a source checkout: there is no
 `go.mod`, no `web/`, and no image to build. The database and migration job are

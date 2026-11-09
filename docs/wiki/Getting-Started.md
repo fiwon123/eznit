@@ -1,8 +1,8 @@
-# Getting Started
+# 🚀 Getting Started
 
 This page runs eznit on your machine and puts one file in, then back out.
 
-## What you need
+## ✅ What you need
 
 - [Docker](https://docs.docker.com/get-docker/) with Compose — the quickest path,
   and the only thing the product stack needs.
@@ -11,7 +11,7 @@ This page runs eznit on your machine and puts one file in, then back out.
 
 You do **not** need Go or Node to run the product stack; the images build the UI.
 
-## Run the stack
+## 🐳 Run the stack
 
 Two local files come first — the configuration and the database secret. Both are
 gitignored, and `make setup` creates them from the committed examples:
@@ -57,7 +57,7 @@ service.
 Uploaded bytes live on the `api-data` volume, so they survive
 `docker compose down` (use `docker compose down -v` to remove them too).
 
-## Your first file
+## 📄 Your first file
 
 The CLI talks to the API on `:4000`. Build it with Go on the host (or use a release
 archive — see [Releases](https://github.com/fiwon123/eznit/wiki/Releases)):
@@ -86,7 +86,7 @@ the templates/commands/repos commands are in [CLI Reference](https://github.com/
 The web UI is at `http://localhost:5173`. Sign up or log in there, or paste the
 token from `eznit login` into `localStorage` as `eznit.token`.
 
-## From a release bundle (no source)
+## 📦 From a release bundle (no source)
 
 A release archive is **not** a source checkout: there is no `go.mod`, no `web/`,
 and no image to build. Start the database and migrations from the published
@@ -110,7 +110,7 @@ UI (`:8765`); with `GUI_API_URL` it proxies to a running API, otherwise it runs
 one in-process when the `DB_*` variables are set. The bundle's `RUNNING.md` says
 the same, and what it does not prove.
 
-## Without Make
+## 🧰 Without Make
 
 ```sh
 cp .env.example .env
@@ -121,7 +121,7 @@ docker compose up
 The dev loop (source, live reload) is a different entry point — see
 [Development](https://github.com/fiwon123/eznit/wiki/Development).
 
-## Next
+## 👉 Next
 
 - [Configuration](https://github.com/fiwon123/eznit/wiki/Configuration) — every variable, secret and port
 - [CLI Reference](https://github.com/fiwon123/eznit/wiki/CLI-Reference) — the full command surface

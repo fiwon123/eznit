@@ -15,7 +15,7 @@ A Go API, CLI client, and web UI for uploading, listing, and retrieving your own
 
 </div>
 
-## Why eznit
+## ✨ Why eznit
 
 - **Yours.** File bytes live on your disk, indexed in your own PostgreSQL. No
   subscription, no third-party account.
@@ -24,13 +24,13 @@ A Go API, CLI client, and web UI for uploading, listing, and retrieving your own
 - **One stack.** `make setup && make up` runs the API, the UI, PostgreSQL and the
   migrations on a machine with Docker.
 
-> **Pre-1.0 and unhardened.** Read [Security status](#security-status) before
+> **Pre-1.0 and unhardened.** Read [Security status](#-security-status) before
 > exposing this anywhere but `localhost`.
 
 Supported platforms: Linux, macOS and Windows. The product stack runs on Docker;
 the CLI and the API are pure Go.
 
-## Quick start
+## 🚀 Quick start
 
 Two local files come first — the configuration and the database secret. Both are
 gitignored, and `make setup` creates them from the committed examples:
@@ -51,7 +51,7 @@ While it runs (it streams the stack's logs; Ctrl-C stops the attached services):
 Uploaded bytes live on the `api-data` volume, so they survive `docker compose down`
 (use `docker compose down -v` to remove them too).
 
-### Your first file
+### 📄 Your first file
 
 The CLI is a separate binary. Build it with Go on the host, or download it from
 [Releases](https://github.com/fiwon123/eznit/releases). `make build_cli` cross-compiles
@@ -71,7 +71,7 @@ building the CLI needs Go. Want the source loop with live reload? See
 [Getting Started](https://github.com/fiwon123/eznit/wiki/Getting-Started) and
 [Development](https://github.com/fiwon123/eznit/wiki/Development).
 
-## Install options
+## 📦 Install options
 
 | Path | For | Start |
 | --- | --- | --- |
@@ -82,9 +82,9 @@ building the CLI needs Go. Want the source loop with live reload? See
 See [Getting Started](https://github.com/fiwon123/eznit/wiki/Getting-Started) for
 each, including the Windows and no-Make paths.
 
-## Usage
+## 🔧 Usage
 
-### CLI
+### 💻 CLI
 
 | Command | What it does |
 | --- | --- |
@@ -110,7 +110,7 @@ and the public template catalogue are the exceptions. (Shared files are readable
 anonymously through the API and the web UI, but `eznit download` always needs a
 session.)
 
-### Web UI
+### 🌐 Web UI
 
 | | Dark | Light |
 |---|---|---|
@@ -123,7 +123,7 @@ the page, or paste the token from `eznit login` into `localStorage` as
 `eznit.token`. The UI lives in `web/` and is served two ways: from disk
 (`web/dist`) by the API, and embedded in the released binaries.
 
-### API reference
+### 🔌 API reference
 
 Every `/v1` operation is described in one OpenAPI 3.1 document, served by the API
 itself:
@@ -138,7 +138,7 @@ The UI assets are embedded in the binary, so the reference works with no interne
 access, and none of these routes needs a session. A test fails when the document
 and the router disagree.
 
-## Security status
+## 🔒 Security status
 
 This is a self-hosted tool, and it is not hardened. What is true today:
 
@@ -168,7 +168,7 @@ or behind a VPN you control. Local secret files (`.env`, `.env.local`,
 The deferred hardening work is tracked on the
 [roadmap board](https://github.com/users/fiwon123/projects/12).
 
-## Documentation
+## 📚 Documentation
 
 | Page | What it covers |
 | --- | --- |
@@ -184,7 +184,7 @@ path, the data model and where a change belongs; [CONTRIBUTING.md](CONTRIBUTING.
 is how to send a change. The wiki's source lives at `docs/wiki/` — edit it through
 a pull request, not only in the wiki UI, or the next sync overwrites it.
 
-## Repository layout
+## 📁 Repository layout
 
 ```
 cmd/             the entrypoints: api, cli, gui
@@ -199,7 +199,7 @@ web/             React + TypeScript UI; embeds into the api/gui binaries
 The layering is strict: a handler decodes and writes, a service holds the rules, a
 repository is the only place that speaks SQL.
 
-## Contributing
+## 🤝 Contributing
 
 Issues and pull requests are welcome. The short version: open an issue first,
 branch from `dev`, run `make check` (and `make web_check` for UI changes), and say
@@ -209,6 +209,6 @@ in the pull request what ran and what did not. The full rules are in
 This project is developed with an AI agent. The review bar is the same: judge by
 tests and evidence, not by who wrote it.
 
-## License
+## 📜 License
 
 MIT — see [LICENSE](LICENSE).

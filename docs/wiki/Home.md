@@ -1,4 +1,4 @@
-# eznit
+# 🏠 eznit
 
 **Self-hosted file storage you control.** A Go API, a CLI client and a web UI for
 uploading, listing and retrieving your own files, backed by PostgreSQL.
@@ -14,7 +14,7 @@ uploading, listing and retrieving your own files, backed by PostgreSQL.
 > [README](https://github.com/fiwon123/eznit#security-status) before exposing this
 > beyond `localhost`.
 
-## Start here
+## 🚀 Start here
 
 | Page | What it covers |
 | --- | --- |
@@ -25,7 +25,7 @@ uploading, listing and retrieving your own files, backed by PostgreSQL.
 | [Troubleshooting](https://github.com/fiwon123/eznit/wiki/Troubleshooting) | The errors you are likely to hit, and the fix |
 | [Releases](https://github.com/fiwon123/eznit/wiki/Releases) | How a release is cut and what the archives contain |
 
-## Also useful
+## 🔗 Also useful
 
 - [README](https://github.com/fiwon123/eznit#readme) — the short project overview
 - [ARCHITECTURE](https://github.com/fiwon123/eznit/blob/dev/ARCHITECTURE.md) —
@@ -35,7 +35,7 @@ uploading, listing and retrieving your own files, backed by PostgreSQL.
 - [Releases](https://github.com/fiwon123/eznit/releases) — downloadable archives
 - [Contributing](https://github.com/fiwon123/eznit/blob/dev/CONTRIBUTING.md)
 
-## About these pages
+## 📖 About these pages
 
 The wiki's source lives in the repository at `docs/wiki/`, so it is reviewed like
 code and synced with `make wiki_push`. Edit a page there through a pull request
