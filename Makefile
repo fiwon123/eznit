@@ -16,9 +16,6 @@ else
 endif
 export
 
-SERVER_NAME := server
-CLI_NAME := cli
-
 APP_NAME := eznit
 APP_NAME_SHORT := ez
 SCRIPT_NAME := add_to_path
@@ -56,6 +53,7 @@ WEB_PORT := $(patsubst "%",%,$(patsubst '%',%,$(WEB_PORT)))
 
 API_FOLDER := ./cmd/api
 CLI_FOLDER := ./cmd/cli
+GUI_FOLDER := ./cmd/gui
 WEB_FOLDER := ./web
 
 DOCKER_COMPOSE := ./docker-compose.yml
@@ -74,81 +72,164 @@ LINUX_SCRIPT :=  $(SCRIPTS_DIR)/$(SCRIPT_NAME).sh
 
 # Builds
 BUILD_DIR := ./build
-BUILD_CLI:=$(BUILD_DIR)/cli
-BUILD_API:=$(BUILD_DIR)/api
+BUILD_CLI := $(BUILD_DIR)/cli
+BUILD_API := $(BUILD_DIR)/api
+BUILD_GUI := $(BUILD_DIR)/gui
 
-# CLI
-WINDOWS_CLI:=$(BUILD_CLI)/windows
-WINDOWS_BIN := $(WINDOWS_CLI)/$(APP_NAME).exe
-SHORT_WINDOWS_BIN := $(WINDOWS_CLI)/$(APP_NAME_SHORT).exe
-WINDOWS_ZIP := $(WINDOWS_CLI)/$(APP_NAME)_$(CLI_NAME)_$(VERSION)_windows.zip
+# Release packaging: one folder per archive, named
+# <family>_<version>_<os>_<arch>, compressed from its parent so extraction
+# creates exactly that folder. Two families, because a CLI user should not
+# download the migrations and a server deploy does not need the `ez` alias.
+DIST_DIR := $(BUILD_DIR)/dist
+STAGE_DIR := $(BUILD_DIR)/stage
+CLI_FAMILY := $(APP_NAME)-cli
+SERVER_FAMILY := $(APP_NAME)-server
 
-LINUX_CLI:=$(BUILD_CLI)/linux
-LINUX_BIN := $(LINUX_CLI)/$(APP_NAME)
-SHORT_LINUX_BIN := $(LINUX_CLI)/$(APP_NAME_SHORT)
-LINUX_TAR := $(LINUX_CLI)/$(APP_NAME)_$(CLI_NAME)_$(VERSION)_linux.tar.gz
-
-# API
-LINUX_SERVER_BIN := $(BUILD_API)/$(SERVER_NAME)
-LINUX_SERVER_TAR := $(BUILD_API)/$(APP_NAME)_$(SERVER_NAME)_$(VERSION)_linux.tar.gz
-
-WINDOWS_SERVER_BIN := $(BUILD_API)/$(SERVER_NAME).exe
-WINDOWS_SERVER_ZIP := $(BUILD_API)/$(APP_NAME)_$(SERVER_NAME)_$(VERSION)_windows.zip
+# The platform lives in the archive name, never in the binary name: the README
+# tells a user to run `eznit`, and a suffixed binary is unreachable by it.
+PLATFORMS ?= windows/amd64 windows/arm64 linux/amd64 linux/arm64
 
 ## Builds
 .PHONY: clean
 .PHONY: build build_cli build_api build_gui verify
-.PHONY: zip
+.PHONY: release release-platform cli-platform server-platform checksums
 .PHONY: check
 
-build: clean zip
-	@echo "Release ready: $(VERSION)"
+# The local developer build: the binaries the README tells you to run from
+# ./build. `release` below is the packaging path — staging and compressing a
+# folder is a different job from producing a binary, and mixing the two is what
+# produced flat archives with no architecture in the name.
+build: build_cli build_api build_gui ## Build the local binaries into ./build
 
-# Create build folder if missing
+# Create the build folders if missing
 verify:
-	mkdir -p $(BUILD_DIR)
+	@mkdir -p $(BUILD_CLI)/windows $(BUILD_CLI)/linux $(BUILD_API) $(BUILD_GUI)
 
 build_cli: verify
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(WINDOWS_BIN) $(CLI_FOLDER)
-	cp $(WINDOWS_BIN) $(SHORT_WINDOWS_BIN)
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_CLI)/windows/$(APP_NAME).exe $(CLI_FOLDER)
+	cp $(BUILD_CLI)/windows/$(APP_NAME).exe $(BUILD_CLI)/windows/$(APP_NAME_SHORT).exe
 
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(LINUX_BIN) $(CLI_FOLDER)
-	cp $(LINUX_BIN) $(SHORT_LINUX_BIN)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_CLI)/linux/$(APP_NAME) $(CLI_FOLDER)
+	cp $(BUILD_CLI)/linux/$(APP_NAME) $(BUILD_CLI)/linux/$(APP_NAME_SHORT)
 
 	chmod -R a+r $(BUILD_CLI)
-	chmod a+x $(LINUX_BIN)
-	chmod a+x $(SHORT_LINUX_BIN)
+	chmod a+x $(BUILD_CLI)/linux/$(APP_NAME)
+	chmod a+x $(BUILD_CLI)/linux/$(APP_NAME_SHORT)
 
 # The API and GUI binaries carry the built web UI (web/embed.go), so building
 # either one builds the UI first. `make check` deliberately does not: the
 # committed web/dist/.gitkeep keeps the embed directive valid without a build,
 # which is what lets the Go gate run on a machine with no Node.
 build_api: web_build verify
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(LINUX_SERVER_BIN) $(API_FOLDER)
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(WINDOWS_SERVER_BIN) $(API_FOLDER)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_API)/server $(API_FOLDER)
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_API)/server.exe $(API_FOLDER)
 
 	chmod -R a+r $(BUILD_API)
-	chmod a+x $(LINUX_SERVER_BIN)
+	chmod a+x $(BUILD_API)/server
 
 build_gui: web_build verify
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_DIR)/gui/eznit-gui.exe ./cmd/gui
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_DIR)/gui/eznit-gui ./cmd/gui
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_DIR)/gui/eznit-gui-darwin ./cmd/gui
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_GUI)/eznit-gui.exe ./cmd/gui
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_GUI)/eznit-gui ./cmd/gui
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_GUI)/eznit-gui-darwin ./cmd/gui
 
-	chmod -R a+r $(BUILD_DIR)/gui
-	chmod a+x $(BUILD_DIR)/gui/eznit-gui
+	chmod -R a+r $(BUILD_GUI)
+	chmod a+x $(BUILD_GUI)/eznit-gui
 
-zip: build_cli build_api build_gui
-	zip -j $(WINDOWS_ZIP) $(WINDOWS_BIN) $(SHORT_WINDOWS_BIN) $(WINDOWS_SCRIPT) README.md LICENSE
-	zip -r $(WINDOWS_SERVER_ZIP) $(WINDOWS_SERVER_BIN) $(MIGRATIONS) $(DOCKER_COMPOSE) $(SCRIPT_MIGRATION) $(SECRETS_EXAMPLE) $(ENV_EXAMPLE) README.md LICENSE
+# --- Release packaging -------------------------------------------------------
+# One archive per platform per family, each extracting into one folder named
+# after it. A flat archive scatters the binaries, the installer and the licenses
+# into the directory the user ran the command in; `add_to_path` then adds that
+# directory to PATH instead of the extracted tool.
+#
+# `make release` builds the web UI once (both binaries embed it), then one
+# platform at a time so the output reads in order, then the checksums.
+release: ## Build one-folder archives for every platform into build/dist
+	@rm -rf $(DIST_DIR) $(STAGE_DIR)
+	@$(MAKE) --no-print-directory web_build
+	@for platform in $(PLATFORMS); do \
+	  $(MAKE) --no-print-directory release-platform \
+	    GOOS=$${platform%/*} GOARCH=$${platform#*/} || exit 1; \
+	done
+	@$(MAKE) --no-print-directory checksums
+	@echo "Release $(VERSION) ready in $(DIST_DIR)"
 
-	tar -czvf $(LINUX_TAR) \
-	          -C $(LINUX_CLI) $(notdir $(LINUX_BIN)) $(notdir $(SHORT_LINUX_BIN)) \
-	          -C ../../../$(SCRIPTS_DIR) $(notdir $(LINUX_SCRIPT)) ../README.md ../LICENSE
+release-platform: cli-platform server-platform
 
-	tar -czvf $(LINUX_SERVER_TAR) \
-	          -C ./ $(LINUX_SERVER_BIN) \
-	          -C ./ ./README.md ./LICENSE $(MIGRATIONS) $(DOCKER_COMPOSE) $(SCRIPT_MIGRATION) $(SECRETS_EXAMPLE) $(ENV_EXAMPLE) \
+cli-platform:
+	@set -eu; \
+	folder="$(CLI_FAMILY)_$(VERSION)_$(GOOS)_$(GOARCH)"; \
+	stage="$(STAGE_DIR)/$$folder"; \
+	ext=""; [ "$(GOOS)" = "windows" ] && ext=".exe"; \
+	rm -rf "$$stage"; mkdir -p "$$stage" "$(DIST_DIR)"; \
+	echo "cli    $(VERSION) $(GOOS)/$(GOARCH)"; \
+	CGO_ENABLED=0 GOOS="$(GOOS)" GOARCH="$(GOARCH)" go build -trimpath \
+	  -ldflags "-s -w -X $(INJECT_VERSION)=$(VERSION)" \
+	  -o "$$stage/$(APP_NAME)$$ext" $(CLI_FOLDER); \
+	cp "$$stage/$(APP_NAME)$$ext" "$$stage/$(APP_NAME_SHORT)$$ext"; \
+	cp README.md LICENSE "$$stage/"; \
+	if [ "$(GOOS)" = "windows" ]; then cp $(WINDOWS_SCRIPT) "$$stage/"; \
+	else cp $(LINUX_SCRIPT) "$$stage/"; fi; \
+	archive="$(abspath $(DIST_DIR))/$$folder"; \
+	if [ "$(GOOS)" = "windows" ]; then \
+	  archive="$$archive.zip"; rm -f "$$archive"; \
+	  (cd "$(STAGE_DIR)" && zip -q -r "$$archive" "$$folder"); \
+	  tops="$$(zip -sf "$$archive" | sed -n 's/^  \([^/]*\).*$$/\1/p' | sort -u)"; \
+	else \
+	  archive="$$archive.tar.gz"; rm -f "$$archive"; \
+	  tar -czf "$$archive" -C "$(STAGE_DIR)" "$$folder"; \
+	  tops="$$(tar -tzf "$$archive" | sed 's|^\./||' | cut -d/ -f1 | sort -u)"; \
+	fi; \
+	if [ "$$tops" != "$$folder" ]; then \
+	  echo "ERROR: $$archive does not carry one folder $$folder (found: $$tops)" >&2; exit 1; \
+	fi; \
+	echo "       $$archive"
+
+server-platform:
+	@set -eu; \
+	if [ ! -f "$(WEB_FOLDER)/dist/index.html" ]; then \
+	  echo "ERROR: $(WEB_FOLDER)/dist/index.html is missing -- the server and the window embed the UI;" >&2; \
+	  echo "       run 'make web_build' first ('make release' does it for you)." >&2; exit 1; \
+	fi; \
+	folder="$(SERVER_FAMILY)_$(VERSION)_$(GOOS)_$(GOARCH)"; \
+	stage="$(STAGE_DIR)/$$folder"; \
+	ext=""; [ "$(GOOS)" = "windows" ] && ext=".exe"; \
+	rm -rf "$$stage"; mkdir -p "$$stage/db" "$$stage/scripts" "$$stage/secrets" "$(DIST_DIR)"; \
+	echo "server $(VERSION) $(GOOS)/$(GOARCH)"; \
+	CGO_ENABLED=0 GOOS="$(GOOS)" GOARCH="$(GOARCH)" go build -trimpath \
+	  -ldflags "-s -w -X $(INJECT_VERSION)=$(VERSION)" \
+	  -o "$$stage/$(APP_NAME)-server$$ext" $(API_FOLDER); \
+	CGO_ENABLED=0 GOOS="$(GOOS)" GOARCH="$(GOARCH)" go build -trimpath \
+	  -ldflags "-s -w -X $(INJECT_VERSION)=$(VERSION)" \
+	  -o "$$stage/$(APP_NAME)-gui$$ext" $(GUI_FOLDER); \
+	cp -R $(MIGRATIONS) "$$stage/db/"; \
+	cp $(SCRIPT_MIGRATION) "$$stage/scripts/"; \
+	cp $(DOCKER_COMPOSE) $(ENV_EXAMPLE) README.md LICENSE RUNNING.md "$$stage/"; \
+	cp $(SECRETS_EXAMPLE) "$$stage/secrets/"; \
+	archive="$(abspath $(DIST_DIR))/$$folder"; \
+	if [ "$(GOOS)" = "windows" ]; then \
+	  archive="$$archive.zip"; rm -f "$$archive"; \
+	  (cd "$(STAGE_DIR)" && zip -q -r "$$archive" "$$folder"); \
+	  tops="$$(zip -sf "$$archive" | sed -n 's/^  \([^/]*\).*$$/\1/p' | sort -u)"; \
+	else \
+	  archive="$$archive.tar.gz"; rm -f "$$archive"; \
+	  tar -czf "$$archive" -C "$(STAGE_DIR)" "$$folder"; \
+	  tops="$$(tar -tzf "$$archive" | sed 's|^\./||' | cut -d/ -f1 | sort -u)"; \
+	fi; \
+	if [ "$$tops" != "$$folder" ]; then \
+	  echo "ERROR: $$archive does not carry one folder $$folder (found: $$tops)" >&2; exit 1; \
+	fi; \
+	echo "       $$archive"
+
+# A download nobody can verify is only assumed intact. The hash list sits next
+# to the archives, not inside one.
+checksums: ## Write checksums.txt next to the built archives
+	@set -eu; cd "$(DIST_DIR)"; \
+	archives="$$(find . -maxdepth 1 -type f | sed -n 's|^\./||p' | grep -E '\.(tar\.gz|zip)$$' | sort)"; \
+	if [ -z "$$archives" ]; then echo "ERROR: no archives in $(DIST_DIR) to hash" >&2; exit 1; fi; \
+	if command -v sha256sum >/dev/null 2>&1; then sha256sum $$archives > checksums.txt; \
+	elif command -v shasum >/dev/null 2>&1; then shasum -a 256 $$archives > checksums.txt; \
+	else echo "ERROR: neither sha256sum nor shasum is available -- cannot verify a download" >&2; exit 1; fi; \
+	cat checksums.txt
 
 clean:
 	rm -rf $(BUILD_DIR)
