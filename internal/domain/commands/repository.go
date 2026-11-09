@@ -1,10 +1,17 @@
 package commands
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// ErrNotFound is what a read answers when there is no row (or the row is not
+// the caller's), and what a write answers when it changed no row. It is distinct
+// from a real failure so a caller can tell "no such command" from "the database
+// is down".
+var ErrNotFound = errors.New("not found")
 
 // The kinds of content a command holds. The values are the ones the schema's
 // CHECK accepts, and they match a template file's kinds: the storage model is
@@ -45,17 +52,17 @@ type Command struct {
 // Repository is what the command service needs from storage.
 type Repository interface {
 	// ListCommands returns the caller's library, ordered by name.
-	ListCommands(userID uuid.UUID) ([]Command, bool)
+	ListCommands(userID uuid.UUID) ([]Command, error)
 	// GetCommand returns one command of the caller's library. Another user's
 	// command is not found.
-	GetCommand(id uuid.UUID, userID uuid.UUID) (*Command, bool)
+	GetCommand(id uuid.UUID, userID uuid.UUID) (*Command, error)
 	// GetCommandByName returns one command by name. The name is unique per
 	// user, so the pair identifies a row.
-	GetCommandByName(userID uuid.UUID, name string) (*Command, bool)
-	CreateCommand(command Command) bool
-	UpdateCommand(command Command) bool
-	DeleteCommand(id uuid.UUID, userID uuid.UUID) bool
+	GetCommandByName(userID uuid.UUID, name string) (*Command, error)
+	CreateCommand(command Command) error
+	UpdateCommand(command Command) error
+	DeleteCommand(id uuid.UUID, userID uuid.UUID) error
 	// CommandInUse reports whether a template pulls the command in. A
 	// command that does is not deleted: the template would lose a file.
-	CommandInUse(id uuid.UUID) bool
+	CommandInUse(id uuid.UUID) (bool, error)
 }
