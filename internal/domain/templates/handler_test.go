@@ -100,7 +100,7 @@ func newTestRouterWithRoot(t *testing.T, repo Repository, userID uuid.UUID) (*ch
 
 	root := t.TempDir()
 
-	guard := middleware.NewGuard(sessions.NewService(newFakeSessionsRepository(session), log), log)
+	guard := middleware.NewGuard(sessions.NewService(newFakeSessionsRepository(session), log), nil, log)
 	handler := NewHandler(NewService(repo, root, log), guard, log)
 
 	router := chi.NewRouter()

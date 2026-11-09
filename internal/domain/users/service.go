@@ -49,8 +49,17 @@ func (s *Service) GetUsers(ctx context.Context) ([]UserData, *errors.AppError) {
 }
 
 // Return only a user based in the user identity
-func (s *Service) GetUser(ctx context.Context, id uuid.UUID) (*UserData, *errors.AppError) {
+//
+// The record is the caller's own: any other id answers "not found" exactly
+// like an id that does not exist, because whether an account exists is not
+// something a session gets to probe.
+func (s *Service) GetUser(ctx context.Context, id, callerID uuid.UUID) (*UserData, *errors.AppError) {
 	s.logger.Debug("GetUser", slog.String("id", id.String()))
+
+	if id != callerID {
+		s.logger.Warn("user is not the caller", slog.String("id", id.String()))
+		return nil, errors.NewAppError(http.StatusNotFound, "user not found")
+	}
 
 	user, ok := s.db.GetUser(id)
 	if !ok {
@@ -65,9 +74,24 @@ func (s *Service) GetUser(ctx context.Context, id uuid.UUID) (*UserData, *errors
 	return resp, nil
 }
 
+// IsAdmin reports whether a user may use the admin routes.
+//
+// A lookup that fails is a refusal, never a grant: the guard in front of the
+// admin routes answers 403 when this answers false, so an account the service
+// cannot read is exactly as powerless as one that is not an admin.
+func (s *Service) IsAdmin(ctx context.Context, id uuid.UUID) bool {
+	user, ok := s.db.GetUser(id)
+	if !ok {
+		s.logger.Warn("admin check on an unreadable account", slog.String("id", id.String()))
+		return false
+	}
+
+	return user.IsAdmin
+}
+
 // Check if user credentials are valid
 func (s *Service) LoginUser(ctx context.Context, req LoginRequest) (LoginResponse, *errors.AppError) {
-	s.logger.Debug("LoginUser", slog.Any("request", req))
+	s.logger.Debug("LoginUser", slog.String("email", req.Email))
 
 	db := s.db
 
@@ -96,8 +120,17 @@ func (s *Service) LoginUser(ctx context.Context, req LoginRequest) (LoginRespons
 }
 
 // Create a new user based on signup request
+//
+// The account created while the table is empty is the instance's admin: a
+// self-hosted install has no operator to promote one, and an admin account
+// nobody can create would leave the admin routes unreachable forever.
+//
+// The check and the insert are two statements, so two signups racing on an
+// empty table can both read "no accounts yet" and both become admins. The
+// window is one fresh instance wide, and closing it needs a transaction this
+// service does not own; it is a known limitation, not an accident.
 func (s *Service) CreateUser(ctx context.Context, req SignupRequest) (string, *errors.AppError) {
-	s.logger.Debug("CreateUser", slog.Any("request", req))
+	s.logger.Debug("CreateUser", slog.String("email", req.Email))
 
 	db := s.db
 
@@ -116,6 +149,12 @@ func (s *Service) CreateUser(ctx context.Context, req SignupRequest) (string, *e
 		return "", errors.NewAppError(http.StatusBadRequest, "passwords do not match")
 	}
 
+	hasUsers, ok := db.HasUsers()
+	if !ok {
+		s.logger.Error("can't tell whether an account exists yet")
+		return "", errors.NewAppError(http.StatusInternalServerError, "failed to create new user")
+	}
+
 	hash, err := hashPassword(req.Password)
 	if err != nil {
 		s.logger.Error("password error", slog.Any("error", err))
@@ -125,6 +164,7 @@ func (s *Service) CreateUser(ctx context.Context, req SignupRequest) (string, *e
 	if !db.CreateUser(User{
 		Email:    req.Email,
 		Password: hash,
+		IsAdmin:  !hasUsers,
 	}) {
 		s.logger.Error("create user failed")
 		return "", errors.NewAppError(http.StatusInternalServerError, "failed to create new user")
@@ -157,7 +197,7 @@ func (s *Service) DeleteUser(ctx context.Context, req DeleteRequest) (string, *e
 
 // Update user based on update request
 func (s *Service) UpdateUser(ctx context.Context, req UpdateRequest) (string, *errors.AppError) {
-	s.logger.Debug("UpdateUser", slog.Any("request", req))
+	s.logger.Debug("UpdateUser", slog.String("id", req.Id.String()))
 
 	if req.Password == "" {
 		s.logger.Error("password is empty")

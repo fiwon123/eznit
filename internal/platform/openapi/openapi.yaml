@@ -46,18 +46,16 @@ info:
     or file that is not the caller's answers `404` exactly like an id that does
     not exist.
 
-    ## Known gaps
+    ## Administrators
 
-    This document describes the API **as it behaves today**, including the
-    routes below, which do not behave well yet:
+    Three operations manage other accounts: the account list, and the update
+    and delete of one account. They require an administrator, and a caller
+    whose account is not one gets `403`.
 
-    - `PUT` and `DELETE /v1/users/{id}` sit behind an admin guard that is still
-      a TODO, so they answer `401` for everybody (#109).
-    - `GET /v1/users` and `GET /v1/users/{id}` answer with any account's email
-      (#110).
-
-    Neither is a contract to build on; they are recorded so a client author is
-    not surprised by them.
+    The first account created on an instance is its admin; every account after
+    it is an ordinary user. An operator promotes another account with
+    `UPDATE users SET is_admin = true WHERE email = '<address>';` — there is no
+    route that grants it, on purpose.
 
 servers:
   - url: /
@@ -192,8 +190,9 @@ paths:
       tags: [users]
       summary: List every account
       description: |
-        Answers every registered account's email, not only the caller's. This is
-        a known gap, described here so it is not mistaken for a contract.
+        An administrator's view: every registered account's email. A caller
+        whose account is not an admin gets `403`, so a session cannot enumerate
+        the instance's accounts.
       responses:
         "200":
           description: Every account.
@@ -210,6 +209,8 @@ paths:
                           $ref: "#/components/schemas/UserData"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -219,10 +220,14 @@ paths:
     get:
       operationId: getUser
       tags: [users]
-      summary: Read one account
+      summary: Read the caller's own account
+      description: |
+        Answers the caller's own record. Any other id answers `404`, exactly
+        like an id that does not exist: whether an account exists is not
+        something a session gets to probe.
       responses:
         "200":
-          description: The account.
+          description: The caller's account.
           content:
             application/json:
               schema:
@@ -243,8 +248,9 @@ paths:
       tags: [users]
       summary: Replace an account
       description: |
-        The admin guard in front of this route is a TODO and answers `401` for
-        every caller. The body is described for the route it will be.
+        An administrator's operation: it replaces the account's email and
+        password. The admin flag itself is not part of the body — no route
+        grants it.
       requestBody:
         required: true
         content:
@@ -261,17 +267,11 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
-          description: Always, today — the admin guard is not implemented.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
-          description: No account with that id — the answer once the guard is implemented.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
     delete:
@@ -279,8 +279,7 @@ paths:
       tags: [users]
       summary: Delete an account
       description: |
-        The admin guard in front of this route is a TODO and answers `401` for
-        every caller.
+        An administrator's operation.
       responses:
         "200":
           description: The account was deleted.
@@ -291,11 +290,9 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
-          description: Always, today — the admin guard is not implemented.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -997,6 +994,12 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     Unauthorized:
       description: No token, or a token that is not a live session.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: The caller has a live session, but the account is not an administrator.
       content:
         application/json:
           schema:

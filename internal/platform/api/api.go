@@ -44,10 +44,14 @@ func NewRouter(cfg Config) *chi.Mux {
 	sessionsRepo := sessions.NewRepository(cfg.DB, cfg.Logger)
 	sessionsService := sessions.NewService(sessionsRepo, cfg.Logger)
 
-	guard := middleware.NewGuard(sessionsService, cfg.Logger)
-
 	userRepo := users.NewRepository(cfg.DB, cfg.Logger)
 	userService := users.NewService(userRepo, sessionsService, cfg.Logger)
+
+	// The guard asks the users service who is an admin. It is built after the
+	// service for that reason, and the service is passed as the AdminChecker
+	// interface the guard declares — neither package imports the other.
+	guard := middleware.NewGuard(sessionsService, userService, cfg.Logger)
+
 	userHandler := users.NewHandler(userService, sessionsService, guard, cfg.Logger)
 	userHandler.RegisterRoutes(r)
 

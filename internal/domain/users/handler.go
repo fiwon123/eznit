@@ -36,6 +36,7 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 	r.Group(func(r chi.Router) {
 		r.Use(h.guard.AuthAdmin)
 
+		r.Get("/v1/users", h.getUsersHandler)
 		r.Delete("/v1/users/{id}", h.deleteUserHandler)
 		r.Put("/v1/users/{id}", h.updateUserHandler)
 	})
@@ -43,7 +44,6 @@ func (h *Handler) RegisterRoutes(r *chi.Mux) {
 	r.Group(func(r chi.Router) {
 		r.Use(h.guard.AuthUser)
 
-		r.Get("/v1/users", h.getUsersHandler)
 		r.Get("/v1/users/{id}", h.getUserHandler)
 		r.Get("/v1/logout", h.logoutHandler)
 	})
@@ -145,7 +145,14 @@ func (h *Handler) getUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, appError := h.service.GetUser(r.Context(), parseID)
+	callerID, ok := r.Context().Value("user_id").(uuid.UUID)
+	if !ok {
+		h.logger.Error("get user failed! no caller in the request context")
+		helper.SendErrorJson(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	resp, appError := h.service.GetUser(r.Context(), parseID, callerID)
 	if appError != nil {
 		h.logger.Warn("user not found")
 		helper.SendErrorJson(w, appError.StatusCode(), appError.Error())
