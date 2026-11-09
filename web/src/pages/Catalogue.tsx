@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getToken, listSharedFiles, listTemplates, messageOf } from "../api";
 import SharedFileCard from "../components/SharedFileCard";
@@ -35,17 +35,23 @@ export default function Catalogue() {
   const [sharedFiles, setSharedFiles] = useState<SharedFileData[]>([]);
   const [sharedError, setSharedError] = useState<string | null>(null);
 
+  // A ref, not a local `let`: the correctness rule react(immutability) (on from
+  // oxlint 1.91) treats reassigning a variable captured by the effect as unsafe.
+  // The ref is the sanctioned mutable escape hatch and keeps the same behaviour:
+  // reset before each load, set on cleanup, so a stale answer is ignored.
+  const templatesCancelled = useRef(false);
+
   useEffect(() => {
-    let cancelled = false;
+    templatesCancelled.current = false;
 
     const load = async (): Promise<void> => {
       try {
         const response = await listTemplates(kind);
-        if (!cancelled) {
+        if (!templatesCancelled.current) {
           setResult({ kind, session: token, templates: response.data, error: null });
         }
       } catch (cause: unknown) {
-        if (!cancelled) {
+        if (!templatesCancelled.current) {
           setResult({ kind, session: token, templates: [], error: messageOf(cause) });
         }
       }
@@ -54,7 +60,7 @@ export default function Catalogue() {
     void load();
 
     return () => {
-      cancelled = true;
+      templatesCancelled.current = true;
     };
   }, [kind, token]);
 
