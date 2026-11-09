@@ -13,7 +13,11 @@ eznit --debug <cmd> # debug-level logs
 than take flags. Subcommands take flags, and several of them (`template
 publish`/`show`/`apply`/`init`, `repo auth`) also prompt for values.
 
-## 💻 Core commands
+Jump to: [Templates](#-templates) · [Commands library](#-commands-library) ·
+[Git hosts](#-git-hosts) · [Files and account](#-files-and-account) ·
+[The config file](#-the-config-file)
+
+## 🗂️ Files and account
 
 | Command | Prompts / flags | What it does |
 | --- | --- | --- |
@@ -56,7 +60,17 @@ are; binary files are sent as base64 and stored on disk by the server.
 | `eznit template list` | `--kind <terminal>`, `--mine` | The catalogue: public templates and your own; `--mine` shows only yours |
 | `eznit template show [id]` | — | One template, its files and its variables |
 | `eznit template apply [id]` | `--target <dir>`, `--force` | Write a template into a folder |
+| `eznit template apply --from-file <bundle>` | `--target <dir>`, `--force` | Write a bundle written by `template export`; no server, no session |
+| `eznit template export [id]` | `-o <file>` (default `template.eznit`), `--force` | Write a template to one file |
 | `eznit template init` | `--kind <terminal>`, `--target <dir>`, `--force` | Write a starter template locally (no server) |
+
+**Offline bundles.** `template export` writes the whole template — files,
+binary bytes and variable prompts — into one JSON file (`format: 1`). A command
+the template pulls in is written at its target path, so the bundle is a
+snapshot to apply, not a publish request. `apply --from-file` checks the same
+path rules and limits as the server and asks the variables on the machine that
+writes the files. A private template needs a session to export; a public one
+does not.
 
 `template init --kind` accepts `opencode`, `codex`, `copilot`, `cursor`,
 `windsurf` or `generic` (default `generic`).

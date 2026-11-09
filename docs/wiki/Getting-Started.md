@@ -1,90 +1,92 @@
 # 🚀 Getting Started
 
-This page runs eznit on your machine and puts one file in, then back out.
+Two paths. **Try it** runs the server and puts one file in and out. **Use it on
+a project** needs no server at all: `template init` writes a starter into a
+folder.
 
 ## ✅ What you need
 
-- [Docker](https://docs.docker.com/get-docker/) with Compose — the quickest path,
-  and the only thing the product stack needs.
-- Or, for the host-toolchain path: Go (the version in `go.mod`) and Node (the pin
-  in `mise.toml`). See [Development](https://github.com/fiwon123/eznit/wiki/Development) if you want the full loop.
+- [Docker](https://docs.docker.com/get-docker/) with Compose — the only
+  requirement for the stack.
+- Go (the version in `go.mod`) — only if you build the CLI or run from source.
+- Or neither: a release archive carries a prebuilt CLI and server.
 
-You do **not** need Go or Node to run the product stack; the images build the UI.
-
-## 🐳 Run the stack
+## 🐳 Try it: run the stack
 
 Two local files come first — the configuration and the database secret. Both are
 gitignored, and `make setup` creates them from the committed examples:
 
 ```sh
 make setup
-```
-
-Without `make`, copy `.env.example` to `.env` and
-`secrets/db_password.txt.example` to `secrets/db_password.txt` by hand, then
-`chmod 600 .env secrets/db_password.txt` (see [Configuration](https://github.com/fiwon123/eznit/wiki/Configuration)) —
-`cp` under a normal umask leaves them world-readable. The database password is a
-Docker file secret read through `DB_PASSWORD_FILE`; it is never an environment
-variable.
-
-Then one command brings up the product:
-
-```sh
 make up             # or: docker compose up
 ```
 
-That does five things, in order:
-
-1. builds two images: `web/Dockerfile` (Node builds the UI, nginx serves it) and
-   `Dockerfile.api` (Node builds the UI, Go embeds it in the binary);
-2. starts PostgreSQL and waits until it is healthy;
-3. runs the `migrate` service once (`migrate up` is idempotent);
-4. starts the API on `http://localhost:4000` — API only, because the compose
-   service sets `API_SERVE_WEB=false`;
-5. starts the web UI on `http://localhost:5173`. It proxies `/v1/*` to the API, so
-   the browser talks to one origin and the API needs no CORS headers.
+`make up` builds the two images (`web/Dockerfile` for nginx, `Dockerfile.api` for
+the API), waits for PostgreSQL to be healthy, runs the `migrate` service once,
+then starts the API on `:4000` and the UI on `:5173`.
 
 | Role | Where | Port |
 | --- | --- | --- |
-| Frontend (the app) | `web` service, nginx | **5173** |
-| Backend (the API) | `api` service | **4000** |
-| Database | `db` service | 5432 |
+| Web UI (nginx) | `web` service | **5173** |
+| API | `api` service | **4000** |
+| API reference (Swagger UI) | `/docs` on either | — |
+| PostgreSQL | `db` service | 5432 |
 
-`http://localhost:4000` still serves the UI inside the *released binary* (it
-embeds it); the compose stack keeps the two tiers apart so each port means one
-service.
+Without `make`, copy `.env.example` to `.env` and
+`secrets/db_password.txt.example` to `secrets/db_password.txt`, then
+`chmod 600 .env secrets/db_password.txt`, and run `docker compose up`.
 
 Uploaded bytes live on the `api-data` volume, so they survive
-`docker compose down` (use `docker compose down -v` to remove them too).
+`docker compose down` (`down -v` removes them too).
 
-## 📄 Your first file
+## 📄 Put one file in and out
 
-The CLI talks to the API on `:4000`. Build it with Go on the host (or use a release
-archive — see [Releases](https://github.com/fiwon123/eznit/wiki/Releases)):
-
-```sh
-make build_cli                  # needs Go; writes build/cli/linux/eznit and build/cli/windows/eznit.exe
-./build/cli/linux/eznit --help
-```
-
-The core commands are interactive: they prompt for what they need.
+The CLI is a separate binary. Build it with `make build_cli` (Go only) or use a
+release archive — see [Releases](https://github.com/fiwon123/eznit/wiki/Releases).
 
 ```sh
 ./build/cli/linux/eznit signup     # Enter Email / Password / Confirm
-./build/cli/linux/eznit login      # stores a session token in ~/.eznit/config.json (mode 0600)
+./build/cli/linux/eznit login      # stores a session token in ~/.eznit/config.json (0600)
 ./build/cli/linux/eznit upload     # file path: ./notes.txt
 ./build/cli/linux/eznit list       # the files you own
-./build/cli/linux/eznit download   # id file: <id from list>  / destination folder path:
-./build/cli/linux/eznit delete     # id file: <id>
-./build/cli/linux/eznit logout     # removes the session token
+./build/cli/linux/eznit download   # id file: <id>  / destination folder path: ./out
 ```
 
-`signup` and `login` are the only unauthenticated identity commands; everything
-else that touches your own rows needs the session `login` stored. Full flags and
-the templates/commands/repos commands are in [CLI Reference](https://github.com/fiwon123/eznit/wiki/CLI-Reference).
+The core commands prompt for what they need. `signup` and `login` are the only
+unauthenticated identity commands; everything else that touches your own rows
+needs the session.
 
-The web UI is at `http://localhost:5173`. Sign up or log in there, or paste the
-token from `eznit login` into `localStorage` as `eznit.token`.
+## 🧩 Use it on a project
+
+This path needs no server, no login and no Docker. It writes files into a folder
+you name:
+
+```sh
+eznit template init --kind opencode --target ./demo
+```
+
+`--kind` accepts `opencode`, `codex`, `copilot`, `cursor`, `windsurf` or
+`generic`; the starter asks for the project name, description and language and
+fills them in. What each kind writes is on
+[Templates and skills](https://github.com/fiwon123/eznit/wiki/Templates-and-Skills).
+
+To share that folder and pull it elsewhere, publish it to a running instance:
+
+```sh
+eznit template publish ./demo --public    # prompts name, kind, description, defaults
+eznit template list                       # note the id
+eznit template apply <id> --target ../another-project
+```
+
+`apply` asks the variables on the machine that writes the files — a value you
+type never travels to the server.
+
+To carry the template to a machine with no server at all, export it to one file:
+
+```sh
+eznit template export <id> -o setup.eznit
+eznit template apply --from-file setup.eznit --target ../another-project
+```
 
 ## 📦 From a release bundle (no source)
 
@@ -101,28 +103,14 @@ DB_HOST=localhost DB_PORT=5432 ./eznit-server               # serves the embedde
 ```
 
 Set the database password for the host-run server too: `DB_PWD`, or
-`DB_PASSWORD_FILE` pointing at `secrets/db_password.txt`. A .env without a
-password would otherwise connect with an empty one.
-
-Plain `docker compose up` is the source-checkout path — in a bundle it would try
-to build an image the archive does not contain. `eznit-gui` opens a window on the
-UI (`:8765`); with `GUI_API_URL` it proxies to a running API, otherwise it runs
-one in-process when the `DB_*` variables are set. The bundle's `RUNNING.md` says
-the same, and what it does not prove.
-
-## 🧰 Without Make
-
-```sh
-cp .env.example .env
-cp secrets/db_password.txt.example secrets/db_password.txt
-docker compose up
-```
-
-The dev loop (source, live reload) is a different entry point — see
-[Development](https://github.com/fiwon123/eznit/wiki/Development).
+`DB_PASSWORD_FILE` pointing at `secrets/db_password.txt`. `RUNNING.md` in the
+bundle says the same, and what it does not prove. Plain `docker compose up` is
+the source-checkout path — in a bundle it would try to build an image the
+archive does not contain.
 
 ## 👉 Next
 
-- [Configuration](https://github.com/fiwon123/eznit/wiki/Configuration) — every variable, secret and port
+- [Templates and skills](https://github.com/fiwon123/eznit/wiki/Templates-and-Skills) — what to put in a template and how to share it
 - [CLI Reference](https://github.com/fiwon123/eznit/wiki/CLI-Reference) — the full command surface
+- [Configuration](https://github.com/fiwon123/eznit/wiki/Configuration) — every variable, secret and port
 - [Troubleshooting](https://github.com/fiwon123/eznit/wiki/Troubleshooting) — if a port is busy or a secret is missing

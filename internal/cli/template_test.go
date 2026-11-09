@@ -383,16 +383,14 @@ func TestSubstitute(t *testing.T) {
 // The placeholders the files hold that the template does not declare are
 // named: the user can see what the template left out.
 func TestUndeclaredPlaceholders(t *testing.T) {
-	detail := &templates.TemplateDetail{
-		Files: []templates.TemplateFileData{
-			{Path: "AGENTS.md", Content: "{{PROJECT_NAME}} {{SECRET}} {{OTHER}}"},
-		},
-		Variables: []templates.TemplateVariableData{
-			{Key: "PROJECT_NAME"},
-		},
+	files := []templateFile{
+		{Path: "AGENTS.md", Content: "{{PROJECT_NAME}} {{SECRET}} {{OTHER}}"},
+	}
+	variables := []templates.TemplateVariableData{
+		{Key: "PROJECT_NAME"},
 	}
 
-	keys := undeclaredPlaceholders(detail)
+	keys := undeclaredPlaceholders(files, variables)
 
 	if len(keys) != 2 {
 		t.Fatalf("expected two undeclared placeholders, got %v", keys)
