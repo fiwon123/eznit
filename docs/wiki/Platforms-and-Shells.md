@@ -12,14 +12,16 @@ plain files, so the shell or editor it configures is your choice.
 | 🐧 Linux arm64 | `…_linux_arm64.tar.gz` | `…_linux_arm64.tar.gz` | built, never executed on ARM |
 | 🪟 Windows amd64 | `…_windows_amd64.zip` | `…_windows_amd64.zip` | CLI started in CI |
 | 🪟 Windows arm64 | `…_windows_arm64.zip` | `…_windows_arm64.zip` | built, never executed on ARM |
+| 🍎 macOS amd64 | `…_darwin_amd64.tar.gz` | `…_darwin_amd64.tar.gz` | Mach-O checked, never executed |
+| 🍎 macOS arm64 | `…_darwin_arm64.tar.gz` | `…_darwin_arm64.tar.gz` | Mach-O checked, never executed |
 
 Every archive has `checksums.txt` on the release page. The Windows smoke test
 unpacks the CLI, runs `eznit -v` and `ez -v`, and checks the version — that is
 what "started in CI" means. The server bundle is built, not started.
 
-**macOS** builds from source with Go (`go build ./cmd/cli`), but no archive is
-published yet — [#187](https://github.com/fiwon123/eznit/issues/187). Nothing in
-CI builds for darwin.
+**macOS** is cross-compiled on Linux and published for amd64 and arm64. The
+release verifier reads each archive and checks the binary is a Mach-O
+executable for the CPU the archive name claims; no gate starts one on a Mac.
 
 ## 🐳 The server
 
@@ -85,7 +87,7 @@ point `--target` there, and it refuses to overwrite an existing file without
 
 ## 🧭 Not proven
 
-- The macOS build is not shipped and not built in CI.
+- The macOS archives are built, never executed on a Mac.
 - The ARM64 binaries are built, never executed on ARM hardware.
 - The Windows server bundle is built, never started.
 - The browser UI has no automated test on any platform.

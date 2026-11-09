@@ -22,6 +22,10 @@ machine next to it is solving the wrong problem.
   ([#185](https://github.com/fiwon123/eznit/issues/185), v0.15.0). A script maps
   to `Exec`; `Steps` win on import, as they do in crower. Aliases, env, shell,
   cwd and timeout are reported and not kept; binary commands cannot be exported.
+- **macOS archives** — `darwin/amd64` and `darwin/arm64` CLI and server bundles
+  are published and verified as Mach-O, cross-compiled on Linux
+  ([#187](https://github.com/fiwon123/eznit/issues/187), v0.17.0). No gate runs
+  them on a Mac.
 - **Shell starters** — `eznit template init --kind bash|zsh|fish|powershell`
   writes `shell/bashrc.sh`, `shell/zshrc.sh`, `shell/config.fish` or
   `shell/profile.ps1`: commented snippets you source yourself
@@ -41,10 +45,8 @@ and no server. The plan is to send a template bundle over it, so a second
 machine (a laptop, a tablet, a machine on the same network) receives a setup
 without either side running eznit's API.
 
-## 🐚 More OSes and hosts — not implemented
+## 🐚 More hosts — not implemented
 
-- **macOS archives** — `darwin/amd64` and `darwin/arm64` CLI and server bundles
-  ([#187](https://github.com/fiwon123/eznit/issues/187)).
 - **GitLab and Bitbucket** clone providers next to GitHub
   ([#188](https://github.com/fiwon123/eznit/issues/188)).
 

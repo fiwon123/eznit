@@ -93,7 +93,7 @@ SERVER_FAMILY := $(APP_NAME)-server
 
 # The platform lives in the archive name, never in the binary name: the README
 # tells a user to run `eznit`, and a suffixed binary is unreachable by it.
-PLATFORMS ?= windows/amd64 windows/arm64 linux/amd64 linux/arm64
+PLATFORMS ?= windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 
 # --- Windows resources -------------------------------------------------------
 # Go has no flag for an icon, a manifest or a version block; the only hook is a
@@ -103,7 +103,7 @@ ICON ?= assets/logo.png
 WINRES ?= internal/tools/winres
 COMPANY ?= eznit
 APP_ID ?= com.fiwon123.eznit
-DESCRIPTION ?= Self-hosted file storage (API and CLI)
+DESCRIPTION ?= Self-hosted project setup (API, CLI and web UI)
 
 # What a release is checked against. The commit is empty locally, where
 # `git describe` is not a release claim; the release workflow sets it to the
