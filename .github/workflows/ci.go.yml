@@ -9,10 +9,12 @@ name: CI (Go)
 # never on a feature-branch pull request. Feature branches are gated locally by
 # `make check`.
 #
-# No database, no container, no secret file. The API talks to PostgreSQL at
-# runtime, but this gate compiles it and lints it -- it never starts it. A
-# change that breaks the API's behaviour against a real database is therefore
-# NOT covered here; see the comment at the bottom.
+# The unit suite needs no database, no container and no secret file: the API
+# talks to PostgreSQL at runtime, but the unit gate compiles it and lints it --
+# it never starts it. A second step in the same job DOES start a PostgreSQL
+# service and runs the `integration`-tagged suite (`make test_integration`
+# locally), because a query that only fails against a real schema would
+# otherwise reach `main` unverified.
 
 on:
   pull_request:
@@ -40,6 +42,25 @@ jobs:
     defaults:
       run:
         working-directory: .
+    services:
+      # The database the integration step runs against. The unit `Test` step
+      # does not talk to it: `go test ./...` has no `integration` tag, so the
+      # suite that needs a schema is not compiled there.
+      postgres:
+        # The same tag as docker-compose.yml, so CI and the product run the
+        # same PostgreSQL.
+        image: postgres:18.3-bookworm
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eznit_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d eznit_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v7
 
@@ -65,6 +86,17 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+      # The same commands as `make test_integration`: the migrations run up and
+      # down and every repository is exercised against the real schema. A
+      # failure here is a query that does not match the database, which the
+      # unit step cannot see.
+      - name: Integration (live PostgreSQL)
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/eznit_test?sslmode=disable
+        run: |
+          go vet -tags=integration ./...
+          go test -tags=integration -count=1 -p 1 ./...
 
       - name: Build
         run: go build ./...
@@ -104,8 +136,11 @@ jobs:
 #    The vulnerability scan is symbol-level, so it is only as complete as the
 #    call graph it can see; code behind an interface it cannot resolve may be
 #    missed.
-# 2. NOTHING HERE EXERCISES THE API AGAINST A DATABASE. The API compiles and
-#    vets, but no request is ever made to it and no migration is ever run.
-#    A green run says nothing about whether a query still matches a schema.
+# 2. THE INTEGRATION STEP COVERS THE SCHEMA, NOT THE ROUTES. It starts a real
+#    PostgreSQL, applies and reverses every migration, and runs each repository
+#    against it. No HTTP request is made to the API, so a handler that reads
+#    the right row and writes the wrong status is still invisible here.
 #
-# Read the run's log before treating a green build as coverage.
+# The unit `Test` step still runs without a database; only the integration step
+# starts the service. Read the run's log before treating a green build as
+# coverage.

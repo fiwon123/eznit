@@ -117,6 +117,7 @@ Linux.
 
 ```bash
 make check     # gofmt, vet, test, build — the local verification gate
+make test_integration  # migrations + repository SQL against a real PostgreSQL
 make vuln      # reachable-vulnerability scan (needs network; not part of check)
 make run_api   # run the API against the configured database
 make run_cli   # run the CLI
@@ -139,6 +140,15 @@ http://localhost:5173 with the API behind it on http://localhost:4000.
 the API and the CLI, it does not run them. It fails loudly if the Go toolchain
 is missing rather than skipping, and it lists the packages that have no test
 files, because `go test` prints `[no test files]` and still exits 0.
+
+`make test_integration` is the other gate: it applies and reverses every
+migration and runs each repository's SQL against a real PostgreSQL. It needs
+`TEST_DATABASE_URL` pointing at a **scratch** database whose name ends in
+`_test` (the suite drops and truncates, and refuses any other name before the
+first destructive statement). CI runs the same commands in the **CI (Go)** job
+with a `postgres:18.3-bookworm` service, so a release pull request exercises
+the schema. Locally, a Compose stack can host it:
+`TEST_DATABASE_URL='postgres://root:<password>@localhost:5432/eznit_test?sslmode=disable' make test_integration`.
 
 ### Dev sandbox
 
@@ -206,8 +216,8 @@ API that exists, the admin guard included.
 schema helper, the middleware, the web UI, the OpenAPI package, the path
 helper, the logger, the error type and the response envelope have tests;
 `cmd/cli` has none** — it is the kong wiring the `internal/cli` tests cover
-one layer down. Database behaviour is not covered by `make check` at all; the
-integration suite in #180 targets that.
+one layer down. `make check` still never runs SQL; `make test_integration`
+(and the CI (Go) integration step) does, against a real PostgreSQL.
 `go test ./...` prints `[no test files]` for the packages without one, and
 still exits 0. A green `Test` step in CI means
 "the packages with tests passed" — name the packages when you report a
