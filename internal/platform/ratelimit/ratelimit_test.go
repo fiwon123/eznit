@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -97,5 +98,20 @@ func TestSweepDropsExpiredKeys(t *testing.T) {
 	}
 	if _, ok := l.entries["new"]; !ok {
 		t.Fatal("the live key must survive the sweep")
+	}
+}
+
+func TestMapIsBounded(t *testing.T) {
+	l, _ := newFake(time.Hour)
+
+	for i := 0; i < maxKeys+500; i++ {
+		l.Allow(fmt.Sprintf("k%d", i), 1)
+	}
+
+	l.mu.Lock()
+	n := len(l.entries)
+	l.mu.Unlock()
+	if n > maxKeys {
+		t.Fatalf("entries = %d, want <= %d", n, maxKeys)
 	}
 }

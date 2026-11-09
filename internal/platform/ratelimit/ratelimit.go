@@ -16,6 +16,15 @@ type entry struct {
 	resetAt time.Time
 }
 
+// maxKeys bounds the map so a flood of distinct keys (many addresses, or forged
+// addresses when TRUST_PROXY trusts a header) cannot grow it without limit.
+// When it is reached, expired entries go first, then a slice of live ones — a
+// deliberate availability/accuracy trade-off.
+const (
+	maxKeys = 8192
+	evictTo = maxKeys * 7 / 8
+)
+
 // Limiter counts requests per key in a fixed window.
 type Limiter struct {
 	mu        sync.Mutex
@@ -62,6 +71,9 @@ func (l *Limiter) Allow(key string, limit int) (bool, time.Duration) {
 
 	e, ok := l.entries[key]
 	if !ok || !now.Before(e.resetAt) {
+		if !ok && len(l.entries) >= maxKeys {
+			l.evictLocked(now)
+		}
 		e = &entry{resetAt: now.Add(l.window)}
 		l.entries[key] = e
 	}
@@ -75,7 +87,7 @@ func (l *Limiter) Allow(key string, limit int) (bool, time.Duration) {
 
 // sweepLocked drops expired entries at most once per window. There is no
 // background goroutine to start or stop: the map is bounded by the keys seen in
-// roughly one window.
+// about two windows, and by maxKeys as a hard cap.
 func (l *Limiter) sweepLocked(now time.Time) {
 	if now.Sub(l.lastSweep) < l.window {
 		return
@@ -86,4 +98,24 @@ func (l *Limiter) sweepLocked(now time.Time) {
 		}
 	}
 	l.lastSweep = now
+}
+
+// evictLocked frees room when the map is at its cap: expired entries first, and
+// if it is still full, a slice of live ones (in map order) until there is
+// headroom. It runs only when the map is full.
+func (l *Limiter) evictLocked(now time.Time) {
+	for k, e := range l.entries {
+		if !now.Before(e.resetAt) {
+			delete(l.entries, k)
+		}
+	}
+	if len(l.entries) < maxKeys {
+		return
+	}
+	for k := range l.entries {
+		if len(l.entries) <= evictTo {
+			break
+		}
+		delete(l.entries, k)
+	}
 }

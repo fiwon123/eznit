@@ -143,11 +143,35 @@ func TestDisabledLimiterDoesNotThrottle(t *testing.T) {
 
 func postLoginFrom(t *testing.T, router *chi.Mux, realIP, email string) int {
 	t.Helper()
+	return postLoginWithHeader(t, router, "X-Real-IP", realIP, email)
+}
+
+// postLoginWithHeader sends a login with one forwarded-address header set, so a
+// test can exercise X-Real-IP and X-Forwarded-For separately.
+func postLoginWithHeader(t *testing.T, router *chi.Mux, header, value, email string) int {
+	t.Helper()
 	body := strings.NewReader(`{"email":"` + email + `","password":"x"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/login", body)
-	req.Header.Set("X-Real-IP", realIP)
+	req.Header.Set(header, value)
 
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, req)
 	return recorder.Code
+}
+
+func TestTrustProxyFallsBackToXForwardedFor(t *testing.T) {
+	router := newRateLimitedRouter(t, RateLimitPolicy{
+		Limiter:       frozenLimiter(),
+		TrustProxy:    true,
+		LoginPerIP:    1,
+		LoginPerEmail: 100,
+	})
+
+	// The first hop is the client; the shared proxy address after it is not.
+	if code := postLoginWithHeader(t, router, "X-Forwarded-For", "198.51.100.1, 10.0.0.1", "a@example.com"); code == http.StatusTooManyRequests {
+		t.Fatal("the first forwarded client should be allowed")
+	}
+	if code := postLoginWithHeader(t, router, "X-Forwarded-For", "198.51.100.2, 10.0.0.1", "b@example.com"); code == http.StatusTooManyRequests {
+		t.Fatal("a different first hop must have its own counter")
+	}
 }
