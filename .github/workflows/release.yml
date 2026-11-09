@@ -15,7 +15,7 @@ name: Release
 # Three gates before anything is published:
 #
 #   guard   the tag is on main, and the version/commit are resolved once
-#   build   the eight archives plus checksums.txt, with read-only permissions
+#   build   the twelve archives plus checksums.txt, with read-only permissions
 #   smoke   the Windows CLI is actually started on windows-latest
 #
 # `publish` needs all three and runs only on a tag push. `workflow_dispatch`
@@ -224,6 +224,8 @@ jobs:
           | 🐧 arm64 | `eznit-cli_@VERSION@_linux_arm64.tar.gz` | `eznit-server_@VERSION@_linux_arm64.tar.gz` |
           | 🪟 amd64 | `eznit-cli_@VERSION@_windows_amd64.zip` | `eznit-server_@VERSION@_windows_amd64.zip` |
           | 🪟 arm64 | `eznit-cli_@VERSION@_windows_arm64.zip` | `eznit-server_@VERSION@_windows_arm64.zip` |
+          | 🍎 amd64 | `eznit-cli_@VERSION@_darwin_amd64.tar.gz` | `eznit-server_@VERSION@_darwin_amd64.tar.gz` |
+          | 🍎 arm64 | `eznit-cli_@VERSION@_darwin_arm64.tar.gz` | `eznit-server_@VERSION@_darwin_arm64.tar.gz` |
 
           The CLI archive carries `eznit` and `ez`. The server bundle carries
           `eznit-server`, `eznit-gui`, the migrations, the Compose services and
@@ -240,6 +242,8 @@ jobs:
           - It does not run the API against a database, and it does not run the
             migrations. `RUNNING.md` and the known gaps in the repository say
             what that leaves unproven.
+          - The macOS and ARM64 archives are cross-compiled on Linux and never
+            executed. Only the Windows amd64 CLI is started by this workflow.
 
           <details>
           <summary>🧾 Merged pull requests</summary>
