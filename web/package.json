@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json",
     "lint": "oxlint",
     "format": "oxfmt",
-    "format:check": "oxfmt --check"
+    "format:check": "oxfmt --check",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
     "react": "19.3.1",
@@ -25,6 +26,7 @@
     "@vitejs/plugin-react": "6.1.2",
     "oxfmt": "0.74.0",
     "oxlint": "1.89.0",
+    "playwright": "^1.65.0",
     "typescript": "7.0.2",
     "vite": "8.3.5"
   }

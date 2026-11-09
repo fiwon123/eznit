@@ -556,6 +556,7 @@ vuln: ## scan for reachable dependency vulnerabilities (needs network)
 # formats, typechecks and builds.
 # ---------------------------------------------------------------------------
 .PHONY: web_install web_check web_build web_dev
+.PHONY: screenshots
 
 web_install: ## Install the web dependencies from the lockfile (npm ci)
 	@if ! command -v npm >/dev/null 2>&1; then \
@@ -598,6 +599,18 @@ web_dev: ## Run the web UI dev server on http://localhost:5173
 		exit 1; \
 	fi; \
 	cd $(WEB_FOLDER) && npm run dev
+
+# --- README screenshots ------------------------------------------------------
+# The committed tour a reader sees before running anything. The harness refuses
+# to write a blank or error-state capture, so a green run means the pages
+# rendered. Not part of `make check`: it needs the app running and a browser.
+SCREENSHOTS_URL ?= http://localhost:5173
+
+screenshots: ## Capture README screenshots into docs/screenshots (needs the app running)
+	@command -v node >/dev/null 2>&1 || { echo "ERROR: node is not installed — mise install puts the pinned Node on PATH (see mise.toml)" >&2; exit 1; }
+	@[ -d "$(WEB_FOLDER)/node_modules" ] || { echo "ERROR: $(WEB_FOLDER)/node_modules is missing — run 'make web_install'" >&2; exit 1; }
+	@curl -fsS -o /dev/null "$(SCREENSHOTS_URL)" || { echo "ERROR: $(SCREENSHOTS_URL) is not answering — start the app with 'make up' (or 'make dev-up')" >&2; exit 1; }
+	@cd $(WEB_FOLDER) && BASE_URL="$(SCREENSHOTS_URL)" npm run screenshots
 
 # ---------------------------------------------------------------------------
 # Dev sandbox (multiplatform)
