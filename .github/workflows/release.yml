@@ -4,17 +4,23 @@ name: Release
 #
 # Policy (`.opencode/instructions/workflow.md`, step 7): the tag must point at a
 # commit that is on `main`. A tag cut from a side branch fails this run instead
-# of shipping an unreleased commit. CI (Go) and CI (Web) already gate the
-# release pull request, so this workflow builds and publishes; it does not
-# repeat those gates.
+# of shipping an unreleased commit.
 #
-# `workflow_dispatch` runs the same build and keeps the archives on the run --
-# it never publishes a release. That is the way to exercise this pipeline
-# without a tag: the publish step itself is only proven by a real release.
+# The archives come from `make release`, the same target a developer runs, so
+# the release artifacts and the documented build cannot drift into two different
+# packaging stories. `make release` also verifies each archive it writes, and
+# `PROVENANCE_COMMIT` makes it fail when a binary was built from another
+# revision or a modified tree.
 #
-# The archives come from `make release`, the same target a developer runs
-# locally, so the release artifacts and the documented build cannot drift into
-# two different packaging stories. `VERSION` is overridden with the tag.
+# Three gates before anything is published:
+#
+#   guard   the tag is on main, and the version/commit are resolved once
+#   build   the eight archives plus checksums.txt, with read-only permissions
+#   smoke   the Windows CLI is actually started on windows-latest
+#
+# `publish` needs all three and runs only on a tag push. `workflow_dispatch`
+# runs the same build and smoke, keeps the archives on the run, and publishes
+# nothing -- the way to exercise this pipeline without a tag.
 
 on:
   push:
@@ -25,13 +31,17 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+# The default token for every job is read-only; only `publish` asks for write.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
-    name: Release
+  guard:
+    name: Resolve the tag and its commit
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -52,19 +62,32 @@ jobs:
           fi
           echo "$GITHUB_REF_NAME ($GITHUB_SHA) is on main"
 
-      - name: Resolve the version
+      - name: Resolve the version and the commit
         id: version
         run: |
+          set -euo pipefail
           if [ "${{ github.event_name }}" = "push" ]; then
             version="$GITHUB_REF_NAME"
+            commit="$GITHUB_SHA"
           else
             # A dispatch has no tag to name the run. `git describe` gives the
-            # nearest tag and the distance from it, which is enough to tell
-            # two dry runs apart.
+            # nearest tag and the distance from it, which tells two dry runs
+            # apart; the commit is the checked-out head.
             version="$(git describe --tags --always)"
+            commit="$(git rev-parse HEAD)"
           fi
           version="${version//\//-}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build the archives
+    needs: guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -87,41 +110,193 @@ jobs:
 
       - name: Build the archives
         env:
-          # Every binary must report this revision and vcs.modified=false;
-          # `make verify-release` fails the build otherwise.
-          PROVENANCE_COMMIT: ${{ github.sha }}
-        run: make release VERSION="${{ steps.version.outputs.version }}"
+          # `make verify-release` fails the build when a binary reports another
+          # revision, or a modified tree.
+          PROVENANCE_COMMIT: ${{ needs.guard.outputs.commit }}
+        run: make release VERSION="${{ needs.guard.outputs.version }}"
 
-      # `make release` writes the hash list next to the archives it produced.
-      - name: Show the checksums
-        run: cat build/dist/checksums.txt
-
-      # A dry run keeps the archives on the workflow run and stops there.
       - name: Upload the archives to the run
-        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
-          name: eznit-${{ steps.version.outputs.version }}
-          path: |
-            build/dist/*.zip
-            build/dist/*.tar.gz
-            build/dist/checksums.txt
+          name: eznit-${{ needs.guard.outputs.version }}
+          path: build/dist/*
           if-no-files-found: error
 
-      - name: Publish the release
-        if: github.event_name == 'push'
+  smoke:
+    name: Windows smoke test
+    # A download that will not start is the failure this job exists to catch,
+    # and it is invisible from the build: the exe can be the wrong subsystem or
+    # miss a runtime. Run it, on the OS it was built for.
+    needs: [guard, build]
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download the archives
+        uses: actions/download-artifact@v7
+        with:
+          name: eznit-${{ needs.guard.outputs.version }}
+          path: smoke
+
+      - name: Run the binaries a user downloads
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $zip = Get-ChildItem smoke -Recurse -Filter 'eznit-cli_*_windows_amd64.zip' | Select-Object -First 1
+          if (-not $zip) { throw 'the windows/amd64 CLI archive is missing from the artifact' }
+
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath smoke\extracted -Force
+          $cli = Get-ChildItem smoke\extracted -Recurse -Filter 'eznit.exe' | Select-Object -First 1
+          $alias = Get-ChildItem smoke\extracted -Recurse -Filter 'ez.exe' | Select-Object -First 1
+          if (-not $cli) { throw 'eznit.exe is missing from the archive' }
+          if (-not $alias) { throw 'ez.exe is missing from the archive' }
+
+          $reported = (& $cli.FullName -v | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "eznit.exe -v exited $LASTEXITCODE" }
+          if (-not $reported.Contains($env:VERSION)) {
+            throw "eznit.exe -v printed '$reported', expected $env:VERSION"
+          }
+
+          & $alias.FullName -v | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "ez.exe -v exited $LASTEXITCODE" }
+
+          Write-Host "smoke ok: $reported"
+
+  publish:
+    name: Publish the release
+    needs: [guard, build, smoke]
+    # A dry run builds and smokes; only a tag publishes.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      # Only this job writes; everything above read the repository.
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download the archives
+        uses: actions/download-artifact@v7
+        with:
+          name: eznit-${{ needs.guard.outputs.version }}
+          path: assets
+
+      # The archives were hashed when they were built. Re-hash the copy that is
+      # about to be uploaded: a truncated artifact would otherwise publish
+      # under a checksum file that still names the good one.
+      - name: Verify the checksums
+        run: |
+          set -euo pipefail
+          cd assets
+          if [ ! -f checksums.txt ]; then
+            echo "::error::checksums.txt is missing from the artifacts"
+            exit 1
+          fi
+          sha256sum -c checksums.txt
+          echo "archives: $(find . -maxdepth 1 -type f \( -name '*.zip' -o -name '*.tar.gz' \) | wc -l)"
+
+      - name: Compose the release description
         env:
           GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ needs.guard.outputs.commit }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.guard.outputs.version }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            build/dist/*.zip \
-            build/dist/*.tar.gz \
-            build/dist/checksums.txt \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes \
-            --verify-tag
+          set -euo pipefail
 
-# WHAT THIS DOES NOT PROVE: the publish step runs only on a tag push, so a
-# green `workflow_dispatch` run verifies the build, the packaging and the
-# checksums -- not `gh release create`. Until a real tag runs that step, the
-# publication path is unverified, and a skipped step is not a passed step.
+          cat > header.md <<'EOF'
+          ## 📦 eznit @VERSION@
+
+          Self-hosted file storage: the API, the CLI and the web UI. Built from
+          `@COMMIT@` · [workflow run](@RUN@)
+
+          ## 📦 Download
+
+          Each archive extracts into one folder named after it. The platform is
+          in the archive name; the binaries inside are plain.
+
+          | | CLI | Server bundle |
+          |:--:|---|---|
+          | 🐧 amd64 | `eznit-cli_@VERSION@_linux_amd64.tar.gz` | `eznit-server_@VERSION@_linux_amd64.tar.gz` |
+          | 🐧 arm64 | `eznit-cli_@VERSION@_linux_arm64.tar.gz` | `eznit-server_@VERSION@_linux_arm64.tar.gz` |
+          | 🪟 amd64 | `eznit-cli_@VERSION@_windows_amd64.zip` | `eznit-server_@VERSION@_windows_amd64.zip` |
+          | 🪟 arm64 | `eznit-cli_@VERSION@_windows_arm64.zip` | `eznit-server_@VERSION@_windows_arm64.zip` |
+
+          The CLI archive carries `eznit` and `ez`. The server bundle carries
+          `eznit-server`, `eznit-gui`, the migrations, the Compose services and
+          `RUNNING.md`, which says what runs from it and what does not.
+
+          ## ✅ Verify
+
+          ```sh
+          sha256sum -c checksums.txt        # macOS: shasum -a 256 -c checksums.txt
+          ```
+
+          ## ⚠️ What this build does not do
+
+          - It does not run the API against a database, and it does not run the
+            migrations. `RUNNING.md` and the known gaps in the repository say
+            what that leaves unproven.
+
+          <details>
+          <summary>🧾 Merged pull requests</summary>
+
+          EOF
+
+          sed -i "s|@VERSION@|$VERSION|g; s|@COMMIT@|$COMMIT|g; s|@RUN@|$RUN_URL|g" header.md
+
+          if grep -nE '@[A-Z_]+@' header.md; then
+            echo "::error::header.md still carries an unsubstituted placeholder"
+            exit 1
+          fi
+
+          set +e
+          stray="$(grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' header.md | grep -vxF -e "$VERSION")"
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ] && [ -n "$stray" ]; then
+            echo "::error::a release version is typed into the header: $(printf '%s\n' "$stray" | sort -u | tr '\n' ' ')— use @VERSION@"
+            exit 1
+          fi
+
+          # The changelog is built from the PRs merged into `dev`: every feature
+          # PR is squash-merged, so `--generate-notes` would see the release
+          # commit and miss them. The first release has no previous published
+          # release to bound the window, so it falls back to a commit pointer.
+          if ./scripts/release-notes.sh "$REPO" "$VERSION" "$COMMIT" > changes.md 2>release-notes.err; then
+            :
+          else
+            echo "::warning::release-notes.sh could not build the PR list; shipping a commit pointer"
+            sed 's/^/  /' release-notes.err >&2
+            printf '_The pull-request list was unavailable for %s. See the commits:\n%s/commits/%s_\n' \
+              "$VERSION" "${GITHUB_SERVER_URL:-https://github.com}/$REPO" "$COMMIT" > changes.md
+          fi
+
+          { cat header.md; cat changes.md; printf '\n</details>\n'; } > release-notes.md
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.guard.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd assets
+          mapfile -t files < <(find . -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name 'checksums.txt' \) -printf '%f\n' | sort)
+          if [ "${#files[@]}" -lt 2 ]; then
+            echo "::error::expected the archives and checksums.txt, found ${#files[@]} file(s)"
+            exit 1
+          fi
+          echo "uploading ${#files[@]} assets"
+          gh release create "$TAG" "${files[@]}" \
+            --verify-tag \
+            --title "eznit $TAG" \
+            --notes-file ../release-notes.md
+
+# WHAT THIS DOES NOT PROVE: `publish` runs only on a tag push, so a green
+# `workflow_dispatch` run verifies the build, the packaging, the checksums and
+# the Windows smoke test -- not `gh release create`. Until a real tag runs that
+# step, the publication path is unverified, and a skipped job is not a passed
+# job.

@@ -505,7 +505,11 @@ connection string.
 A release is a `v*` tag on `main`. `.github/workflows/release.yml` refuses a tag
 that does not point at a commit on `main`, builds the archives with
 `make release VERSION=<tag>` — the same target a developer runs — and publishes
-them with `gh release create`.
+them with `gh release create`. Before publishing, a `windows-latest` job unpacks
+the Windows CLI archive and runs `eznit -v` and `ez -v`; `publish` needs it, so
+a binary that cannot start fails the release instead of shipping. The notes are
+built from the pull requests merged into `dev`: every feature PR is
+squash-merged, so `--generate-notes` would see the release commit and miss them.
 
 `make release` stages one folder per archive and compresses **the folder**, so a
 download extracts into a folder named after it instead of scattering files into
