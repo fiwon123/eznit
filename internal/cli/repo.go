@@ -23,8 +23,10 @@ import (
 //     `<home>/eznit`: the folder belongs to eznit, not to the directory the
 //     user happened to run the command from.
 const (
-	githubAPIEnv = "EZNIT_GITHUB_API"
-	reposEnv     = "EZNIT_REPOS"
+	githubAPIEnv    = "EZNIT_GITHUB_API"
+	gitlabAPIEnv    = "EZNIT_GITLAB_API"
+	bitbucketAPIEnv = "EZNIT_BITBUCKET_API"
+	reposEnv        = "EZNIT_REPOS"
 
 	defaultProvider = "github"
 )
@@ -47,15 +49,18 @@ func providerTokenKey(provider string) string {
 	return provider + "_token"
 }
 
-// providerFor returns the provider by name. GitHub is the only one today; a
-// second host is a second case here and a second implementation of the
-// interface, not a second set of commands.
+// providerFor returns the provider by name. A host is a case here and an
+// implementation of the interface, not a second set of commands.
 func providerFor(name string) (gitprovider.Provider, error) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "", "github":
 		return gitprovider.NewGitHub(os.Getenv(githubAPIEnv)), nil
+	case "gitlab":
+		return gitprovider.NewGitLab(os.Getenv(gitlabAPIEnv)), nil
+	case "bitbucket":
+		return gitprovider.NewBitbucket(os.Getenv(bitbucketAPIEnv)), nil
 	default:
-		return nil, fmt.Errorf("unknown git host %q — github is the one that is supported", name)
+		return nil, fmt.Errorf("unknown git host %q — github, gitlab and bitbucket are supported", name)
 	}
 }
 
@@ -227,7 +232,7 @@ func (cmd *RepoListCmd) Run(g *Globals) error {
 
 // RepoCloneCmd clones one repository.
 type RepoCloneCmd struct {
-	Name     string `arg:"" help:"the repository as owner/name"`
+	Name     string `arg:"" help:"the repository as owner/name (GitLab: the full group/project path)"`
 	Provider string `help:"the git host" default:"github"`
 	Dir      string `help:"the folder to clone under (default $EZNIT_REPOS or ~/eznit)" type:"path" optional:""`
 }
