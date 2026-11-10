@@ -228,7 +228,7 @@ jobs:
           | 🍎 arm64 | `eznit-cli_@VERSION@_darwin_arm64.tar.gz` | `eznit-server_@VERSION@_darwin_arm64.tar.gz` |
 
           The CLI archive carries `eznit` and `ez`. The server bundle carries
-          `eznit-server`, `eznit-gui`, the migrations, the Compose services and
+          `eznit-server`, the migrations, the Compose services and
           `RUNNING.md`, which says what runs from it and what does not.
 
           ## ✅ Verify
