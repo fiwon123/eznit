@@ -85,3 +85,6 @@ cmd/gui/zz_version_generated.go
 
 # fyne-cross writes its bin/dist/tmp inside the repository.
 fyne-cross/
+
+# fyne-cross rewrites the app metadata next to the package.
+FyneApp.toml
