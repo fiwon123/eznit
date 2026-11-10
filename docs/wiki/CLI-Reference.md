@@ -144,6 +144,27 @@ user's other processes can read (`/proc/<pid>/environ`) — the cost of keeping 
 token out of a file git owns. `eznit logout` removes the session token and leaves the host token in
 place; `eznit repo auth --remove` removes that one.
 
+## 🔄 Updates
+
+`eznit update` installs the newest CLI release, or a named one, from the same
+GitHub releases the archives are published to. The download is checked against
+the release's `checksums.txt` **before** anything is replaced, and the binary it
+replaces is kept beside it.
+
+| Command | Flags | What it does |
+| --- | --- | --- |
+| `eznit update` | `--yes` | Install the newest release |
+| `eznit update --check` | — | Report whether a newer release exists |
+| `eznit update --install-version <tag>` | `--yes` | Install a specific release, including an older one |
+| `eznit update --revert` | `--yes` | Put back the version saved by the last install |
+
+The desktop app installs **its own** member (`eznit-gui`) from the same archive,
+so an update never turns the window into the CLI. Its About panel has the same
+three actions, plus a restart button; the update is finished by restarting.
+
+Only HTTPS is accepted, including redirects. The checksum protects the download
+in transit; it is not a signature, so it trusts GitHub's release storage.
+
 ## 🧾 The config file
 
 `~/.eznit/config.json` (mode `0600`) holds the session token (`token`) and, per

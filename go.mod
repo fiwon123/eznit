@@ -10,6 +10,7 @@ require (
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.12.3
+	github.com/minio/selfupdate v0.6.0
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/swaggo/files/v2 v2.0.2
 	go.uber.org/zap v1.28.0
@@ -21,6 +22,7 @@ require (
 )
 
 require (
+	aead.dev/minisign v0.2.0 // indirect
 	fyne.io/systray v1.12.3-0.20260810170012-af4e8e793ec4 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/FyshOS/fancyfs v0.0.1 // indirect
