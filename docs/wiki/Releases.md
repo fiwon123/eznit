@@ -30,6 +30,11 @@ label, so they read as a changelog rather than a raw commit list.
 
 - **guard** — the tag is on `main`, and the version/commit are resolved once.
 - **build** — the archives plus `checksums.txt`, built with read-only permissions.
+- **gui** — `eznit-gui` for all six platforms: Linux amd64 and arm64 on runners of
+  that architecture, Windows amd64 with mingw, Windows arm64 with llvm-mingw, and
+  both macOS targets natively.
+- **pack** — the window and its licences are added to every CLI archive, then each
+  archive is verified (names, PE, Mach-O, provenance) and the checksums are rebuilt.
 - **smoke** — on `windows-latest`, the Windows CLI archive is unpacked and `eznit
   -v` and `ez -v` are actually run. A binary that cannot start fails the release
   instead of shipping.
@@ -51,11 +56,7 @@ archive name, never in the binary name.
 
 | Asset | Contents |
 | --- | --- |
-| `eznit-cli_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux, macOS) | `eznit`, `ez`, `eznit-gui`*, `add_to_path.ps1` or `add_to_path.sh`, README, LICENSE, LICENSE-FYNE, LICENSE-APACHE, NOTICE |
-
-\* The window ships in the Linux amd64, Windows amd64 and both macOS archives.
-The Linux and Windows arm64 archives carry the CLI only
-([#219](https://github.com/fiwon123/eznit/issues/219)).
+| `eznit-cli_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux, macOS) | `eznit`, `ez`, `eznit-gui`, `add_to_path.ps1` or `add_to_path.sh`, README, LICENSE, LICENSE-FYNE, LICENSE-APACHE, NOTICE |
 | `eznit-server_<version>_<os>_<arch>.zip` / `.tar.gz` | `eznit-server`, `db/migrations/`, `scripts/run_migrate.sh`, `docker-compose.yml`, the example configuration and secret files, `RUNNING.md`, README, LICENSE |
 | `checksums.txt` | SHA-256 of every archive |
 
@@ -68,11 +69,13 @@ the workflow does) the revision and `vcs.modified=false`. Every Windows binary
 also carries an icon, a per-monitor DPI manifest and a version block, generated
 from `assets/logo.png` before the build and removed afterwards.
 
-The macOS and ARM64 archives are **cross-compiled and never executed**; the
-only released binaries any gate starts are the Windows amd64 CLI and window.
-The window is built on native runners (Linux amd64, both macOS targets), with
-mingw for Windows amd64, and fyne-cross for the two arm64 targets — Fyne needs
-cgo, so it is not a plain cross-compile.
+The macOS archives are **cross-compiled and never executed**, and no ARM64
+binary is started on ARM hardware; the only released binaries any gate starts
+are the Windows amd64 CLI and window. The window is built on a runner matching
+each platform: Linux amd64 and arm64 natively (the arm64 one on an arm64
+runner), Windows amd64 with mingw, Windows arm64 with llvm-mingw, and both
+macOS targets natively — Fyne needs cgo, so a plain cross-compile is not an
+option.
 
 ## ✅ Verify a download
 

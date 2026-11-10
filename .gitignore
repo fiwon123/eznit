@@ -79,15 +79,5 @@ web/node_modules/
 web/dist/*
 !web/dist/.gitkeep
 
-# The release workflow writes the tag here for fyne-cross, then removes it.
-# Gitignored so the binary keeps vcs.modified=false.
-cmd/gui/zz_version_generated.go
-
-# fyne-cross writes its bin/dist/tmp inside the repository.
-fyne-cross/
-
-# fyne-cross rewrites the app metadata next to the package.
-FyneApp.toml
-
 # Release/CI build output (the GUI matrix writes the window here).
 out/
