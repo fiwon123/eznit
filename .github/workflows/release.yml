@@ -16,9 +16,10 @@ name: Release
 #
 #   guard   the tag is on main, and the version/commit are resolved once
 #   build   the twelve cgo-free archives plus checksums.txt, read-only
-#   gui     eznit-gui for every platform: native runners for Linux amd64 and
-#           both macOS targets, mingw for Windows amd64, and fyne-cross for the
-#           two arm64 targets -- Fyne needs cgo, so it is not a cross-compile
+#   gui     eznit-gui on the four platforms that build it natively: Linux amd64,
+#           Windows amd64 (mingw) and both macOS targets. Fyne needs cgo, so it
+#           is not a cross-compile; the Linux/Windows arm64 CLI archives carry
+#           no window yet (#219)
 #   pack    add the window and its licences to each CLI archive, verify every
 #           archive (PE, Mach-O, provenance), and regenerate checksums.txt
 #   smoke   the Windows CLI and the window are started on windows-latest
@@ -138,9 +139,7 @@ jobs:
       matrix:
         include:
           - { goos: linux,   goarch: amd64, runner: ubuntu-latest,  method: native }
-          - { goos: linux,   goarch: arm64, runner: ubuntu-latest,  method: fyne-cross, target: linux }
           - { goos: windows, goarch: amd64, runner: ubuntu-latest,  method: mingw }
-          - { goos: windows, goarch: arm64, runner: ubuntu-latest,  method: fyne-cross, target: windows }
           - { goos: darwin,  goarch: amd64, runner: macos-15-intel, method: native }
           - { goos: darwin,  goarch: arm64, runner: macos-latest,   method: native }
     steps:
@@ -163,133 +162,6 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq gcc-mingw-w64-x86-64 zip
-
-      - name: Install fyne-cross
-        if: matrix.method == 'fyne-cross'
-        run: go install github.com/fyne-io/fyne-cross@v1.6.3
-
-      - name: Build (native runner)
-        if: matrix.method == 'native'
-        env:
-          VERSION: ${{ needs.guard.outputs.version }}
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          set -euo pipefail
-          mkdir -p "out/gui-${GOOS}-${GOARCH}"
-          CGO_ENABLED=1 GOOS="${GOOS}" GOARCH="${GOARCH}" go build -tags fyne -trimpath \
-            -ldflags "-X main.Version=${VERSION}" \
-            -o "out/gui-${GOOS}-${GOARCH}/eznit-gui" ./cmd/gui
-
-      - name: Build (mingw, Windows amd64)
-        if: matrix.method == 'mingw'
-        env:
-          VERSION: ${{ needs.guard.outputs.version }}
-        run: |
-          set -euo pipefail
-          mkdir -p out/gui-windows-amd64
-
-          # The icon and the version block are a .syso beside the package; it
-          # is generated for this build and removed afterwards.
-          GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 \
-            go run ./internal/tools/winres -icon assets/logo.png \
-              -out cmd/gui/rsrc_windows_amd64.syso -arch amd64 \
-              -name eznit-gui -description "eznit desktop app" -company eznit \
-              -app-id com.fiwon123.eznit.gui -version "$VERSION"
-          trap 'rm -f cmd/gui/rsrc_windows_amd64.syso' EXIT
-
-          CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
-            go build -tags fyne -trimpath \
-              -ldflags "-H windowsgui -X main.Version=$VERSION" \
-              -o out/gui-windows-amd64/eznit-gui.exe ./cmd/gui
-
-          # The mingw link must stay on msvcrt, the runtime every Windows has;
-          # the UCRT API sets are the heap of small DLLs a machine can miss.
-          if command -v x86_64-w64-mingw32-objdump >/dev/null 2>&1; then
-            if x86_64-w64-mingw32-objdump -p out/gui-windows-amd64/eznit-gui.exe | grep -q 'api-ms-win-crt'; then
-              echo "::error::eznit-gui.exe imports the UCRT API sets; the cross-link must stay on msvcrt"
-              exit 1
-            fi
-            if ! x86_64-w64-mingw32-objdump -p out/gui-windows-amd64/eznit-gui.exe | grep -q 'msvcrt.dll'; then
-              echo "::error::eznit-gui.exe does not import msvcrt.dll; the cross-link changed runtime"
-              exit 1
-            fi
-          fi
-
-          go run ./internal/tools/winres -verify out/gui-windows-amd64/eznit-gui.exe
-
-      - name: Build (fyne-cross)
-        if: matrix.method == 'fyne-cross'
-        env:
-          VERSION: ${{ needs.guard.outputs.version }}
-        run: |
-          set -euo pipefail
-
-          # The fyne-cross image ships an older Go than go.mod requires;
-          # GOTOOLCHAIN=auto lets the container fetch the pinned toolchain.
-          #
-          # -X=importpath.name=value is one token, which is what fyne-cross
-          # forwards intact (a space splits it and the linker refuses).
-          "$(go env GOPATH)/bin/fyne-cross" ${{ matrix.target }} \
-            -arch ${{ matrix.goarch }} \
-            -env GOTOOLCHAIN=auto \
-            -name eznit-gui \
-            -app-id com.fiwon123.eznit \
-            -tags fyne \
-            -icon assets/logo.png \
-            -ldflags "-X=main.Version=$VERSION" \
-            ./cmd/gui
-
-          ext=""
-          if [ "${{ matrix.goos }}" = "windows" ]; then ext=".exe"; fi
-
-          mkdir -p "out/gui-${{ matrix.goos }}-${{ matrix.goarch }}"
-
-          # fyne-cross leaves the raw binary in bin/ for some targets and only
-          # the packaged archive in dist/ for others; accept either.
-          # fyne-cross names the binary after the package directory (`gui`);
-          # -name only names the packaged app. Accept either.
-          binary="$(find fyne-cross/bin -maxdepth 4 -type f \
-            \( -name 'eznit-gui*' -o -name 'gui' -o -name 'gui.exe' \) \
-            ! -name '*.tar.*' ! -name '*.zip' | head -1)"
-
-          if [ -z "$binary" ]; then
-            packaged="$(find fyne-cross/dist -type f \
-              \( -name 'eznit-gui*.tar.xz' -o -name 'eznit-gui*.tar.gz' -o -name 'eznit-gui*.zip' \) \
-              | head -1)"
-            test -n "$packaged"
-
-            work="$(mktemp -d)"
-            trap 'rm -rf "$work"' EXIT
-
-            case "$packaged" in
-            *.zip) unzip -q "$packaged" -d "$work" ;;
-            *.tar.xz) tar -xJf "$packaged" -C "$work" ;;
-            *.tar.gz) tar -xzf "$packaged" -C "$work" ;;
-            esac
-
-            binary="$(find "$work" -type f \
-              \( -name 'eznit-gui*' -o -name 'gui' -o -name 'gui.exe' \) \
-              ! -name '*.tar.*' ! -name '*.zip' | head -1)"
-          fi
-
-          if [ -z "$binary" ]; then
-            echo "::error::fyne-cross produced no eznit-gui binary"
-            find fyne-cross -type f | head -20
-            exit 1
-          fi
-
-          cp "$binary" "out/gui-${{ matrix.goos }}-${{ matrix.goarch }}/eznit-gui${ext}"
-
-      - name: Show the tree state after the build
-        if: matrix.method == 'fyne-cross'
-        run: |
-          git status --porcelain
-          echo "--- ignored ---"
-          git status --porcelain --ignored | head -30
-          echo "--- inside the build container ---"
-          docker run --rm -v "$PWD:/app" -w /app fyneio/fyne-cross-images:linux \
-            sh -c 'git status --porcelain; echo "[ignored]"; git status --porcelain --ignored | head -20' || true
 
       - name: Upload the window
         uses: actions/upload-artifact@v7
@@ -336,14 +208,24 @@ jobs:
           PROVENANCE_COMMIT: ${{ needs.guard.outputs.commit }}
         run: |
           set -euo pipefail
-          rm -rf verify && mkdir -p verify/cli verify/server
-          for archive in dist/*-cli_*; do ln "$archive" verify/cli/; done
+          rm -rf verify && mkdir -p verify/cli-gui verify/cli-plain verify/server
+          for archive in dist/*-cli_*; do
+            case "$archive" in
+              # The arm64 CLI archives carry no window yet (#219).
+              *linux_arm64*|*windows_arm64*) ln "$archive" verify/cli-plain/ ;;
+              *) ln "$archive" verify/cli-gui/ ;;
+            esac
+          done
           for archive in dist/*-server_*; do ln "$archive" verify/server/; done
 
           host="GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) CGO_ENABLED=0"
-          env $host go run ./internal/tools/winres -verify-archives verify/cli \
+          env $host go run ./internal/tools/winres -verify-archives verify/cli-gui \
             -app eznit -short ez -gui \
             -files README.md,LICENSE,LICENSE-FYNE,LICENSE-APACHE,NOTICE \
+            -commit "$PROVENANCE_COMMIT"
+          env $host go run ./internal/tools/winres -verify-archives verify/cli-plain \
+            -app eznit -short ez \
+            -files README.md,LICENSE \
             -commit "$PROVENANCE_COMMIT"
           env $host go run ./internal/tools/winres -verify-archives verify/server \
             -app eznit-server \

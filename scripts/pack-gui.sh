@@ -60,8 +60,10 @@ for archive in "$dist"/eznit-cli_*; do
 		source="$guis/gui-$hyphenated/$binary"
 	fi
 	if [ ! -f "$source" ]; then
-		echo "ERROR: $archive needs $source, which the GUI build did not produce" >&2
-		exit 1
+		# Not every archive carries the window yet: Linux/Windows arm64 are
+		# CLI-only until #219. The verification step checks the split.
+		echo "no window for $osarch — $base left CLI-only"
+		continue
 	fi
 
 	# An absolute archive path: the recipe changes directory to rebuild it.
