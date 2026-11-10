@@ -35,11 +35,10 @@ PostgreSQL reachable through `DB_*`. That is the release-bundle path in
 [Getting Started](https://github.com/fiwon123/eznit/wiki/Getting-Started); it is
 tested on Linux only.
 
-`eznit-gui` is the native desktop app (Fyne). It is built from source today with
-`make build_gui`, which needs cgo and the platform's GL/X11 headers; shipping it
-in the CLI archive is [#214](https://github.com/fiwon123/eznit/issues/214). It
-talks to an API: set the server address in the app or `GUI_API_URL`. At run time
-it needs the platform's GL libraries on Linux.
+`eznit-gui` is the native desktop app (Fyne) and ships in the CLI archive. It
+talks to an API: set the server address in the app or `GUI_API_URL`. Building it
+needs cgo and the platform's GL/X11 headers (`make build_gui`); at run time it
+needs the platform's GL libraries on Linux.
 
 ## 🐚 Shells
 

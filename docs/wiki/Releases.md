@@ -51,7 +51,7 @@ archive name, never in the binary name.
 
 | Asset | Contents |
 | --- | --- |
-| `eznit-cli_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux, macOS) | `eznit`, `ez`, `add_to_path.ps1` or `add_to_path.sh`, README, LICENSE |
+| `eznit-cli_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux, macOS) | `eznit`, `ez`, `eznit-gui`, `add_to_path.ps1` or `add_to_path.sh`, README, LICENSE, LICENSE-FYNE, LICENSE-APACHE, NOTICE |
 | `eznit-server_<version>_<os>_<arch>.zip` / `.tar.gz` | `eznit-server`, `db/migrations/`, `scripts/run_migrate.sh`, `docker-compose.yml`, the example configuration and secret files, `RUNNING.md`, README, LICENSE |
 | `checksums.txt` | SHA-256 of every archive |
 
@@ -64,8 +64,11 @@ the workflow does) the revision and `vcs.modified=false`. Every Windows binary
 also carries an icon, a per-monitor DPI manifest and a version block, generated
 from `assets/logo.png` before the build and removed afterwards.
 
-The macOS and ARM64 archives are **cross-compiled on Linux and never executed**;
-the only released binary any gate starts is the Windows amd64 CLI.
+The macOS and ARM64 archives are **cross-compiled and never executed**; the
+only released binaries any gate starts are the Windows amd64 CLI and window.
+The window is built on native runners (Linux amd64, both macOS targets), with
+mingw for Windows amd64, and fyne-cross for the two arm64 targets — Fyne needs
+cgo, so it is not a plain cross-compile.
 
 ## ✅ Verify a download
 

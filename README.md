@@ -124,7 +124,8 @@ a file in your home directory unless you point `--target` there.
 | 🍎 macOS amd64 | `eznit-cli_<tag>_darwin_amd64.tar.gz` | `eznit-server_<tag>_darwin_amd64.tar.gz` |
 | 🍎 macOS arm64 | `eznit-cli_<tag>_darwin_arm64.tar.gz` | `eznit-server_<tag>_darwin_arm64.tar.gz` |
 
-The CLI archive carries `eznit` and `ez`; the server bundle carries
+The CLI archive carries `eznit`, `ez`, `eznit-gui` and the licences; the
+server bundle carries
 `eznit-server`, the migrations, the Compose services and `RUNNING.md`. Verify a
 download against `checksums.txt` from the release page.
 
