@@ -128,9 +128,8 @@ so `make check` covers the parts that matter: what a start checks, what a stop
 means, and what a save preserves. `internal/fyneui`'s tests use Fyne's software
 driver (`go test -tags fyne`).
 
-The same window ships in the CLI and the server archives: the packer adds it to
-both from one build, and the server group is verified with `-gui -gui-name
-eznit-gui`.
+The window ships in the one archive per platform: the packer adds it from the
+matrix build, and the verify group requires `-gui -gui-name eznit-gui`.
 
 **CI (GUI)** runs the same vet/test/build on pull requests (the workflow is
 `.github/workflows/ci.gui.yml`). It is the only place the GUI is compiled in

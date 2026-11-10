@@ -6,18 +6,23 @@ plain files, so the shell or editor it configures is your choice.
 
 ## 📦 Released archives
 
-| Platform | CLI | Server bundle | Verified how |
-| --- | --- | --- | --- |
-| 🐧 Linux amd64 | `eznit-cli_<tag>_linux_amd64.tar.gz` | `eznit-server_<tag>_linux_amd64.tar.gz` | built |
-| 🐧 Linux arm64 | `…_linux_arm64.tar.gz` | `…_linux_arm64.tar.gz` | built, never executed on ARM |
-| 🪟 Windows amd64 | `…_windows_amd64.zip` | `…_windows_amd64.zip` | CLI started in CI |
-| 🪟 Windows arm64 | `…_windows_arm64.zip` | `…_windows_arm64.zip` | built, never executed on ARM |
-| 🍎 macOS amd64 | `…_darwin_amd64.tar.gz` | `…_darwin_amd64.tar.gz` | Mach-O checked, never executed |
-| 🍎 macOS arm64 | `…_darwin_arm64.tar.gz` | `…_darwin_arm64.tar.gz` | Mach-O checked, never executed |
+| Platform | Archive | Verified how |
+| --- | --- | --- |
+| 🐧 Linux amd64 | `eznit_<tag>_linux_amd64.tar.gz` | built; the window is started in CI |
+| 🐧 Linux arm64 | `eznit_<tag>_linux_arm64.tar.gz` | built, never executed on ARM |
+| 🪟 Windows amd64 | `eznit_<tag>_windows_amd64.zip` | CLI and window started in CI |
+| 🪟 Windows arm64 | `eznit_<tag>_windows_arm64.zip` | built, never executed on ARM |
+| 🍎 macOS amd64 | `eznit_<tag>_darwin_amd64.tar.gz` | Mach-O checked, never executed |
+| 🍎 macOS arm64 | `eznit_<tag>_darwin_arm64.tar.gz` | Mach-O checked, never executed |
+
+One archive per platform holds the whole product — the client, its alias, the
+server, the window, the migrations and the local stack — because two archives
+carried the same window and a user who wanted both downloaded it twice.
 
 Every archive has `checksums.txt` on the release page. The Windows smoke test
 unpacks the CLI, runs `eznit -v` and `ez -v`, and checks the version — that is
-what "started in CI" means. The server bundle is built, not started.
+what "started in CI" means. The Linux window is started on a virtual display;
+the server itself is built and verified, not started.
 
 **macOS** is cross-compiled on Linux and published for amd64 and arm64. The
 release verifier reads each archive and checks the binary is a Mach-O
@@ -96,7 +101,7 @@ point `--target` there, and it refuses to overwrite an existing file without
 
 - The macOS archives are built, never executed on a Mac.
 - The ARM64 binaries are built, never executed on ARM hardware.
-- The Windows server bundle is built, never started.
+- The Windows server binary is built and verified, never started.
 - The browser UI has no automated test on any platform.
 
 See the README's
