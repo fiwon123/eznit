@@ -255,7 +255,10 @@ jobs:
 
           # fyne-cross leaves the raw binary in bin/ for some targets and only
           # the packaged archive in dist/ for others; accept either.
-          binary="$(find fyne-cross/bin -maxdepth 4 -type f -name 'eznit-gui*' \
+          # fyne-cross names the binary after the package directory (`gui`);
+          # -name only names the packaged app. Accept either.
+          binary="$(find fyne-cross/bin -maxdepth 4 -type f \
+            \( -name 'eznit-gui*' -o -name 'gui' -o -name 'gui.exe' \) \
             ! -name '*.tar.*' ! -name '*.zip' | head -1)"
 
           if [ -z "$binary" ]; then
@@ -273,7 +276,8 @@ jobs:
             *.tar.gz) tar -xzf "$packaged" -C "$work" ;;
             esac
 
-            binary="$(find "$work" -type f -name 'eznit-gui*' \
+            binary="$(find "$work" -type f \
+              \( -name 'eznit-gui*' -o -name 'gui' -o -name 'gui.exe' \) \
               ! -name '*.tar.*' ! -name '*.zip' | head -1)"
           fi
 
