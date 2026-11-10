@@ -51,7 +51,11 @@ archive name, never in the binary name.
 
 | Asset | Contents |
 | --- | --- |
-| `eznit-cli_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux, macOS) | `eznit`, `ez`, `eznit-gui`, `add_to_path.ps1` or `add_to_path.sh`, README, LICENSE, LICENSE-FYNE, LICENSE-APACHE, NOTICE |
+| `eznit-cli_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux, macOS) | `eznit`, `ez`, `eznit-gui`*, `add_to_path.ps1` or `add_to_path.sh`, README, LICENSE, LICENSE-FYNE, LICENSE-APACHE, NOTICE |
+
+\* The window ships in the Linux amd64, Windows amd64 and both macOS archives.
+The Linux and Windows arm64 archives carry the CLI only
+([#219](https://github.com/fiwon123/eznit/issues/219)).
 | `eznit-server_<version>_<os>_<arch>.zip` / `.tar.gz` | `eznit-server`, `db/migrations/`, `scripts/run_migrate.sh`, `docker-compose.yml`, the example configuration and secret files, `RUNNING.md`, README, LICENSE |
 | `checksums.txt` | SHA-256 of every archive |
 
