@@ -516,9 +516,80 @@ jobs:
 
           Write-Host "smoke ok: $reported; the window starts in both bundles"
 
+  smoke-linux:
+    name: Linux window smoke test
+    # The Linux window is verified as an ELF for the right machine type with the
+    # right glibc floor, and never started. Those checks passed on the v0.23.0
+    # window that Debian 12 could not run (#232). Start the copy that comes out
+    # of the archive, on a virtual display, before anything is published.
+    needs: [guard, pack]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download the archives
+        uses: actions/download-artifact@v8
+        with:
+          name: archives-packed
+          path: smoke
+
+      - name: Install a virtual display and software GL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth libgl1-mesa-dri
+
+      - name: Start the window a user downloads
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          EZNIT_CONFIG: ${{ runner.temp }}/eznit-config.json
+        run: |
+          set -euo pipefail
+
+          archive="$(find smoke -maxdepth 1 -name 'eznit-server_*_linux_amd64.tar.gz' | head -1)"
+          if [ -z "$archive" ]; then
+            echo "::error::the linux/amd64 server archive is missing from the artifact"
+            exit 1
+          fi
+
+          mkdir -p unpacked
+          tar -xzf "$archive" -C unpacked --strip-components=1
+          window=unpacked/eznit-gui
+          if [ ! -x "$window" ]; then
+            echo "::error::eznit-gui is missing from the linux server bundle"
+            exit 1
+          fi
+
+          # The packed binary must be the release the tag names.
+          reported="$("$window" --version)"
+          if [ "$reported" != "$VERSION" ]; then
+            echo "::error::the window reports '$reported', expected '$VERSION'"
+            exit 1
+          fi
+
+          xvfb-run -a --server-args='-screen 0 1024x768x24' "$window" >"$RUNNER_TEMP/window.log" 2>&1 &
+          runner_pid=$!
+
+          # A window that cannot start has already exited; a window that started
+          # is still there. Waiting is the whole assertion.
+          for _ in $(seq 1 10); do
+            sleep 1
+            if ! kill -0 "$runner_pid" 2>/dev/null; then
+              wait "$runner_pid" || true
+              echo "::error::the window exited on its own; output follows"
+              cat "$RUNNER_TEMP/window.log"
+              exit 1
+            fi
+          done
+
+          echo "the window stayed up for 10 s; stopping it"
+          kill "$runner_pid" 2>/dev/null || true
+          wait "$runner_pid" 2>/dev/null || true
+          echo "smoke ok: the packed window reports $reported and starts"
+
   publish:
     name: Publish the release
-    needs: [guard, pack, smoke]
+    needs: [guard, pack, smoke, smoke-linux]
     # A dry run builds and smokes; only a tag publishes.
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
