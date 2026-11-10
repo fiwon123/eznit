@@ -33,18 +33,18 @@ See [CLI Reference](https://github.com/fiwon123/eznit/wiki/CLI-Reference#-cli-en
 `CLI_API_PORT`, `CLI_DOWNLOADS`, `CLI_LOGS`, `EZNIT_CONFIG`, `EZNIT_REPOS` and
 `EZNIT_GITHUB_API`.
 
-## 🪟 GUI environment
+## 🪟 Desktop app environment
+
+The window is a client: it talks to an eznit API and runs no server.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `GUI_API_URL` | — | proxy `/v1` to a running API instead of running one |
-| `GUI_PORT` | `8765` | the window's own port |
-| `GUI_LOGS` | `./logs/` | GUI log folder |
+| `GUI_API_URL` | `http://localhost:4000` | the API to talk to, when no address is stored in the app |
+| `EZNIT_CONFIG` | `~/.eznit/config.json` | the shared store: the server address (`api_url`) and the session token |
 
-With `GUI_API_URL` set, the GUI is a window in front of an existing API. With no
-`GUI_API_URL` and the `DB_*` variables set, it runs the API in its own process, so
-one file is the whole product. With neither, the window opens and every `/v1`
-call answers `503` naming the variable to set.
+The server address is also a field on the sign-in screen and is stored in the
+config file, so the window and the CLI use the same file. There is no
+`GUI_PORT`: the window has no HTTP server of its own.
 
 ## 🔒 Auth rate limiting
 

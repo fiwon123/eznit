@@ -180,6 +180,13 @@ This project says what it verified.
   macOS archives are cross-compiled on Linux and never started on a Mac.
 - **The browser UI has no automated test**; the screenshots are captured by
   hand.
+- **The desktop window is compiled, never opened, by any gate.** CI builds it
+  with `-tags fyne`; no test starts a window, and the Windows smoke test only
+  runs `--help`.
+- **The updater has not been run against the real GitHub release API**, and a
+  Windows self-replace (the rename dance) has not been exercised.
+- **The Linux and Windows arm64 CLI archives carry no desktop window yet**
+  ([#219](https://github.com/fiwon123/eznit/issues/219)).
 
 Running the untested parts and saying what happened is the most useful
 contribution right now — see [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -108,6 +108,25 @@ a **Linux** opencode binary: on macOS and native Windows the target refuses and 
 agent stays on the host (use WSL2). The container has no Docker socket — the agent
 inside it cannot manage containers, on purpose.
 
+## 🖥️ The desktop app
+
+The window is Fyne, and Fyne needs cgo. That is why it is not in `make check`:
+
+| Target | What it does |
+| --- | --- |
+| `make build_gui` | builds `build/gui/eznit-gui` for the host (cgo + GL/X11 headers) |
+| `make gui_check` | `go vet -tags fyne ./...` and `go test -tags fyne ./...` |
+
+On Debian/Ubuntu the headers are `libgl1-mesa-dev xorg-dev libwayland-dev
+libxkbcommon-dev wayland-protocols`; macOS needs the Xcode command line tools.
+Every Fyne file carries `//go:build fyne`, so `go build ./...` and `make check`
+stay cgo-free and a machine without GL can still pass the gate.
+
+**CI (GUI)** runs the same vet/test/build on pull requests (the workflow is
+`.github/workflows/ci.gui.yml`). It is the only place the GUI is compiled in
+this repository's automation; the release matrix builds the six window
+binaries and packs four of them into the CLI archives.
+
 ## 🧱 Migrations
 
 `db/migrations/` is append-only history: a numbered `.up.sql`/`.down.sql` pair per
