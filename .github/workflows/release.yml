@@ -289,6 +289,13 @@ jobs:
 
           cp "$binary" "out/gui-${{ matrix.goos }}-${{ matrix.goarch }}/eznit-gui${ext}"
 
+      - name: Show the tree state after the build
+        if: matrix.method == 'fyne-cross'
+        run: |
+          git status --porcelain
+          echo "--- ignored ---"
+          git status --porcelain --ignored | head -30
+
       - name: Upload the window
         uses: actions/upload-artifact@v7
         with:
