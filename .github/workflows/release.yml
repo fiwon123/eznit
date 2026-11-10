@@ -252,9 +252,37 @@ jobs:
           if [ "${{ matrix.goos }}" = "windows" ]; then ext=".exe"; fi
 
           mkdir -p "out/gui-${{ matrix.goos }}-${{ matrix.goarch }}"
+
+          # fyne-cross leaves the raw binary in bin/ for some targets and only
+          # the packaged archive in dist/ for others; accept either.
           binary="$(find fyne-cross/bin -maxdepth 4 -type f -name 'eznit-gui*' \
             ! -name '*.tar.*' ! -name '*.zip' | head -1)"
-          test -n "$binary"
+
+          if [ -z "$binary" ]; then
+            packaged="$(find fyne-cross/dist -type f \
+              \( -name 'eznit-gui*.tar.xz' -o -name 'eznit-gui*.tar.gz' -o -name 'eznit-gui*.zip' \) \
+              | head -1)"
+            test -n "$packaged"
+
+            work="$(mktemp -d)"
+            trap 'rm -rf "$work"' EXIT
+
+            case "$packaged" in
+            *.zip) unzip -q "$packaged" -d "$work" ;;
+            *.tar.xz) tar -xJf "$packaged" -C "$work" ;;
+            *.tar.gz) tar -xzf "$packaged" -C "$work" ;;
+            esac
+
+            binary="$(find "$work" -type f -name 'eznit-gui*' \
+              ! -name '*.tar.*' ! -name '*.zip' | head -1)"
+          fi
+
+          if [ -z "$binary" ]; then
+            echo "::error::fyne-cross produced no eznit-gui binary"
+            find fyne-cross -type f | head -20
+            exit 1
+          fi
+
           cp "$binary" "out/gui-${{ matrix.goos }}-${{ matrix.goarch }}/eznit-gui${ext}"
 
       - name: Upload the window
