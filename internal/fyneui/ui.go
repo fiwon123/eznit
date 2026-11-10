@@ -28,8 +28,9 @@ type ui struct {
 	window  fyne.Window
 	version string
 
-	client *apiclient.Client
-	files  *filesView
+	client  *apiclient.Client
+	files   *filesView
+	updater *appUpdater
 }
 
 // Run opens the window and blocks until it closes.
@@ -46,6 +47,7 @@ func Run(version string, apiURL string) error {
 		window:  window,
 		version: version,
 		client:  apiclient.New(apiFrom(apiURL)),
+		updater: newAppUpdater(version),
 	}
 	u.files = newFilesView(u)
 
