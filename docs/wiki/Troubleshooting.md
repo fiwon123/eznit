@@ -33,6 +33,30 @@ total and 200 files. The CLI checks them before uploading and names the file.
 A private template needs a session: run `eznit login`. Public templates apply
 without one.
 
+## `eznit-gui` exits with a GL or display error
+
+Fyne needs OpenGL at run time: install the platform's GL libraries (on Debian/
+Ubuntu, `libgl1-mesa-dev` plus the driver), and run it on a machine with a
+display. It is a desktop client, not a server component; a headless machine
+should use the CLI and the server's web UI.
+
+Building it is a different requirement: `make build_gui` needs cgo and the GL/
+X11 **headers**; if `pkg-config` cannot find `gl.pc`, the headers are missing.
+
+## `eznit update` refuses the download
+
+The updater fetches the release's `checksums.txt` **before** the archive and
+refuses a missing, malformed or mismatched entry. That is deliberate: an
+archive that does not match its published hash is not installed. Check that the
+release has both the archive and `checksums.txt`, and that the tag is
+`vMAJOR.MINOR.PATCH`. Only HTTPS is accepted.
+
+## The update installed, but `-v` still shows the old version
+
+The running process keeps the binary it started from. Restart `eznit` (or the
+window) to run the new one. `eznit update --revert` puts back the version saved
+by the last install.
+
 ## The API starts and immediately exits
 
 Check the log for the connection error. The API reads `DB_PASSWORD_FILE` first and

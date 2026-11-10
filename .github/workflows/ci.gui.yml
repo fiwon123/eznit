@@ -1,0 +1,57 @@
+name: CI (GUI)
+
+# The desktop app is the one part of this repository that needs cgo and the
+# platform's GL/X11 headers, and `make check` is deliberately cgo-free so it can
+# run anywhere. This job is the GUI's gate, and it runs on feature pull
+# requests — a release-only gate would leave every GUI change unverified until
+# the release.
+#
+# A skipped run is not a pass; the log says whether vet, test and build ran.
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'assets/**'
+      - '.github/workflows/ci.gui.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gui:
+    # The job name is the status check's name a branch rule would require.
+    name: CI (GUI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Install GL and X11 headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev wayland-protocols
+
+      # The tagged files are invisible to `go vet ./...`, so the tag is part of
+      # the gate rather than an extra.
+      - name: Vet (fyne)
+        run: go vet -tags fyne ./...
+
+      - name: Test (fyne)
+        run: go test -tags fyne ./...
+
+      - name: Build the window
+        run: go build -tags fyne ./cmd/gui

@@ -124,9 +124,12 @@ a file in your home directory unless you point `--target` there.
 | 🍎 macOS amd64 | `eznit-cli_<tag>_darwin_amd64.tar.gz` | `eznit-server_<tag>_darwin_amd64.tar.gz` |
 | 🍎 macOS arm64 | `eznit-cli_<tag>_darwin_arm64.tar.gz` | `eznit-server_<tag>_darwin_arm64.tar.gz` |
 
-The CLI archive carries `eznit` and `ez`; the server bundle carries
-`eznit-server`, `eznit-gui`, the migrations, the Compose services and
-`RUNNING.md`. Verify a download against `checksums.txt` from the release page.
+The CLI archive carries `eznit`, `ez`, `eznit-gui` and the licences; the
+window is in the Linux amd64, Windows amd64 and both macOS archives (the Linux
+and Windows arm64 archives carry the CLI only — [#219](https://github.com/fiwon123/eznit/issues/219)).
+The server bundle carries
+`eznit-server`, the migrations, the Compose services and `RUNNING.md`. Verify a
+download against `checksums.txt` from the release page.
 
 ## 🔒 Security status
 
@@ -177,6 +180,13 @@ This project says what it verified.
   macOS archives are cross-compiled on Linux and never started on a Mac.
 - **The browser UI has no automated test**; the screenshots are captured by
   hand.
+- **The desktop window is compiled, never opened, by any gate.** CI builds it
+  with `-tags fyne`; no test starts a window, and the Windows smoke test only
+  runs `--help`.
+- **The updater has not been run against the real GitHub release API**, and a
+  Windows self-replace (the rename dance) has not been exercised.
+- **The Linux and Windows arm64 CLI archives carry no desktop window yet**
+  ([#219](https://github.com/fiwon123/eznit/issues/219)).
 
 Running the untested parts and saying what happened is the most useful
 contribution right now — see [CONTRIBUTING.md](CONTRIBUTING.md).

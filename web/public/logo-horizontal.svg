@@ -1,10 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="200" viewBox="0 0 900 200">
   <g transform="translate(24 23.2) scale(0.3)">
     <rect width="512" height="512" rx="112" fill="#2563EB"/>
-    <rect x="130" y="140" width="60" height="232" rx="30" fill="#FFFFFF"/>
-    <rect x="130" y="140" width="252" height="60" rx="30" fill="#FFFFFF"/>
-    <rect x="130" y="226" width="204" height="60" rx="30" fill="#FFFFFF"/>
-    <rect x="130" y="312" width="252" height="60" rx="30" fill="#FFFFFF"/>
+    <path d="M 281 146 L 431 256 L 281 366 L 281 292 L 352 256 L 281 220 Z" fill="#93C5FD"/>
+    <path d="M 165 146 L 315 256 L 165 366 L 165 292 L 236 256 L 165 220 Z" fill="#FFFFFF"/>
+    <circle cx="111" cy="256" r="30" fill="#FFFFFF"/>
   </g>
   <text x="206" y="120" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="88" font-weight="700" fill="#0F172A" letter-spacing="-2">eznit</text>
   <text x="208" y="152" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#5B6577" letter-spacing="3.5">PROJECT SETUP, SELF-HOSTED</text>

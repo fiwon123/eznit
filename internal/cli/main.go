@@ -54,6 +54,7 @@ type CLI struct {
 	Template TemplateCmd `cmd:"" help:"work with templates"`
 	Command  CommandCmd  `cmd:"" help:"keep the commands your templates pull in"`
 	Repo     RepoCmd     `cmd:"" help:"work with git hosts"`
+	Update   UpdateCmd   `cmd:"" help:"update eznit to a newer release"`
 }
 
 var globals Globals
@@ -61,6 +62,7 @@ var globals Globals
 // Run is the CLI: it parses the arguments, builds the client and runs the
 // command. version is what -v prints; cmd/cli sets it at build time.
 func Run(version string) {
+	buildVersion = version
 
 	// .env.local overwrite .env for development
 	_ = godotenv.Load(".env.local", ".env")

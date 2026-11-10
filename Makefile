@@ -71,6 +71,21 @@ ENV_EXAMPLE := ./.env.example
 # Detect last tag and increment patch
 VERSION := $(shell git describe --tags --always)
 
+# The desktop app is built for the host, with cgo: it is not a cross-compile.
+HOST_GOOS := $(shell go env GOOS)
+HOST_GOARCH := $(shell go env GOARCH)
+
+# The Fyne window is a GUI-subsystem program on Windows; without -H windowsgui
+# a double-click opens a console behind it.
+GUI_LDFLAGS := -X main.Version=$(VERSION)
+ifeq ($(HOST_GOOS),windows)
+GUI_LDFLAGS += -H windowsgui
+endif
+GUI_EXT :=
+ifeq ($(HOST_GOOS),windows)
+GUI_EXT := .exe
+endif
+
 # Scripts
 SCRIPTS_DIR := scripts
 WINDOWS_SCRIPT :=  $(SCRIPTS_DIR)/$(SCRIPT_NAME).ps1
@@ -122,7 +137,7 @@ VERIFY_FILES_SERVER ?= README.md,LICENSE,RUNNING.md,docker-compose.yml
 # ./build. `release` below is the packaging path — staging and compressing a
 # folder is a different job from producing a binary, and mixing the two is what
 # produced flat archives with no architecture in the name.
-build: build_cli build_api build_gui ## Build the local binaries into ./build
+build: build_cli build_api ## Build the local binaries into ./build (the GUI is `make build_gui`)
 
 # Create the build folders if missing
 verify:
@@ -150,13 +165,31 @@ build_api: web_build verify
 	chmod -R a+r $(BUILD_API)
 	chmod a+x $(BUILD_API)/server
 
-build_gui: web_build verify
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_GUI)/eznit-gui.exe ./cmd/gui
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_GUI)/eznit-gui ./cmd/gui
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_GUI)/eznit-gui-darwin ./cmd/gui
+# The desktop app needs cgo and the host's GL/X11 headers, so it is not part of
+# `make build` or `make check` — a machine with neither must still pass the
+# gate. CI builds it with -tags fyne; see .github/workflows/ci.gui.yml.
+build_gui: verify ## Build the Fyne desktop app for this host (needs cgo + GL/X11 headers)
+	@set -e; \
+	if [ "$(HOST_GOOS)" = "windows" ]; then \
+	  syso="cmd/gui/rsrc_windows_$(HOST_GOARCH).syso"; \
+	  trap 'rm -f "$$syso"' EXIT; \
+	  GOOS=$$(go env GOHOSTOS) GOARCH=$$(go env GOHOSTARCH) CGO_ENABLED=0 \
+	    go run ./internal/tools/winres -icon assets/logo.png -out "$$syso" -arch $(HOST_GOARCH) \
+	      -name "$(APP_NAME)-gui" -description "eznit desktop app" \
+	      -company "$(COMPANY)" -app-id "$(APP_ID).gui" -version "$(VERSION)"; \
+	fi; \
+	CGO_ENABLED=1 go build -tags fyne -trimpath \
+	  -ldflags "$(GUI_LDFLAGS)" -o $(BUILD_GUI)/eznit-gui$(GUI_EXT) ./cmd/gui; \
+	chmod -R a+r $(BUILD_GUI); \
+	chmod a+x $(BUILD_GUI)/eznit-gui$(GUI_EXT)
 
-	chmod -R a+r $(BUILD_GUI)
-	chmod a+x $(BUILD_GUI)/eznit-gui
+gui_check: ## vet and test the Fyne code (needs cgo + GL/X11 headers)
+	@if ! command -v go >/dev/null 2>&1; then \
+	  echo "ERROR: go is not installed — the GUI check cannot run" >&2; exit 1; \
+	fi; \
+	set -e; \
+	CGO_ENABLED=1 go vet -tags fyne ./...; \
+	CGO_ENABLED=1 go test -tags fyne ./...
 
 # --- Release packaging -------------------------------------------------------
 # One archive per platform per family, each extracting into one folder named
@@ -238,7 +271,7 @@ server-platform:
 	ext=""; [ "$(GOOS)" = "windows" ] && ext=".exe"; \
 	rm -rf "$$stage"; mkdir -p "$$stage/db" "$$stage/scripts" "$$stage/secrets" "$(DIST_DIR)"; \
 	echo "server $(VERSION) $(GOOS)/$(GOARCH)"; \
-	api_syso=""; gui_syso=""; \
+	api_syso=""; \
 	if [ "$(GOOS)" = "windows" ]; then \
 	  if [ ! -f "$(ICON)" ]; then \
 	    echo "ERROR: $(ICON) is missing -- it is the one icon source; restore it (see assets/README.md)" >&2; exit 1; \
@@ -247,28 +280,18 @@ server-platform:
 	    echo "ERROR: $(WINRES) is missing -- copy templates/go/internal/tools/winres there" >&2; exit 1; \
 	  fi; \
 	  api_syso="$(API_FOLDER)/rsrc_windows_$(GOARCH).syso"; \
-	  gui_syso="$(GUI_FOLDER)/rsrc_windows_$(GOARCH).syso"; \
-	  trap 'rm -f "$$api_syso" "$$gui_syso"' EXIT; \
+	  trap 'rm -f "$$api_syso"' EXIT; \
 	  GOOS="$$(go env GOHOSTOS)" GOARCH="$$(go env GOHOSTARCH)" CGO_ENABLED=0 \
 	    go run "./$(WINRES)" -icon "$(ICON)" -out "$$api_syso" -arch "$(GOARCH)" \
 	      -name "$(APP_NAME)-server" -description "$(DESCRIPTION)" -company "$(COMPANY)" \
 	      -app-id "$(APP_ID)" -version "$(VERSION)"; \
-	  GOOS="$$(go env GOHOSTOS)" GOARCH="$$(go env GOHOSTARCH)" CGO_ENABLED=0 \
-	    go run "./$(WINRES)" -icon "$(ICON)" -out "$$gui_syso" -arch "$(GOARCH)" \
-	      -name "$(APP_NAME)-gui" -description "eznit window over the embedded web UI" \
-	      -company "$(COMPANY)" -app-id "$(APP_ID).gui" -version "$(VERSION)"; \
 	fi; \
 	CGO_ENABLED=0 GOOS="$(GOOS)" GOARCH="$(GOARCH)" go build -trimpath \
 	  -ldflags "-s -w -X $(INJECT_VERSION)=$(VERSION)" \
 	  -o "$$stage/$(APP_NAME)-server$$ext" $(API_FOLDER); \
-	CGO_ENABLED=0 GOOS="$(GOOS)" GOARCH="$(GOARCH)" go build -trimpath \
-	  -ldflags "-s -w -X $(INJECT_VERSION)=$(VERSION)" \
-	  -o "$$stage/$(APP_NAME)-gui$$ext" $(GUI_FOLDER); \
 	if [ -n "$$api_syso" ]; then \
 	  GOOS="$$(go env GOHOSTOS)" GOARCH="$$(go env GOHOSTARCH)" CGO_ENABLED=0 \
 	    go run "./$(WINRES)" -require-resources -verify-console "$$stage/$(APP_NAME)-server.exe"; \
-	  GOOS="$$(go env GOHOSTOS)" GOARCH="$$(go env GOHOSTARCH)" CGO_ENABLED=0 \
-	    go run "./$(WINRES)" -require-resources -verify-console "$$stage/$(APP_NAME)-gui.exe"; \
 	fi; \
 	cp -R $(MIGRATIONS) "$$stage/db/"; \
 	cp $(SCRIPT_MIGRATION) "$$stage/scripts/"; \
@@ -310,7 +333,7 @@ verify-release: ## Verify build/dist: layout, names, PE and provenance
 	  -app "$(APP_NAME)" -short "$(APP_NAME_SHORT)" -files "$(VERIFY_FILES_CLI)" \
 	  $(if $(PROVENANCE_COMMIT),-commit "$(PROVENANCE_COMMIT)",); \
 	env $$host go run "./$(WINRES)" -verify-archives "$(BUILD_DIR)/verify/server" \
-	  -app "$(APP_NAME)-server" -short "$(APP_NAME)-gui" -files "$(VERIFY_FILES_SERVER)" \
+	  -app "$(APP_NAME)-server" -files "$(VERIFY_FILES_SERVER)" \
 	  $(if $(PROVENANCE_COMMIT),-commit "$(PROVENANCE_COMMIT)",)
 
 # A download nobody can verify is only assumed intact. The hash list sits next
