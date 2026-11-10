@@ -78,3 +78,7 @@ web/node_modules/
 # building the web UI. The placeholder is what makes a fresh clone buildable.
 web/dist/*
 !web/dist/.gitkeep
+
+# The release workflow writes the tag here for fyne-cross, then removes it.
+# Gitignored so the binary keeps vcs.modified=false.
+cmd/gui/zz_version_generated.go
