@@ -32,17 +32,16 @@ folder carries. Those two services belong to the source checkout — use
 
 The `dev` and `web-dev` services (the developer loop) are not part of a bundle.
 
-## The window
+## The desktop app
 
-`eznit-gui` serves the same UI on `:8765` and opens a browser. Point it at a
-running API, or let it run the API itself:
+The native window is not in this bundle: a server has no display. It is built
+from source today with `make build_gui` (cgo + GL/X11 headers) and will ship
+with the CLI archive in #214. Use it on the machine you work from, pointed at
+this server:
 
 ```sh
-GUI_API_URL=http://localhost:4000 ./eznit-gui
+GUI_API_URL=http://<server>:4000 ./eznit-gui
 ```
-
-With no `GUI_API_URL` and the `DB_*` variables set, the window runs the API in
-its own process.
 
 ## Migrating by hand
 
