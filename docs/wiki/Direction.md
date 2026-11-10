@@ -22,8 +22,8 @@ machine next to it is solving the wrong problem.
   ([#185](https://github.com/fiwon123/eznit/issues/185), v0.15.0). A script maps
   to `Exec`; `Steps` win on import, as they do in crower. Aliases, env, shell,
   cwd and timeout are reported and not kept; binary commands cannot be exported.
-- **macOS archives** — `darwin/amd64` and `darwin/arm64` CLI and server bundles
-  are published and verified as Mach-O, cross-compiled on Linux
+- **macOS archives** — `darwin/amd64` and `darwin/arm64` archives were published
+  and verified as Mach-O, cross-compiled on Linux
   ([#187](https://github.com/fiwon123/eznit/issues/187), v0.17.0). No gate runs
   them on a Mac.
 - **Shell starters** — `eznit template init --kind bash|zsh|fish|powershell`
