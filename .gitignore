@@ -88,3 +88,6 @@ fyne-cross/
 
 # fyne-cross rewrites the app metadata next to the package.
 FyneApp.toml
+
+# Release/CI build output (the GUI matrix writes the window here).
+out/
