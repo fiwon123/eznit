@@ -185,6 +185,30 @@ func TestVerifyArchivesRequiresTheGUI(t *testing.T) {
 	}
 }
 
+// A server archive carries the client's window, whose name is not the app's
+// name plus a suffix: the verifier must accept the name it is given.
+func TestVerifyArchivesAcceptsANamedGUI(t *testing.T) {
+	dir := t.TempDir()
+	folder := "mytool_v1.0.0_linux_amd64"
+
+	contents := goodContents(folder)
+	contents[folder+"/window"] = "binary"
+	writeTarGz(t, filepath.Join(dir, folder+".tar.gz"), contents)
+
+	opts := options()
+	opts.GUI = true
+	opts.GUIName = "window"
+
+	if err := verifyArchives(dir, opts); err != nil {
+		t.Fatalf("verifyArchives with a named window = %v, want nil", err)
+	}
+
+	opts.GUIName = ""
+	if err := verifyArchives(dir, opts); err == nil || !strings.Contains(err.Error(), "mytool-gui") {
+		t.Fatalf("the default name was not required when none was given: %v", err)
+	}
+}
+
 // The folder name and the archive name must agree, or extraction and the
 // documented `cd` step point at different directories.
 func TestVerifyArchivesRejectsAMisnamedFolder(t *testing.T) {
