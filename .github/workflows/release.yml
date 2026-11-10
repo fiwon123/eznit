@@ -139,12 +139,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The arm64 entries name an arm64 runner, not a cross compiler: the
-          # Fyne tree compiles natively there with nothing extra to pin. Only
-          # Windows arm64 has no native cgo story that is worth the moving
-          # parts, so it is cross-linked with llvm-mingw below.
-          - { goos: linux,   goarch: amd64, runner: ubuntu-latest,    method: native }
-          - { goos: linux,   goarch: arm64, runner: ubuntu-24.04-arm, method: native }
+          # Windows amd64 is cross-linked (mingw) and Windows arm64 with
+          # llvm-mingw: there is no native cgo story worth the moving parts.
+          # The two Linux windows are built in the gui-linux job, on an Ubuntu
+          # 22.04 image, because the runner's own glibc becomes the floor the
+          # download needs (see #232).
           - { goos: windows, goarch: amd64, runner: ubuntu-latest,    method: mingw }
           - { goos: windows, goarch: arm64, runner: ubuntu-latest,    method: llvm-mingw }
           - { goos: darwin,  goarch: amd64, runner: macos-15-intel,   method: native }
@@ -157,12 +156,6 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
-
-      - name: Install the Linux GUI headers
-        if: matrix.method == 'native' && matrix.goos == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev wayland-protocols
 
       - name: Install the mingw cross compiler
         if: matrix.method == 'mingw'
@@ -285,9 +278,106 @@ jobs:
           path: out/gui-${{ matrix.goos }}-${{ matrix.goarch }}/eznit-gui*
           if-no-files-found: error
 
+  gui-linux:
+    name: Build eznit-gui linux/${{ matrix.goarch }}
+    needs: guard
+    # The Linux window is a cgo binary, so the glibc on the machine that links
+    # it is the oldest glibc a download can use. A current runner (Ubuntu 24.04)
+    # also redirects strtol/sscanf to the C23 variants, so the window demanded
+    # GLIBC_2.38 and would not start on Debian 12 or Ubuntu 22.04 — the usual
+    # server bases (#232). Debian 12's headers have no C23 redirection and its
+    # glibc is 2.36; the binary then asks for 2.34 at most, which Ubuntu 22.04
+    # (2.35) and Debian 12 (2.36) both satisfy. Debian 12 and not an older
+    # release: the older images' apt indexes point at packages the archive has
+    # dropped, and the install dies on a 404 before any work starts.
+    #
+    # The container is job-level because `container:` cannot be set per matrix
+    # entry; that is why the two Linux windows are a job of their own.
+    runs-on: ${{ matrix.runner }}
+    container: debian:bookworm
+    # The image's default shell is dash; every step here is bash.
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goarch: amd64, runner: ubuntu-latest }
+          - { goarch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - name: Prepare the container
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl git build-essential pkg-config \
+            libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev wayland-protocols
+
+      - uses: actions/checkout@v7
+
+      - name: Trust the checkout
+        # The container runs as root over a workspace another user owns, so git
+        # refuses to read the repository: Go then cannot stamp vcs.revision, and
+        # the release verifier rejects a binary without provenance. Stamping is
+        # the point, so trust the folder rather than pass -buildvcs=false.
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Build
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "out/gui-linux-${{ matrix.goarch }}"
+          CGO_ENABLED=1 GOOS=linux GOARCH="${{ matrix.goarch }}" go build -tags fyne -trimpath \
+            -ldflags "-X main.Version=${VERSION}" \
+            -o "out/gui-linux-${{ matrix.goarch }}/eznit-gui" ./cmd/gui
+
+      # The floor is a property of the artifact, so it is asserted here and not
+      # left to a person remembering which image built it. `objdump -T` lists
+      # the versioned symbols the dynamic loader will demand.
+      - name: Assert the glibc floor
+        run: |
+          set -euo pipefail
+          binary="out/gui-linux-${{ matrix.goarch }}/eznit-gui"
+          allowed=2.34
+
+          required="$(objdump -T "$binary" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -Vu | tail -1)"
+          if [ -z "$required" ]; then
+            echo "::error::could not read a glibc version from $binary"
+            exit 1
+          fi
+
+          echo "requires glibc <= $required (allowed: $allowed)"
+          if [ "$(printf '%s\n%s\n' "$allowed" "$required" | sort -V | tail -1)" != "$allowed" ]; then
+            echo "::error::$binary requires glibc $required; the image must not raise the floor above $allowed"
+            exit 1
+          fi
+
+          # The window is useless without a GL stack at run time; say what the
+          # download will need, so the docs and the binary cannot drift apart
+          # silently.
+          ldd "$binary" | sed -n 's/.*=> not found.*/  missing: &/p' || true
+
+      - name: Upload the window
+        uses: actions/upload-artifact@v7
+        with:
+          name: gui-linux-${{ matrix.goarch }}
+          path: out/gui-linux-${{ matrix.goarch }}/eznit-gui*
+          if-no-files-found: error
+
   pack:
     name: Pack the window into the archives
-    needs: [guard, build, gui]
+    needs: [guard, build, gui, gui-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: read
