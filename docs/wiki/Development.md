@@ -137,6 +137,13 @@ eznit-gui`.
 this repository's automation; the release matrix builds the six window
 binaries — one per platform — and packs each into both archives.
 
+It also **opens the window**: the built binary runs on a virtual X server
+(`xvfb` with software GL) and has to still be alive ten seconds later. Every
+other check stops before the toolkit starts — the unit tests use Fyne's software
+driver, and `-version`/`--help` exit first — so a driver that cannot initialise
+or a panic in a tab constructor would otherwise ship. A virtual display with
+software rendering is not a desktop: this proves startup, not looks.
+
 ## 🧱 Migrations
 
 `db/migrations/` is append-only history: a numbered `.up.sql`/`.down.sql` pair per
