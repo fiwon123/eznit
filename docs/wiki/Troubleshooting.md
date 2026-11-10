@@ -35,13 +35,22 @@ without one.
 
 ## `eznit-gui` exits with a GL or display error
 
-Fyne needs OpenGL at run time: install the platform's GL libraries (on Debian/
-Ubuntu, `libgl1-mesa-dev` plus the driver), and run it on a machine with a
-display. It is a desktop window, not a server component; a headless machine
-should use the CLI and the server's web UI.
+Fyne needs OpenGL at run time. The released Linux window links exactly two
+libraries of its own — `libGL.so.1` and `libwayland-client.so.0` — so install
+`libgl1` and `libwayland-client0` (Debian/Ubuntu) plus a working GL driver, and
+run it on a machine with a display. It is a desktop window, not a server
+component; a headless machine should use the CLI and the server's web UI.
 
 Building it is a different requirement: `make build_gui` needs cgo and the GL/
 X11 **headers**; if `pkg-config` cannot find `gl.pc`, the headers are missing.
+
+## `version 'GLIBC_2.38' not found` from `eznit-gui` (v0.23.0 and earlier)
+
+Those releases built the Linux window on a current runner, so the download
+required glibc 2.38 — newer than Debian 12 (2.36) and Ubuntu 22.04 (2.35). The
+window in **v0.23.1 and later** is linked inside a Debian 12 image and needs
+only glibc **2.34**; use the CLI (`eznit`, `ez`) in the meantime, which is
+`CGO_ENABLED=0` and unaffected.
 
 ## The Server tab says "not a server bundle"
 

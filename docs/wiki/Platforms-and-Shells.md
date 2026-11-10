@@ -41,7 +41,10 @@ two jobs: the **Files** tab is a client of an API (set the server address in the
 app, or `GUI_API_URL`), and the **Server** tab starts and stops the
 `eznit-server` beside it, shows its log, and edits the `.env` and password file
 it reads. Building it needs cgo and the platform's GL/X11 headers
-(`make build_gui`); at run time it needs the platform's GL libraries on Linux.
+(`make build_gui`); at run time the Linux window needs `libGL.so.1` and
+`libwayland-client.so.0` (`libgl1 libwayland-client0`) and glibc **2.34** or
+newer — it is linked inside a Debian 12 image so Debian 12 and Ubuntu 22.04 can
+run it.
 
 ## 🐚 Shells
 
