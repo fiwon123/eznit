@@ -225,8 +225,11 @@ jobs:
         run: |
           set -euo pipefail
 
+          # The fyne-cross image ships an older Go than go.mod requires;
+          # GOTOOLCHAIN=auto lets the container fetch the pinned toolchain.
           "$(go env GOPATH)/bin/fyne-cross" ${{ matrix.target }} \
             -arch ${{ matrix.goarch }} \
+            -env GOTOOLCHAIN=auto \
             -name eznit-gui \
             -app-id com.fiwon123.eznit \
             -tags fyne \
