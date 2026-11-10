@@ -287,6 +287,9 @@ jobs:
           git status --porcelain
           echo "--- ignored ---"
           git status --porcelain --ignored | head -30
+          echo "--- inside the build container ---"
+          docker run --rm -v "$PWD:/app" -w /app fyneio/fyne-cross-images:linux \
+            sh -c 'git status --porcelain; echo "[ignored]"; git status --porcelain --ignored | head -20' || true
 
       - name: Upload the window
         uses: actions/upload-artifact@v7
