@@ -45,22 +45,27 @@ green dry run does not prove the publish step; only a real tag does.
 `make release` stages one folder per archive and compresses **the folder**, so a
 download extracts into a folder named after it instead of scattering files into the
 directory you ran the command in. `PLATFORMS` defaults to `windows/amd64`,
-`windows/arm64`, `linux/amd64` and `linux/arm64`; the platform is in the archive
-name, never in the binary name.
+`windows/arm64`, `linux/amd64`, `linux/arm64`, `darwin/amd64` and
+`darwin/arm64` — **12 archives** plus `checksums.txt`; the platform is in the
+archive name, never in the binary name.
 
 | Asset | Contents |
 | --- | --- |
-| `eznit-cli_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux) | `eznit`, `ez`, `add_to_path.ps1` or `add_to_path.sh`, README, LICENSE |
+| `eznit-cli_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux, macOS) | `eznit`, `ez`, `add_to_path.ps1` or `add_to_path.sh`, README, LICENSE |
 | `eznit-server_<version>_<os>_<arch>.zip` / `.tar.gz` | `eznit-server`, `eznit-gui`, `db/migrations/`, `scripts/run_migrate.sh`, `docker-compose.yml`, the example configuration and secret files, `RUNNING.md`, README, LICENSE |
 | `checksums.txt` | SHA-256 of every archive |
 
 Each archive is checked after it is written: exactly one top-level folder, named
 like the archive, and no `..` member. `make release` then runs
 `make verify-release`, which reads the finished archives — the names inside, the PE
-of every Windows binary, and (when `PROVENANCE_COMMIT` is set, as the workflow
-does) the revision and `vcs.modified=false`. Every Windows binary also carries an
-icon, a per-monitor DPI manifest and a version block, generated from
-`assets/logo.png` before the build and removed afterwards.
+of every Windows binary, the **Mach-O** of every macOS binary (executable type
+and the CPU the archive name claims), and (when `PROVENANCE_COMMIT` is set, as
+the workflow does) the revision and `vcs.modified=false`. Every Windows binary
+also carries an icon, a per-monitor DPI manifest and a version block, generated
+from `assets/logo.png` before the build and removed afterwards.
+
+The macOS and ARM64 archives are **cross-compiled on Linux and never executed**;
+the only released binary any gate starts is the Windows amd64 CLI.
 
 ## ✅ Verify a download
 

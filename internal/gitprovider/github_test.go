@@ -246,7 +246,7 @@ func TestGetRepositoryRefusesABadNameWithoutARequest(t *testing.T) {
 		called = true
 	})
 
-	for _, name := range []string{"", "owner", "owner/repo/extra", "../repo", "owner/..", "owner/re po"} {
+	for _, name := range []string{"", "owner", "owner//repo", "../repo", "owner/..", "owner/re po"} {
 		if _, err := provider.GetRepository(context.Background(), "the-token", name); !errors.Is(err, ErrNotFound) {
 			t.Errorf("%q: expected ErrNotFound, got %v", name, err)
 		}
@@ -297,8 +297,8 @@ func TestNewGitHubDefaults(t *testing.T) {
 	}
 }
 
-// A name is a path segment pair, and one that could escape its segment is not
-// a name.
+// A name is one or more path segments (GitLab has subgroups), and one that
+// could escape its segment is not a name.
 func TestValidFullName(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -310,7 +310,9 @@ func TestValidFullName(t *testing.T) {
 		{"an underscore and a dash", "own_er/re-po", true},
 		{"no owner", "/repo", false},
 		{"no name", "owner/", false},
-		{"a second slash", "owner/repo/extra", false},
+		{"a GitLab subgroup path", "group/sub/project", true},
+		{"an empty segment", "owner//repo", false},
+		{"a dot-dot segment", "group/../repo", false},
 		{"a dot-dot owner", "../repo", false},
 		{"a dot-dot name", "owner/..", false},
 		{"a dot owner", "./repo", false},

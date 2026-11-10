@@ -11,7 +11,7 @@ subscription, no third party.
 
 [![Release](https://img.shields.io/github/v/release/fiwon123/eznit?color=4c8bf5)](https://github.com/fiwon123/eznit/releases)
 [![License: MIT](https://img.shields.io/github/license/fiwon123/eznit)](LICENSE)
-[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-blue)](https://github.com/fiwon123/eznit/releases)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-blue)](https://github.com/fiwon123/eznit/releases)
 [![CI (Go)](https://github.com/fiwon123/eznit/actions/workflows/ci.go.yml/badge.svg)](https://github.com/fiwon123/eznit/actions/workflows/ci.go.yml)
 [![Pre-1.0](https://img.shields.io/badge/status-pre--1.0-orange)](https://github.com/fiwon123/eznit)
 
@@ -85,7 +85,7 @@ Sign up or log in on the page, or paste the token from `eznit login` into
 | **Files** | `upload`, `list`, `download`, `delete`, `share` | bytes on your disk, indexed in PostgreSQL |
 | **Templates** | `template publish`, `list`, `show`, `apply`, `export`, `init` | a folder: text, binary, variables, commands |
 | **Commands** | `command add`, `list`, `show`, `remove`, `import`, `export` | a script kept once and pulled into templates by id; a crower pack imports/exports them |
-| **Repositories** | `repo auth`, `list`, `clone` | a clone; the token stays on your machine |
+| **Repositories** | `repo auth`, `list`, `clone` (GitHub, GitLab, Bitbucket) | a clone; the token stays on your machine |
 
 A template may hold anything: `AGENTS.md`, `.opencode/agents/`, a `SKILL.md`,
 `.cursor/rules/`, a PowerShell profile, a `Makefile`. Values like

@@ -47,7 +47,7 @@ internal/cli/       CLI commands, the API client, the local config/token store,
 cmd/gui/            GUI entrypoint: the UI, the API (or a proxy), a browser
 internal/domain/    one package per resource — users, sessions, files, templates
                     handler.go -> service.go -> repository.go, plus dto.go
-internal/gitprovider/  git-host clients (GitHub today) behind one interface;
+internal/gitprovider/  git-host clients (GitHub, GitLab, Bitbucket) behind one interface;
                     holds no credential — the token is an argument
 internal/platform/  cross-domain infrastructure
                     api/         the /v1 router, built once for both binaries
