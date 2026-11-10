@@ -45,6 +45,9 @@ its log, and edits the `.env` and the database password the server reads:
 - **Start** checks the API port and reads the `.env` before it runs anything. A
   folder with no `.env` gets one created from `.env.example`, pointed at
   `127.0.0.1` and at this bundle's secret file.
+- The tab has two views: **Output** is the server's own log, and
+  **Configuration** is the form that writes `.env` and the password file. Start
+  switches to Output, because that is where the answer is.
 - **Stop** asks the server to shut down, which drains in-flight requests for up
   to 10 seconds. On Windows a stop is a kill: Windows cannot deliver an
   interrupt to another process.

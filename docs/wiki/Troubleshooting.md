@@ -67,10 +67,10 @@ the port in the configuration panel and save.
 
 ## The server starts and stops at once
 
-Read the log under the buttons: the API prints why it exited. The usual cause is
-an unreachable database — check `DB_HOST`, `DB_PORT` and that
-`secrets/db_password.txt` exists (set it in the panel). The window creates a
-missing `.env` from `.env.example` and points it at a local database.
+Read the **Output** tab: the API prints why it exited. The usual cause is an
+unreachable database — check `DB_HOST`, `DB_PORT` and that
+`secrets/db_password.txt` exists (set it on the **Configuration** tab). The window
+creates a missing `.env` from `.env.example` and points it at a local database.
 
 ## A stop takes a while
 
