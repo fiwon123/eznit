@@ -122,10 +122,20 @@ libxkbcommon-dev wayland-protocols`; macOS needs the Xcode command line tools.
 Every Fyne file carries `//go:build fyne`, so `go build ./...` and `make check`
 stay cgo-free and a machine without GL can still pass the gate.
 
+The window is an HTTP client (`internal/fyneui`) plus a supervisor for a local
+server (`internal/serverctl`). The supervisor is **plain Go** — no build tag —
+so `make check` covers the parts that matter: what a start checks, what a stop
+means, and what a save preserves. `internal/fyneui`'s tests use Fyne's software
+driver (`go test -tags fyne`).
+
+The same window ships in the CLI and the server archives: the packer adds it to
+both from one build, and the server group is verified with `-gui -gui-name
+eznit-gui`.
+
 **CI (GUI)** runs the same vet/test/build on pull requests (the workflow is
 `.github/workflows/ci.gui.yml`). It is the only place the GUI is compiled in
 this repository's automation; the release matrix builds the six window
-binaries — one per archive — and packs all six into the CLI archives.
+binaries — one per platform — and packs each into both archives.
 
 ## 🧱 Migrations
 

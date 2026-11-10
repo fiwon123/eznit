@@ -37,11 +37,37 @@ without one.
 
 Fyne needs OpenGL at run time: install the platform's GL libraries (on Debian/
 Ubuntu, `libgl1-mesa-dev` plus the driver), and run it on a machine with a
-display. It is a desktop client, not a server component; a headless machine
+display. It is a desktop window, not a server component; a headless machine
 should use the CLI and the server's web UI.
 
 Building it is a different requirement: `make build_gui` needs cgo and the GL/
 X11 **headers**; if `pkg-config` cannot find `gl.pc`, the headers are missing.
+
+## The Server tab says "not a server bundle"
+
+The panel runs the `eznit-server` in the folder it points at, and your CLI
+archive has no server binary in it. Download the **server** bundle for your
+platform, put the window in that folder (or choose it with **Choose folder…**),
+and start it from there.
+
+## The Server tab says the port is in use
+
+Something else already listens on `API_PORT` (4000 by default) — often a server
+this window started in another session, or `make run_api`. Stop it, or change
+the port in the configuration panel and save.
+
+## The server starts and stops at once
+
+Read the log under the buttons: the API prints why it exited. The usual cause is
+an unreachable database — check `DB_HOST`, `DB_PORT` and that
+`secrets/db_password.txt` exists (set it in the panel). The window creates a
+missing `.env` from `.env.example` and points it at a local database.
+
+## A stop takes a while
+
+That is the drain: the API gives in-flight requests up to 10 seconds to finish.
+On Windows the stop is immediate — Windows cannot deliver an interrupt to
+another process, so the window kills it.
 
 ## `eznit update` refuses the download
 

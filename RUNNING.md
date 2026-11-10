@@ -34,14 +34,36 @@ The `dev` and `web-dev` services (the developer loop) are not part of a bundle.
 
 ## The desktop app
 
-The native window is not in this bundle: a server has no display. It is built
-from source today with `make build_gui` (cgo + GL/X11 headers) and will ship
-with the CLI archive in #214. Use it on the machine you work from, pointed at
-this server:
+`eznit-gui` is in this bundle — the same window the CLI archive carries. Its
+**Server** tab runs `eznit-server` from this folder as a child process, shows
+its log, and edits the `.env` and the database password the server reads:
+
+```sh
+./eznit-gui        # then: Server tab → Start
+```
+
+- **Start** checks the API port and reads the `.env` before it runs anything. A
+  folder with no `.env` gets one created from `.env.example`, pointed at
+  `127.0.0.1` and at this bundle's secret file.
+- **Stop** asks the server to shut down, which drains in-flight requests for up
+  to 10 seconds. On Windows a stop is a kill: Windows cannot deliver an
+  interrupt to another process.
+- Closing the window stops a server this window started, after asking.
+- **Open in browser** goes to `http://127.0.0.1:<API_PORT>`.
+- The configuration panel writes `.env` (mode `0600`) and
+  `secrets/db_password.txt` (mode `0600`). The password is never displayed, never
+  logged, and never copied into `~/.eznit/config.json`.
+
+The window is also a client: the **Files** tab signs in to any eznit API. To
+drive a server on another machine, start the window there instead:
 
 ```sh
 GUI_API_URL=http://<server>:4000 ./eznit-gui
 ```
+
+The window is a GUI binary and needs the platform's GL libraries (on
+Debian/Ubuntu: `libgl1`, `libx11-6`, `libxkbcommon0`). There is no headless
+mode; `--help` and `--version` exit before the toolkit starts.
 
 ## Migrating by hand
 

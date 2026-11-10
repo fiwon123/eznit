@@ -108,6 +108,11 @@ bundle says the same, and what it does not prove. Plain `docker compose up` is
 the source-checkout path — in a bundle it would try to build an image the
 archive does not contain.
 
+The bundle also carries `eznit-gui`, whose **Server** tab does that whole step
+for you: start the database with Compose once, open the window, and use **Start**
+after setting the database password in the configuration panel. It writes the
+same `.env` and `secrets/db_password.txt` shown above.
+
 ## 👉 Next
 
 - [Templates and skills](https://github.com/fiwon123/eznit/wiki/Templates-and-Skills) — what to put in a template and how to share it
