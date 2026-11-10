@@ -225,20 +225,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          # fyne-cross v1.6.3 does not pass -ldflags into the container, so the
-          # tag travels in a generated init file. It is gitignored, which keeps
-          # vcs.modified=false in the binary.
-          cat > cmd/gui/zz_version_generated.go <<GO
-          //go:build fyne
-
-          package main
-
-          func init() { Version = "$VERSION" }
-          GO
-          trap 'rm -f cmd/gui/zz_version_generated.go' EXIT
-
           # The fyne-cross image ships an older Go than go.mod requires;
           # GOTOOLCHAIN=auto lets the container fetch the pinned toolchain.
+          #
+          # -X=importpath.name=value is one token, which is what fyne-cross
+          # forwards intact (a space splits it and the linker refuses).
           "$(go env GOPATH)/bin/fyne-cross" ${{ matrix.target }} \
             -arch ${{ matrix.goarch }} \
             -env GOTOOLCHAIN=auto \
@@ -246,6 +237,7 @@ jobs:
             -app-id com.fiwon123.eznit \
             -tags fyne \
             -icon assets/logo.png \
+            -ldflags "-X=main.Version=$VERSION" \
             ./cmd/gui
 
           ext=""
