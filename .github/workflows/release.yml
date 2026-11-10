@@ -320,9 +320,11 @@ jobs:
       - name: Download the window builds
         uses: actions/download-artifact@v8
         with:
+          # One directory per artifact — guis/gui-linux-amd64/eznit-gui — so
+          # the six binaries cannot overwrite each other and the packer knows
+          # which platform each one is.
           pattern: gui-*
           path: guis
-          merge-multiple: true
 
       - name: Add the window to each CLI archive
         run: scripts/pack-gui.sh dist guis
