@@ -53,6 +53,12 @@ type serverView struct {
 	log    *widget.TextGrid
 	scroll *container.Scroll
 
+	// save, configScroll and panes are kept so a test can prove the actions are
+	// outside the scrolling pane and the fields fit inside it (#235).
+	save         *widget.Button
+	configScroll *container.Scroll
+	panes        *container.AppTabs
+
 	env    *serverctl.EnvFile
 	fields map[string]*widget.Entry
 
@@ -144,8 +150,7 @@ func (v *serverView) content() fyne.CanvasObject {
 
 	v.log = widget.NewTextGrid()
 	v.scroll = container.NewScroll(v.log)
-	v.scroll.SetMinSize(fyne.NewSize(440, 140))
-	logCard := widget.NewCard("Output", "The server's own log, as it prints it.", v.scroll)
+	v.scroll.SetMinSize(fyne.NewSize(440, 80))
 
 	v.password = widget.NewPasswordEntry()
 	v.password.SetPlaceHolder("leave empty to keep the current password")
@@ -167,25 +172,32 @@ func (v *serverView) content() fyne.CanvasObject {
 		widget.NewFormItem("Password", v.password),
 	)
 
-	save := widget.NewButtonWithIcon("Save configuration", theme.DocumentSaveIcon(), v.saveConfig)
-	save.Importance = widget.HighImportance
+	v.save = widget.NewButtonWithIcon("Save configuration", theme.DocumentSaveIcon(), v.saveConfig)
+	v.save.Importance = widget.HighImportance
 	v.create = widget.NewButtonWithIcon("Create .env from the example", theme.DocumentCreateIcon(), v.createEnv)
 	v.create.Hide()
 
-	configCard := widget.NewCard("Configuration",
-		"The .env this server reads. A change applies the next time it starts.",
-		container.NewVBox(
-			container.NewGridWithColumns(2, serverForm, databaseForm),
-			v.secret,
-			container.NewHBox(save, v.create),
-			v.note,
-		))
+	// The output and the form are two views of the same space, not two halves
+	// of it: at 980x640 a split left the form 121 px tall, so its fields
+	// scrolled behind a card that looked finished (#235).
+	v.configScroll = container.NewScroll(container.NewPadded(container.NewVBox(
+		container.NewGridWithColumns(2, serverForm, databaseForm),
+		v.note,
+	)))
+	v.configScroll.SetMinSize(fyne.NewSize(440, 120))
 
-	upper := container.NewBorder(controls, nil, nil, nil, logCard)
-	split := container.NewVSplit(upper, container.NewVScroll(configCard))
-	split.SetOffset(0.58)
+	actions := container.NewBorder(nil, nil, nil, container.NewHBox(v.create, v.save), v.secret)
 
-	v.built = split
+	// The actions belong to the form, so they live in its tab — pinned below
+	// the scroll, never scrolling away with the fields (#235).
+	configPane := container.NewBorder(nil, container.NewPadded(actions), nil, nil, v.configScroll)
+
+	v.panes = container.NewAppTabs(
+		container.NewTabItemWithIcon("Output", theme.ListIcon(), v.scroll),
+		container.NewTabItemWithIcon("Configuration", theme.SettingsIcon(), configPane),
+	)
+
+	v.built = container.NewBorder(controls, nil, nil, nil, v.panes)
 
 	v.loadConfig()
 	v.refresh()
@@ -268,6 +280,10 @@ func (v *serverView) startServer() {
 	// the server is actually reading.
 	v.loadConfig()
 	v.refresh()
+
+	// The answer to "did it start" is in the log, so put it in front of the
+	// person who just pressed the button.
+	v.panes.SelectIndex(0)
 }
 
 func (v *serverView) stopServer() {
