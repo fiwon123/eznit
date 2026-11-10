@@ -19,7 +19,10 @@ func writeZip(t *testing.T, path string, contents map[string]string) {
 	writer := zip.NewWriter(&buffer)
 
 	for name, body := range contents {
-		entry, err := writer.Create(name)
+		header := &zip.FileHeader{Name: name, Method: zip.Deflate}
+		header.SetMode(0o755)
+
+		entry, err := writer.CreateHeader(header)
 		if err != nil {
 			t.Fatalf("create %s: %v", name, err)
 		}
@@ -39,13 +42,18 @@ func writeZip(t *testing.T, path string, contents map[string]string) {
 // writeTarGz writes a .tar.gz holding name → contents.
 func writeTarGz(t *testing.T, path string, contents map[string]string) {
 	t.Helper()
+	writeTarGzMode(t, path, contents, 0o755)
+}
+
+func writeTarGzMode(t *testing.T, path string, contents map[string]string, mode int64) {
+	t.Helper()
 
 	var buffer bytes.Buffer
 	gzipWriter := gzip.NewWriter(&buffer)
 	writer := tar.NewWriter(gzipWriter)
 
 	for name, body := range contents {
-		if err := writer.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: int64(len(body))}); err != nil {
+		if err := writer.WriteHeader(&tar.Header{Name: name, Mode: mode, Size: int64(len(body))}); err != nil {
 			t.Fatalf("header %s: %v", name, err)
 		}
 		if _, err := writer.Write([]byte(body)); err != nil {
@@ -91,6 +99,20 @@ func TestVerifyArchivesAcceptsOneFolder(t *testing.T) {
 
 	if err := verifyArchives(dir, options()); err != nil {
 		t.Fatalf("good archives failed: %v", err)
+	}
+}
+
+// A binary that is not executable in the archive is a download that answers
+// "Permission denied" (v0.21.0 shipped eznit-gui at 0644).
+func TestVerifyArchivesRejectsANonExecutableBinary(t *testing.T) {
+	dir := t.TempDir()
+	folder := "mytool_v1.0.0_linux_amd64"
+
+	writeTarGzMode(t, filepath.Join(dir, folder+".tar.gz"), goodContents(folder), 0o644)
+
+	err := verifyArchives(dir, options())
+	if err == nil || !strings.Contains(err.Error(), "not executable") {
+		t.Fatalf("a non-executable binary was not reported: %v", err)
 	}
 }
 

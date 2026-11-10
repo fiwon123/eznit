@@ -8,6 +8,7 @@ import (
 	"debug/buildinfo"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -35,6 +36,7 @@ type archiveOptions struct {
 type archiveEntry struct {
 	name string
 	data []byte
+	mode fs.FileMode
 }
 
 // archSuffixed matches a binary that names its target in the file name. The
@@ -133,8 +135,10 @@ func verifyArchive(path string, opts archiveOptions) []string {
 	}
 
 	files := map[string][]byte{}
+	modes := map[string]fs.FileMode{}
 	for _, entry := range entries {
 		files[entry.name] = entry.data
+		modes[entry.name] = entry.mode
 	}
 
 	windows := strings.Contains(base, "_windows_")
@@ -168,6 +172,13 @@ func verifyArchive(path string, opts archiveOptions) []string {
 		if !ok {
 			report("does not carry %s", strings.TrimPrefix(member, folder+"/"))
 			continue
+		}
+
+		// A binary that is not executable is a download that answers
+		// "Permission denied". The mode is in the archive, so it is a fact
+		// about the artifact, not about how the extractor behaved.
+		if !windows && modes[member]&0o111 == 0 {
+			report("%s is not executable in the archive (mode %v)", strings.TrimPrefix(member, folder+"/"), modes[member])
 		}
 
 		if windows {
@@ -262,7 +273,7 @@ func readArchive(path, ext string) ([]archiveEntry, error) {
 		var entries []archiveEntry
 		for _, file := range reader.File {
 			if file.FileInfo().IsDir() {
-				entries = append(entries, archiveEntry{name: file.Name + "/"})
+				entries = append(entries, archiveEntry{name: file.Name + "/", mode: file.Mode()})
 				continue
 			}
 
@@ -277,7 +288,7 @@ func readArchive(path, ext string) ([]archiveEntry, error) {
 				return nil, err
 			}
 
-			entries = append(entries, archiveEntry{name: file.Name, data: data})
+			entries = append(entries, archiveEntry{name: file.Name, data: data, mode: file.Mode()})
 		}
 
 		return entries, nil
@@ -308,7 +319,7 @@ func readArchive(path, ext string) ([]archiveEntry, error) {
 		}
 
 		if header.Typeflag == tar.TypeDir {
-			entries = append(entries, archiveEntry{name: header.Name + "/"})
+			entries = append(entries, archiveEntry{name: header.Name + "/", mode: header.FileInfo().Mode()})
 			continue
 		}
 		if header.Typeflag != tar.TypeReg {
@@ -320,7 +331,7 @@ func readArchive(path, ext string) ([]archiveEntry, error) {
 			return nil, err
 		}
 
-		entries = append(entries, archiveEntry{name: header.Name, data: data})
+		entries = append(entries, archiveEntry{name: header.Name, data: data, mode: header.FileInfo().Mode()})
 	}
 
 	return entries, nil

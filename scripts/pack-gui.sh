@@ -78,6 +78,10 @@ for archive in "$dist"/eznit-cli_*; do
 	fi
 
 	cp "$source" "$work/$folder/$binary"
+	# GitHub artifacts are zip-based and do not preserve modes: the downloaded
+	# window is 0644, and an archive that ships it that way answers
+	# "Permission denied" (v0.21.0). Restore the executable bit.
+	chmod 0755 "$work/$folder/$binary"
 	cp LICENSE-FYNE LICENSE-APACHE NOTICE "$work/$folder/"
 
 	rm -f "$archive"
