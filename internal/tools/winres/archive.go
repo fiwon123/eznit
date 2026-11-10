@@ -22,13 +22,26 @@ type archiveOptions struct {
 	App string
 	// Short is the optional alias shipped beside it.
 	Short string
-	// GUI requires App+"-gui" in every archive.
+	// GUI requires a GUI binary in every archive: GUIName when that is set,
+	// App+"-gui" otherwise. A server archive carries the client's eznit-gui,
+	// so the window's name is not always the app's name plus a suffix.
 	GUI bool
+	// GUIName is the GUI binary's name without an extension.
+	GUIName string
 	// Commit, when set, must match every binary's vcs.revision, and the build
 	// must not report vcs.modified.
 	Commit string
 	// Files are the non-binary files every archive must carry.
 	Files []string
+}
+
+// guiBinary is the window an archive must carry.
+func (o archiveOptions) guiBinary() string {
+	if o.GUIName != "" {
+		return o.GUIName
+	}
+
+	return o.App + "-gui"
 }
 
 // archiveEntry is one member of an archive, read into memory. Releases are
@@ -157,7 +170,7 @@ func verifyArchive(path string, opts archiveOptions) []string {
 		binaries = append(binaries, opts.Short)
 	}
 	if opts.GUI {
-		binaries = append(binaries, opts.App+"-gui")
+		binaries = append(binaries, opts.guiBinary())
 	}
 
 	machine, _ := MachineForArchive(base)
@@ -192,7 +205,7 @@ func verifyArchive(path string, opts archiveOptions) []string {
 				report("%s: %v", filepath.Base(member), err)
 			}
 
-			if name == opts.App+"-gui" {
+			if name == opts.guiBinary() {
 				if err := info.VerifyGUI(); err != nil {
 					report("%s: %v", filepath.Base(member), err)
 				}

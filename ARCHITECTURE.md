@@ -12,12 +12,14 @@ that drive it, see [README.md](README.md).
 | API | `cmd/api` | The HTTP API, and the web UI in front of it | `:4000` |
 | Web tier | `web/Dockerfile` + `web/nginx.conf` | The built UI behind nginx, proxying `/v1` to the API (compose only) | `:5173` |
 | CLI | `cmd/cli` → `internal/cli` | `kong` command line client, one file per command | — |
-| GUI | `cmd/gui` | Opens a browser on the bundled UI, with the API in-process or proxied | `:8765` |
+| GUI | `cmd/gui` → `internal/fyneui` | The native Fyne window: a client of an API, and the control panel for a local one | — |
 | Web UI | `web/src` | React + TypeScript + Vite, built to `web/dist` | — |
 
-The API and the GUI both carry the built UI inside the binary (`web/embed.go`);
-the API also serves a `web/dist` folder when one exists. That is why one origin
-serves both the pages and `/v1`, and why the API needs no CORS headers.
+The API carries the built UI inside the binary (`web/embed.go`) and serves a
+`web/dist` folder when one exists. That is why one origin serves both the pages
+and `/v1`, and why the API needs no CORS headers. The GUI is a native window,
+not a browser: it opens no port and serves nothing, so the web UI is not part of
+it.
 
 The compose stack splits that in two: the `web` service serves the same built
 UI on `:5173` and proxies `/v1` to the `api` service, so the browser still sees
@@ -32,10 +34,10 @@ same two ports, the same `/v1` proxy, the same `API_SERVE_WEB=false` — so a bu
 that is caused by the two tiers is reproducible in either mode. Neither
 container holds the other's toolchain, and neither needs one on the host.
 
-The API's router is built by `internal/platform/api`, and both binaries use it:
-the API serves it directly, and the GUI either mounts it on its own listener
-(when the database is configured) or proxies `/v1` to `GUI_API_URL`. One router,
-so the two cannot offer different APIs.
+The API's router is built by `internal/platform/api` and mounted by `cmd/api`.
+The GUI is an HTTP client of that router over the network, through
+`internal/apiclient` — the same client the CLI uses, so one token in
+`~/.eznit/config.json` serves both.
 
 ## Repository map
 
@@ -44,7 +46,10 @@ cmd/api/            API entrypoint: flags, logging, database, router, UI, shutdo
 cmd/cli/            CLI entrypoint: the version variable, then internal/cli
 internal/cli/       CLI commands, the API client, the local config/token store,
                     and the git-host commands
-cmd/gui/            GUI entrypoint: the UI, the API (or a proxy), a browser
+cmd/gui/            GUI entrypoint: flags, then internal/fyneui
+internal/fyneui/    the Fyne window: Files (the API client), Server, About
+internal/serverctl/ the local server a window supervises — its env file, the
+                    secret file, and the eznit-server child process
 internal/domain/    one package per resource — users, sessions, files, templates
                     handler.go -> service.go -> repository.go, plus dto.go
 internal/gitprovider/  git-host clients (GitHub, GitLab, Bitbucket) behind one interface;
@@ -241,7 +246,7 @@ The build reaches the process two ways:
 
 - **from disk** — a built `web/dist`, preferred by the API. Rebuilding the UI is
   enough; the server does not need a restart.
-- **from the binary** — embedded at compile time, preferred by the GUI. This is
+- **from the binary** — embedded at compile time, preferred by the API. This is
   what makes a released binary self-contained.
 
 A `web/dist` holding only the committed placeholder has no UI in it: `HasIndex`
@@ -290,10 +295,14 @@ The residual exposure is the child's environment, which the same user's
 processes can read (`/proc/<pid>/environ`). That is the cost of not putting
 the token in a file git owns, and it is stated rather than hidden.
 
-The GUI reads `GUI_API_URL` (proxy `/v1` to a running API instead of running
-one), `GUI_PORT` (`8765` by default) and `GUI_LOGS`, plus the API's database and
-upload variables for the in-process mode. With neither `GUI_API_URL` nor
-`DB_NAME`, the UI opens and `/v1` answers `503` with the variable to set.
+The GUI reads `GUI_API_URL` (the default server address), `-api` and
+`-server-dir` (flags, which win), and stores its choices in
+`~/.eznit/config.json` beside the CLI's: `api_url`, `token` and `server_dir`.
+The Server tab reads the env file of `server_dir` — the folder the window was
+installed into unless another is chosen — and starts `eznit-server` from it as a
+child process, with that file as its environment. A stop is an interrupt, so the
+API drains (10s) before the window gives up and kills it; Windows cannot deliver
+an interrupt to another process, so there a stop is a kill.
 
 ## Gates
 

@@ -102,7 +102,7 @@ func (l *loginView) toggleMode() {
 
 	l.signup = !l.signup
 	l.status.SetText("")
-	l.ui.window.SetContent(l.content())
+	l.ui.setFilesTab(l.content())
 }
 
 func (l *loginView) submit() {
