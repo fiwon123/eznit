@@ -163,6 +163,56 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq gcc-mingw-w64-x86-64 zip
 
+      - name: Build (native runner)
+        if: matrix.method == 'native'
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          mkdir -p "out/gui-${GOOS}-${GOARCH}"
+          CGO_ENABLED=1 GOOS="${GOOS}" GOARCH="${GOARCH}" go build -tags fyne -trimpath \
+            -ldflags "-X main.Version=${VERSION}" \
+            -o "out/gui-${GOOS}-${GOARCH}/eznit-gui" ./cmd/gui
+
+      - name: Build (mingw, Windows amd64)
+        if: matrix.method == 'mingw'
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p out/gui-windows-amd64
+
+          # The icon and the version block are a .syso beside the package; it
+          # is generated for this build and removed afterwards.
+          GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 \
+            go run ./internal/tools/winres -icon assets/logo.png \
+              -out cmd/gui/rsrc_windows_amd64.syso -arch amd64 \
+              -name eznit-gui -description "eznit desktop app" -company eznit \
+              -app-id com.fiwon123.eznit.gui -version "$VERSION"
+          trap 'rm -f cmd/gui/rsrc_windows_amd64.syso' EXIT
+
+          CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+            go build -tags fyne -trimpath \
+              -ldflags "-H windowsgui -X main.Version=$VERSION" \
+              -o out/gui-windows-amd64/eznit-gui.exe ./cmd/gui
+
+          # The mingw link must stay on msvcrt, the runtime every Windows has;
+          # the UCRT API sets are the heap of small DLLs a machine can miss.
+          if command -v x86_64-w64-mingw32-objdump >/dev/null 2>&1; then
+            if x86_64-w64-mingw32-objdump -p out/gui-windows-amd64/eznit-gui.exe | grep -q 'api-ms-win-crt'; then
+              echo "::error::eznit-gui.exe imports the UCRT API sets; the cross-link must stay on msvcrt"
+              exit 1
+            fi
+            if ! x86_64-w64-mingw32-objdump -p out/gui-windows-amd64/eznit-gui.exe | grep -q 'msvcrt.dll'; then
+              echo "::error::eznit-gui.exe does not import msvcrt.dll; the cross-link changed runtime"
+              exit 1
+            fi
+          fi
+
+          go run ./internal/tools/winres -verify out/gui-windows-amd64/eznit-gui.exe
+
       - name: Upload the window
         uses: actions/upload-artifact@v7
         with:
