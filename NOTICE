@@ -1,0 +1,32 @@
+This product includes software developed by third parties. The Go module graph
+in go.mod pins exact versions; this file names what is compiled into the
+released binaries and the licence each one carries.
+
+The CLI and server archives bundle:
+
+- minio/selfupdate (https://github.com/minio/selfupdate), used by `eznit
+  update` and the window's About panel.
+  Licensed under the Apache License, Version 2.0; the text is in LICENSE-APACHE.
+
+The archives that carry the desktop app (the CLI archives) bundle the Fyne
+toolkit and its dependencies:
+
+- Fyne (https://fyne.io), licensed under the BSD 3-Clause License; the text is
+  in LICENSE-FYNE.
+- Fyne systray (https://github.com/fyne-io/systray), licensed under the
+  Apache License, Version 2.0; the text is in LICENSE-APACHE.
+- go-gl/gl and go-gl/glfw (https://github.com/go-gl), the OpenGL bindings and
+  the GLFW windowing library. go-gl is BSD 3-Clause; GLFW is zlib.
+- go-text/typesetting and go-text/render (https://github.com/go-text),
+  licensed under the BSD 3-Clause License.
+- srwiley/oksvg and srwiley/rasterx (https://github.com/srwiley), the SVG and
+  raster backends, licensed under the BSD 3-Clause License.
+- nfnt/resize (https://github.com/nfnt/resize), licensed under the ISC
+  License.
+- golang.org/x/image, golang.org/x/text and golang.org/x/sys
+  (https://golang.org/x), licensed under the BSD 3-Clause License.
+
+The full licence text of each module travels in the Go module cache and in the
+module's own repository; the three texts required to accompany a binary
+distribution are included in this folder: LICENSE (this project, MIT),
+LICENSE-FYNE (BSD 3-Clause) and LICENSE-APACHE (Apache 2.0).

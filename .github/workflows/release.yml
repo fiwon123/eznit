@@ -12,14 +12,20 @@ name: Release
 # `PROVENANCE_COMMIT` makes it fail when a binary was built from another
 # revision or a modified tree.
 #
-# Three gates before anything is published:
+# Five gates before anything is published:
 #
 #   guard   the tag is on main, and the version/commit are resolved once
-#   build   the twelve archives plus checksums.txt, with read-only permissions
-#   smoke   the Windows CLI is actually started on windows-latest
+#   build   the twelve cgo-free archives plus checksums.txt, read-only
+#   gui     eznit-gui on the four platforms that build it natively: Linux amd64,
+#           Windows amd64 (mingw) and both macOS targets. Fyne needs cgo, so it
+#           is not a cross-compile; the Linux/Windows arm64 CLI archives carry
+#           no window yet (#219)
+#   pack    add the window and its licences to each CLI archive, verify every
+#           archive (PE, Mach-O, provenance), and regenerate checksums.txt
+#   smoke   the Windows CLI and the window are started on windows-latest
 #
-# `publish` needs all three and runs only on a tag push. `workflow_dispatch`
-# runs the same build and smoke, keeps the archives on the run, and publishes
+# `publish` needs all of them and runs only on a tag push. `workflow_dispatch`
+# runs guard/build/gui/pack/smoke, keeps the archives on the run, and publishes
 # nothing -- the way to exercise this pipeline without a tag.
 
 on:
@@ -118,8 +124,177 @@ jobs:
       - name: Upload the archives to the run
         uses: actions/upload-artifact@v7
         with:
-          name: eznit-${{ needs.guard.outputs.version }}
+          name: archives
           path: build/dist/*
+          if-no-files-found: error
+
+  gui:
+    name: Build eznit-gui ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: guard
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux,   goarch: amd64, runner: ubuntu-latest,  method: native }
+          - { goos: windows, goarch: amd64, runner: ubuntu-latest,  method: mingw }
+          - { goos: darwin,  goarch: amd64, runner: macos-15-intel, method: native }
+          - { goos: darwin,  goarch: arm64, runner: macos-latest,   method: native }
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Install the Linux GUI headers
+        if: matrix.method == 'native' && matrix.goos == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev wayland-protocols
+
+      - name: Install the mingw cross compiler
+        if: matrix.method == 'mingw'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-mingw-w64-x86-64 zip
+
+      - name: Build (native runner)
+        if: matrix.method == 'native'
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          mkdir -p "out/gui-${GOOS}-${GOARCH}"
+          CGO_ENABLED=1 GOOS="${GOOS}" GOARCH="${GOARCH}" go build -tags fyne -trimpath \
+            -ldflags "-X main.Version=${VERSION}" \
+            -o "out/gui-${GOOS}-${GOARCH}/eznit-gui" ./cmd/gui
+
+      - name: Build (mingw, Windows amd64)
+        if: matrix.method == 'mingw'
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p out/gui-windows-amd64
+
+          # The icon and the version block are a .syso beside the package; it
+          # is generated for this build and removed afterwards.
+          GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 \
+            go run ./internal/tools/winres -icon assets/logo.png \
+              -out cmd/gui/rsrc_windows_amd64.syso -arch amd64 \
+              -name eznit-gui -description "eznit desktop app" -company eznit \
+              -app-id com.fiwon123.eznit.gui -version "$VERSION"
+          trap 'rm -f cmd/gui/rsrc_windows_amd64.syso' EXIT
+
+          CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+            go build -tags fyne -trimpath \
+              -ldflags "-H windowsgui -X main.Version=$VERSION" \
+              -o out/gui-windows-amd64/eznit-gui.exe ./cmd/gui
+
+          # The mingw link must stay on msvcrt, the runtime every Windows has;
+          # the UCRT API sets are the heap of small DLLs a machine can miss.
+          if command -v x86_64-w64-mingw32-objdump >/dev/null 2>&1; then
+            if x86_64-w64-mingw32-objdump -p out/gui-windows-amd64/eznit-gui.exe | grep -q 'api-ms-win-crt'; then
+              echo "::error::eznit-gui.exe imports the UCRT API sets; the cross-link must stay on msvcrt"
+              exit 1
+            fi
+            if ! x86_64-w64-mingw32-objdump -p out/gui-windows-amd64/eznit-gui.exe | grep -q 'msvcrt.dll'; then
+              echo "::error::eznit-gui.exe does not import msvcrt.dll; the cross-link changed runtime"
+              exit 1
+            fi
+          fi
+
+          go run ./internal/tools/winres -verify out/gui-windows-amd64/eznit-gui.exe
+
+      - name: Upload the window
+        uses: actions/upload-artifact@v7
+        with:
+          name: gui-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: out/gui-${{ matrix.goos }}-${{ matrix.goarch }}/eznit-gui*
+          if-no-files-found: error
+
+  pack:
+    name: Pack the window into the archives
+    needs: [guard, build, gui]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Download the cgo-free archives
+        uses: actions/download-artifact@v8
+        with:
+          name: archives
+          path: dist
+
+      - name: Download the window builds
+        uses: actions/download-artifact@v8
+        with:
+          # One directory per artifact — guis/gui-linux-amd64/eznit-gui — so
+          # the six binaries cannot overwrite each other and the packer knows
+          # which platform each one is.
+          pattern: gui-*
+          path: guis
+
+      - name: Add the window to each CLI archive
+        run: scripts/pack-gui.sh dist guis
+
+      - name: Verify every archive
+        env:
+          PROVENANCE_COMMIT: ${{ needs.guard.outputs.commit }}
+        run: |
+          set -euo pipefail
+          rm -rf verify && mkdir -p verify/cli-gui verify/cli-plain verify/server
+          for archive in dist/*-cli_*; do
+            case "$archive" in
+              # The arm64 CLI archives carry no window yet (#219).
+              *linux_arm64*|*windows_arm64*) ln "$archive" verify/cli-plain/ ;;
+              *) ln "$archive" verify/cli-gui/ ;;
+            esac
+          done
+          for archive in dist/*-server_*; do ln "$archive" verify/server/; done
+
+          host="GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) CGO_ENABLED=0"
+          env $host go run ./internal/tools/winres -verify-archives verify/cli-gui \
+            -app eznit -short ez -gui \
+            -files README.md,LICENSE,LICENSE-FYNE,LICENSE-APACHE,NOTICE \
+            -commit "$PROVENANCE_COMMIT"
+          env $host go run ./internal/tools/winres -verify-archives verify/cli-plain \
+            -app eznit -short ez \
+            -files README.md,LICENSE \
+            -commit "$PROVENANCE_COMMIT"
+          env $host go run ./internal/tools/winres -verify-archives verify/server \
+            -app eznit-server \
+            -files README.md,LICENSE,RUNNING.md,docker-compose.yml \
+            -commit "$PROVENANCE_COMMIT"
+
+      - name: Regenerate the checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          rm -f checksums.txt
+          sha256sum *.tar.gz *.zip > checksums.txt
+          cat checksums.txt
+
+      - name: Upload the packed archives
+        uses: actions/upload-artifact@v7
+        with:
+          name: archives-packed
+          path: dist/*
           if-no-files-found: error
 
   smoke:
@@ -127,7 +302,7 @@ jobs:
     # A download that will not start is the failure this job exists to catch,
     # and it is invisible from the build: the exe can be the wrong subsystem or
     # miss a runtime. Run it, on the OS it was built for.
-    needs: [guard, build]
+    needs: [guard, pack]
     runs-on: windows-latest
     permissions:
       contents: read
@@ -135,7 +310,7 @@ jobs:
       - name: Download the archives
         uses: actions/download-artifact@v8
         with:
-          name: eznit-${{ needs.guard.outputs.version }}
+          name: archives-packed
           path: smoke
 
       - name: Run the binaries a user downloads
@@ -163,11 +338,22 @@ jobs:
           & $alias.FullName -v | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "ez.exe -v exited $LASTEXITCODE" }
 
-          Write-Host "smoke ok: $reported"
+          # --help exits before the toolkit starts, so this proves the loader
+          # takes the window (subsystem, icon resources) without a GPU.
+          $gui = Get-ChildItem smoke\extracted -Recurse -Filter 'eznit-gui.exe' | Select-Object -First 1
+          if (-not $gui) { throw 'eznit-gui.exe is missing from the archive' }
+          $window = Start-Process $gui.FullName -ArgumentList '--help' -PassThru
+          if (-not $window.WaitForExit(60000)) {
+            $window.Kill()
+            throw 'eznit-gui.exe --help did not exit within 60 s'
+          }
+          if ($window.ExitCode -ne 0) { throw "eznit-gui.exe --help failed (exit $($window.ExitCode))" }
+
+          Write-Host "smoke ok: $reported; the window starts"
 
   publish:
     name: Publish the release
-    needs: [guard, build, smoke]
+    needs: [guard, pack, smoke]
     # A dry run builds and smokes; only a tag publishes.
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -180,7 +366,7 @@ jobs:
       - name: Download the archives
         uses: actions/download-artifact@v8
         with:
-          name: eznit-${{ needs.guard.outputs.version }}
+          name: archives-packed
           path: assets
 
       # The archives were hashed when they were built. Re-hash the copy that is
@@ -227,7 +413,8 @@ jobs:
           | 🍎 amd64 | `eznit-cli_@VERSION@_darwin_amd64.tar.gz` | `eznit-server_@VERSION@_darwin_amd64.tar.gz` |
           | 🍎 arm64 | `eznit-cli_@VERSION@_darwin_arm64.tar.gz` | `eznit-server_@VERSION@_darwin_arm64.tar.gz` |
 
-          The CLI archive carries `eznit` and `ez`. The server bundle carries
+          The CLI archive carries `eznit`, `ez`, `eznit-gui` and the licences.
+          The server bundle carries
           `eznit-server`, the migrations, the Compose services and
           `RUNNING.md`, which says what runs from it and what does not.
 
