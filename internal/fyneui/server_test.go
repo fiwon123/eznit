@@ -25,13 +25,17 @@ func newTestServerView(t *testing.T, dir string) *serverView {
 	app := test.NewApp()
 	t.Cleanup(app.Quit)
 
+	window := app.NewWindow("test")
+
 	view := newServerView(&ui{
 		app:     app,
-		window:  app.NewWindow("test"),
+		window:  window,
 		updater: &appUpdater{version: "test"},
 	}, dir)
 
-	view.content()
+	// Lay the tab out as the window would: a test that only builds it cannot
+	// see what a person would (or would not) be able to reach.
+	window.SetContent(view.content())
 
 	return view
 }
