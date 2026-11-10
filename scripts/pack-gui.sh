@@ -60,10 +60,13 @@ for archive in "$dist"/eznit-cli_*; do
 		source="$guis/gui-$hyphenated/$binary"
 	fi
 	if [ ! -f "$source" ]; then
-		# Not every archive carries the window yet: Linux/Windows arm64 are
-		# CLI-only until #219. The verification step checks the split.
-		echo "no window for $osarch — $base left CLI-only"
-		continue
+		# Every archive carries the window (six platforms build it). A missing
+		# one is a broken GUI matrix, not a platform we ship without a window:
+		# packaging it anyway would publish an archive that silently differs
+		# from its neighbours, and the verifier's -gui group would only catch
+		# it later.
+		echo "ERROR: no window for $osarch — $base would ship CLI-only" >&2
+		exit 1
 	fi
 
 	# An absolute archive path: the recipe changes directory to rebuild it.

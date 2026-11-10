@@ -125,7 +125,7 @@ stay cgo-free and a machine without GL can still pass the gate.
 **CI (GUI)** runs the same vet/test/build on pull requests (the workflow is
 `.github/workflows/ci.gui.yml`). It is the only place the GUI is compiled in
 this repository's automation; the release matrix builds the six window
-binaries and packs four of them into the CLI archives.
+binaries — one per archive — and packs all six into the CLI archives.
 
 ## 🧱 Migrations
 
