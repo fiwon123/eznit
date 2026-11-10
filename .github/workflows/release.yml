@@ -315,7 +315,7 @@ jobs:
           pattern: gui-*
           path: guis
 
-      - name: Add the window to each CLI archive
+      - name: Add the window to each archive
         run: scripts/pack-gui.sh dist guis
 
       - name: Verify every archive
@@ -334,9 +334,11 @@ jobs:
             -app eznit -short ez -gui \
             -files README.md,LICENSE,LICENSE-FYNE,LICENSE-APACHE,NOTICE \
             -commit "$PROVENANCE_COMMIT"
+          # The server bundle carries the client's window, whose name is not
+          # the app's plus a suffix, so the name is given explicitly.
           env $host go run ./internal/tools/winres -verify-archives verify/server \
-            -app eznit-server \
-            -files README.md,LICENSE,RUNNING.md,docker-compose.yml \
+            -app eznit-server -gui -gui-name eznit-gui \
+            -files README.md,LICENSE,LICENSE-FYNE,LICENSE-APACHE,NOTICE,RUNNING.md,docker-compose.yml \
             -commit "$PROVENANCE_COMMIT"
 
       - name: Regenerate the checksums
@@ -406,7 +408,23 @@ jobs:
           }
           if ($window.ExitCode -ne 0) { throw "eznit-gui.exe --help failed (exit $($window.ExitCode))" }
 
-          Write-Host "smoke ok: $reported; the window starts"
+          # The server bundle carries the same window: run the copy that came
+          # from that archive, so a bundle shipped without it fails here.
+          $serverZip = Get-ChildItem smoke -Recurse -Filter 'eznit-server_*_windows_amd64.zip' | Select-Object -First 1
+          if (-not $serverZip) { throw 'the windows/amd64 server archive is missing from the artifact' }
+
+          Expand-Archive -LiteralPath $serverZip.FullName -DestinationPath smoke\server -Force
+          $panel = Get-ChildItem smoke\server -Recurse -Filter 'eznit-gui.exe' | Select-Object -First 1
+          if (-not $panel) { throw 'eznit-gui.exe is missing from the server bundle' }
+
+          $bundleWindow = Start-Process $panel.FullName -ArgumentList '--help' -PassThru
+          if (-not $bundleWindow.WaitForExit(60000)) {
+            $bundleWindow.Kill()
+            throw 'the server bundle window did not exit within 60 s'
+          }
+          if ($bundleWindow.ExitCode -ne 0) { throw "the server bundle window failed (exit $($bundleWindow.ExitCode))" }
+
+          Write-Host "smoke ok: $reported; the window starts in both bundles"
 
   publish:
     name: Publish the release

@@ -33,11 +33,14 @@ label, so they read as a changelog rather than a raw commit list.
 - **gui** — `eznit-gui` for all six platforms: Linux amd64 and arm64 on runners of
   that architecture, Windows amd64 with mingw, Windows arm64 with llvm-mingw, and
   both macOS targets natively.
-- **pack** — the window and its licences are added to every CLI archive, then each
-  archive is verified (names, PE, Mach-O, provenance) and the checksums are rebuilt.
+- **pack** — the window and its licences are added to every archive, CLI and
+  server alike, then each archive is verified (names, PE, Mach-O, provenance) and
+  the checksums are rebuilt. The server group is checked with `-gui -gui-name
+  eznit-gui`: a server bundle without the window fails here.
 - **smoke** — on `windows-latest`, the Windows CLI archive is unpacked and `eznit
-  -v` and `ez -v` are actually run. A binary that cannot start fails the release
-  instead of shipping.
+  -v` and `ez -v` are actually run, then `eznit-gui.exe --help` in both the CLI
+  and the server archive. A binary that cannot start fails the release instead of
+  shipping.
 - **publish** — runs only on a tag push; needs all three above. It re-verifies the
   checksums, composes the notes, and creates the GitHub Release.
 
@@ -57,7 +60,7 @@ archive name, never in the binary name.
 | Asset | Contents |
 | --- | --- |
 | `eznit-cli_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux, macOS) | `eznit`, `ez`, `eznit-gui`, `add_to_path.ps1` or `add_to_path.sh`, README, LICENSE, LICENSE-FYNE, LICENSE-APACHE, NOTICE |
-| `eznit-server_<version>_<os>_<arch>.zip` / `.tar.gz` | `eznit-server`, `db/migrations/`, `scripts/run_migrate.sh`, `docker-compose.yml`, the example configuration and secret files, `RUNNING.md`, README, LICENSE |
+| `eznit-server_<version>_<os>_<arch>.zip` / `.tar.gz` | `eznit-server`, `eznit-gui`, `db/migrations/`, `scripts/run_migrate.sh`, `docker-compose.yml`, the example configuration and secret files, `RUNNING.md`, README, LICENSE, LICENSE-FYNE, LICENSE-APACHE, NOTICE |
 | `checksums.txt` | SHA-256 of every archive |
 
 Each archive is checked after it is written: exactly one top-level folder, named
@@ -89,4 +92,6 @@ A release archive is a **server bundle**, not a source checkout: there is no
 `go.mod`, no `web/`, and no image to build. The database and migration job are
 published images plus the SQL in `db/migrations/`; run the prebuilt server against
 them. The bundle's `RUNNING.md` has the exact steps and says what the bundle does
-not prove.
+not prove. The bundle's `eznit-gui` opens the **Server** tab, which starts that
+server, shows its log and edits its `.env` and password file — the same steps as
+RUNNING.md, without a terminal.

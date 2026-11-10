@@ -1,15 +1,20 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/fiwon123/eznit/internal/platform/api"
 	"github.com/fiwon123/eznit/internal/platform/sql"
@@ -20,6 +25,14 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// run holds main's body so the defers it takes — the log flush, the database
+// connection — run on every exit path, a failed start included.
+func run() error {
 
 	// .env.local overwrite .env for development
 	_ = godotenv.Load(".env.local", ".env")
@@ -34,14 +47,14 @@ func main() {
 	}
 	logger, err := logger.NewJson(logsFolder, debugFlag)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer logger.Sync()
 
 	db, err := sql.Open("postgres", sql.DSNFromEnv())
 	if err != nil {
 		logger.Error("Unable to connect to PostgreSQL!")
-		log.Fatal(err)
+		return err
 	}
 	defer db.Close()
 
@@ -79,13 +92,70 @@ func main() {
 		Handler: handler,
 	}
 
+	// Bind before announcing the server. A busy port is then a start failure
+	// the caller can report, not a process that says it is up and dies — the
+	// desktop control panel tells those two apart.
+	listener, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		logger.Error("Unable to listen on " + srv.Addr)
+		return err
+	}
+
+	// Ctrl-C, and the SIGTERM that `docker stop` or a service manager sends on
+	// Unix, ask for a drain rather than a kill: serveUntil gives the requests
+	// already running a bounded chance to finish.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	logger.Info("Server Running...")
-	err = srv.ListenAndServe()
-	if !errors.Is(err, http.ErrServerClosed) {
-		fmt.Println(err)
+
+	if err := serveUntil(ctx, srv, listener, shutdownTimeout); err != nil {
+		logger.Error("The server stopped with an error: " + err.Error())
+		return err
 	}
 
 	logger.Info("Server Stopped")
+
+	return nil
+}
+
+// shutdownTimeout is how long in-flight requests get to finish after a stop
+// signal.
+const shutdownTimeout = 10 * time.Second
+
+// serveUntil serves requests from listener until ctx is cancelled, then drains
+// for up to drain and returns nil when everything finished in time.
+//
+// A stop is not a kill: Shutdown closes the listener and waits for the handlers
+// that are already running, which is what keeps an upload from being cut in
+// half by Ctrl-C. A drain that overruns closes the connections and returns the
+// error, so the process can still exit.
+func serveUntil(ctx context.Context, srv *http.Server, listener net.Listener, drain time.Duration) error {
+	served := make(chan error, 1)
+	go func() {
+		served <- srv.Serve(listener)
+	}()
+
+	select {
+	case err := <-served:
+		// Serve returned on its own: the listener failed under us, which is a
+		// real error, or the server was closed already, which is not.
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+	}
+
+	drainCtx, cancel := context.WithTimeout(context.Background(), drain)
+	defer cancel()
+
+	if err := srv.Shutdown(drainCtx); err != nil {
+		_ = srv.Close()
+		return fmt.Errorf("the server did not drain within %s: %w", drain, err)
+	}
+
+	return nil
 }
 
 // apiPort is the port the API listens on.

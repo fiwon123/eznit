@@ -47,7 +47,8 @@ func main() {
 	verifyArchivesDir := flag.String("verify-archives", "", "check every release archive in this directory instead of writing one")
 	app := flag.String("app", "", "binary name the archives must carry (with -verify-archives)")
 	short := flag.String("short", "", "optional alias the archives must carry (with -verify-archives)")
-	requireGUI := flag.Bool("gui", false, "require <app>-gui in every archive (with -verify-archives)")
+	requireGUI := flag.Bool("gui", false, "require a GUI binary in every archive (with -verify-archives)")
+	guiName := flag.String("gui-name", "", "GUI binary name; defaults to <app>-gui")
 	commit := flag.String("commit", "", "require this vcs.revision in every binary (with -verify-archives; empty skips)")
 	files := flag.String("files", "README.md,LICENSE", "comma-separated files every archive must carry (with -verify-archives)")
 	flag.Parse()
@@ -59,11 +60,12 @@ func main() {
 		}
 
 		options := archiveOptions{
-			App:    *app,
-			Short:  *short,
-			GUI:    *requireGUI,
-			Commit: *commit,
-			Files:  splitList(*files),
+			App:     *app,
+			Short:   *short,
+			GUI:     *requireGUI,
+			GUIName: *guiName,
+			Commit:  *commit,
+			Files:   splitList(*files),
 		}
 
 		if err := verifyArchives(*verifyArchivesDir, options); err != nil {

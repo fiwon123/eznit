@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
+	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +12,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 )
 
 // builtUI is a stand-in for a `make web_build` output, labelled so a test can
@@ -176,5 +180,185 @@ func TestWebUIEnabled(t *testing.T) {
 	t.Setenv("API_SERVE_WEB", "not-a-bool")
 	if !webUIEnabled() {
 		t.Error("webUIEnabled() = false, want true when unparsable")
+	}
+}
+
+// listenLocal binds a listener a test can close, on a port the kernel picks.
+func listenLocal(t *testing.T) net.Listener {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+
+	return listener
+}
+
+// waitForAnswer retries until the server accepts a request, so a test never
+// races the goroutine that calls Serve.
+func waitForAnswer(t *testing.T, addr string) {
+	t.Helper()
+
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	deadline := time.Now().Add(5 * time.Second)
+
+	for time.Now().Before(deadline) {
+		resp, err := client.Get("http://" + addr + "/")
+		if err == nil {
+			resp.Body.Close()
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatal("the server never answered")
+}
+
+// A cancel stops the server and closes its port: a start that follows hard on
+// a stop must not find a listener nobody owns.
+func TestServeUntilStopsOnCancel(t *testing.T) {
+	listener := listenLocal(t)
+	addr := listener.Addr().String()
+
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- serveUntil(ctx, srv, listener, 5*time.Second) }()
+
+	waitForAnswer(t, addr)
+	cancel()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("serveUntil() = %v, want nil after a clean drain", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("serveUntil() did not return after the context was cancelled")
+	}
+
+	client := &http.Client{Timeout: 300 * time.Millisecond}
+	if resp, err := client.Get("http://" + addr + "/"); err == nil {
+		resp.Body.Close()
+		t.Error("the port still answers after the shutdown")
+	}
+}
+
+// A stop is a drain: a request already being handled finishes, and its
+// response arrives, before serveUntil returns.
+func TestServeUntilDrainsInFlightRequests(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(entered)
+		<-release
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("finished"))
+	})}
+
+	listener := listenLocal(t)
+	addr := listener.Addr().String()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- serveUntil(ctx, srv, listener, 5*time.Second) }()
+
+	type answer struct {
+		code int
+		body string
+		err  error
+	}
+	answers := make(chan answer, 1)
+	go func() {
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Get("http://" + addr + "/upload")
+		if err != nil {
+			answers <- answer{err: err}
+			return
+		}
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(resp.Body)
+		answers <- answer{code: resp.StatusCode, body: string(body), err: err}
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the request never reached the handler")
+	}
+
+	cancel()
+	close(release)
+
+	select {
+	case got := <-answers:
+		if got.err != nil {
+			t.Fatalf("the in-flight request failed during the drain: %v", got.err)
+		}
+		if got.code != http.StatusOK || got.body != "finished" {
+			t.Errorf("the in-flight request answered %d %q, want %d %q",
+				got.code, got.body, http.StatusOK, "finished")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the in-flight request never answered")
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("serveUntil() = %v, want nil after the drain", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("serveUntil() did not return after the drain")
+	}
+}
+
+// A request that outlives the drain is cut off rather than holding the process
+// open, and the caller learns the drain failed.
+func TestServeUntilReportsADrainThatTimedOut(t *testing.T) {
+	entered := make(chan struct{})
+	stuck := make(chan struct{})
+	defer close(stuck)
+
+	srv := &http.Server{Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		close(entered)
+		<-stuck
+	})}
+
+	listener := listenLocal(t)
+	addr := listener.Addr().String()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- serveUntil(ctx, srv, listener, 100*time.Millisecond) }()
+
+	go func() {
+		client := &http.Client{Timeout: 10 * time.Second}
+		if resp, err := client.Get("http://" + addr + "/stuck"); err == nil {
+			resp.Body.Close()
+		}
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the request never reached the handler")
+	}
+
+	cancel()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("serveUntil() = nil, want the drain timeout reported")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("serveUntil() did not return after the drain timed out")
 	}
 }
