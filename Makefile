@@ -98,13 +98,13 @@ BUILD_API := $(BUILD_DIR)/api
 BUILD_GUI := $(BUILD_DIR)/gui
 
 # Release packaging: one folder per archive, named
-# <family>_<version>_<os>_<arch>, compressed from its parent so extraction
-# creates exactly that folder. Two families, because a CLI user should not
-# download the migrations and a server deploy does not need the `ez` alias.
+# <name>_<version>_<os>_<arch>, compressed from its parent so extraction
+# creates exactly that folder. One archive holds the whole product — client,
+# server, migrations and the local stack — because two archives carried the same
+# 33 MB window and a user who wanted both downloaded it twice (#242).
 DIST_DIR := $(BUILD_DIR)/dist
 STAGE_DIR := $(BUILD_DIR)/stage
-CLI_FAMILY := $(APP_NAME)-cli
-SERVER_FAMILY := $(APP_NAME)-server
+FAMILY := $(APP_NAME)
 
 # The platform lives in the archive name, never in the binary name: the README
 # tells a user to run `eznit`, and a suffixed binary is unreachable by it.
@@ -124,13 +124,15 @@ DESCRIPTION ?= Self-hosted project setup (API, CLI and web UI)
 # `git describe` is not a release claim; the release workflow sets it to the
 # tagged commit so a binary from another revision (or a dirty tree) fails.
 PROVENANCE_COMMIT ?=
-VERIFY_FILES_CLI ?= README.md,LICENSE
-VERIFY_FILES_SERVER ?= README.md,LICENSE,RUNNING.md,docker-compose.yml
+# What `make verify-release` requires locally, where `make release` has no window
+# (the window is cgo, and a machine without GL cannot build it). The release
+# workflow adds the window's licences to this list.
+VERIFY_FILES ?= README.md,LICENSE,RUNNING.md,docker-compose.yml
 
 ## Builds
 .PHONY: clean
 .PHONY: build build_cli build_api build_gui verify
-.PHONY: release release-platform cli-platform server-platform verify-release checksums
+.PHONY: release release-platform verify-release checksums
 .PHONY: check test_integration
 
 # The local developer build: the binaries the README tells you to run from
@@ -192,10 +194,10 @@ gui_check: ## vet and test the Fyne code (needs cgo + GL/X11 headers)
 	CGO_ENABLED=1 go test -tags fyne ./...
 
 # --- Release packaging -------------------------------------------------------
-# One archive per platform per family, each extracting into one folder named
-# after it. A flat archive scatters the binaries, the installer and the licenses
-# into the directory the user ran the command in; `add_to_path` then adds that
-# directory to PATH instead of the extracted tool.
+# One archive per platform, each extracting into one folder named after it. A
+# flat archive scatters the binaries, the installer and the licenses into the
+# directory the user ran the command in; `add_to_path` then adds that directory
+# to PATH instead of the extracted tool.
 #
 # `make release` builds the web UI once (both binaries embed it), then one
 # platform at a time so the output reads in order, then the checksums.
@@ -210,16 +212,18 @@ release: ## Build one-folder archives for every platform into build/dist
 	@$(MAKE) --no-print-directory checksums
 	@echo "Release $(VERSION) ready in $(DIST_DIR)"
 
-release-platform: cli-platform server-platform
-
-cli-platform:
+release-platform:
 	@set -eu; \
-	folder="$(CLI_FAMILY)_$(VERSION)_$(GOOS)_$(GOARCH)"; \
+	if [ ! -f "$(WEB_FOLDER)/dist/index.html" ]; then \
+	  echo "ERROR: $(WEB_FOLDER)/dist/index.html is missing -- the server embeds the UI;" >&2; \
+	  echo "       run 'make web_build' first ('make release' does it for you)." >&2; exit 1; \
+	fi; \
+	folder="$(FAMILY)_$(VERSION)_$(GOOS)_$(GOARCH)"; \
 	stage="$(STAGE_DIR)/$$folder"; \
 	ext=""; [ "$(GOOS)" = "windows" ] && ext=".exe"; \
-	rm -rf "$$stage"; mkdir -p "$$stage" "$(DIST_DIR)"; \
-	echo "cli    $(VERSION) $(GOOS)/$(GOARCH)"; \
-	syso=""; \
+	rm -rf "$$stage"; mkdir -p "$$stage/db" "$$stage/scripts" "$$stage/secrets" "$(DIST_DIR)"; \
+	echo "eznit  $(VERSION) $(GOOS)/$(GOARCH)"; \
+	cli_syso=""; api_syso=""; \
 	if [ "$(GOOS)" = "windows" ]; then \
 	  if [ ! -f "$(ICON)" ]; then \
 	    echo "ERROR: $(ICON) is missing -- it is the one icon source; restore it (see assets/README.md)" >&2; exit 1; \
@@ -227,22 +231,35 @@ cli-platform:
 	  if [ ! -f "$(WINRES)/main.go" ]; then \
 	    echo "ERROR: $(WINRES) is missing -- copy templates/go/internal/tools/winres there" >&2; exit 1; \
 	  fi; \
-	  syso="$(CLI_FOLDER)/rsrc_windows_$(GOARCH).syso"; \
-	  trap 'rm -f "$$syso"' EXIT; \
+	  cli_syso="$(CLI_FOLDER)/rsrc_windows_$(GOARCH).syso"; \
+	  api_syso="$(API_FOLDER)/rsrc_windows_$(GOARCH).syso"; \
+	  trap 'rm -f "$$cli_syso" "$$api_syso"' EXIT; \
 	  GOOS="$$(go env GOHOSTOS)" GOARCH="$$(go env GOHOSTARCH)" CGO_ENABLED=0 \
-	    go run "./$(WINRES)" -icon "$(ICON)" -out "$$syso" -arch "$(GOARCH)" \
+	    go run "./$(WINRES)" -icon "$(ICON)" -out "$$cli_syso" -arch "$(GOARCH)" \
 	      -name "$(APP_NAME)" -description "$(DESCRIPTION)" -company "$(COMPANY)" \
+	      -app-id "$(APP_ID)" -version "$(VERSION)"; \
+	  GOOS="$$(go env GOHOSTOS)" GOARCH="$$(go env GOHOSTARCH)" CGO_ENABLED=0 \
+	    go run "./$(WINRES)" -icon "$(ICON)" -out "$$api_syso" -arch "$(GOARCH)" \
+	      -name "$(APP_NAME)-server" -description "$(DESCRIPTION)" -company "$(COMPANY)" \
 	      -app-id "$(APP_ID)" -version "$(VERSION)"; \
 	fi; \
 	CGO_ENABLED=0 GOOS="$(GOOS)" GOARCH="$(GOARCH)" go build -trimpath \
 	  -ldflags "-s -w -X $(INJECT_VERSION)=$(VERSION)" \
 	  -o "$$stage/$(APP_NAME)$$ext" $(CLI_FOLDER); \
 	cp "$$stage/$(APP_NAME)$$ext" "$$stage/$(APP_NAME_SHORT)$$ext"; \
-	if [ -n "$$syso" ]; then \
+	CGO_ENABLED=0 GOOS="$(GOOS)" GOARCH="$(GOARCH)" go build -trimpath \
+	  -ldflags "-s -w -X $(INJECT_VERSION)=$(VERSION)" \
+	  -o "$$stage/$(APP_NAME)-server$$ext" $(API_FOLDER); \
+	if [ -n "$$cli_syso" ]; then \
 	  GOOS="$$(go env GOHOSTOS)" GOARCH="$$(go env GOHOSTARCH)" CGO_ENABLED=0 \
 	    go run "./$(WINRES)" -require-resources -verify-console "$$stage/$(APP_NAME).exe"; \
+	  GOOS="$$(go env GOHOSTOS)" GOARCH="$$(go env GOHOSTARCH)" CGO_ENABLED=0 \
+	    go run "./$(WINRES)" -require-resources -verify-console "$$stage/$(APP_NAME)-server.exe"; \
 	fi; \
-	cp README.md LICENSE "$$stage/"; \
+	cp -R $(MIGRATIONS) "$$stage/db/"; \
+	cp $(SCRIPT_MIGRATION) "$$stage/scripts/"; \
+	cp $(DOCKER_COMPOSE) $(ENV_EXAMPLE) README.md LICENSE RUNNING.md "$$stage/"; \
+	cp $(SECRETS_EXAMPLE) "$$stage/secrets/"; \
 	if [ "$(GOOS)" = "windows" ]; then cp $(WINDOWS_SCRIPT) "$$stage/"; \
 	else cp $(LINUX_SCRIPT) "$$stage/"; fi; \
 	archive="$(abspath $(DIST_DIR))/$$folder"; \
@@ -260,80 +277,22 @@ cli-platform:
 	fi; \
 	echo "       $$archive"
 
-server-platform:
-	@set -eu; \
-	if [ ! -f "$(WEB_FOLDER)/dist/index.html" ]; then \
-	  echo "ERROR: $(WEB_FOLDER)/dist/index.html is missing -- the server and the window embed the UI;" >&2; \
-	  echo "       run 'make web_build' first ('make release' does it for you)." >&2; exit 1; \
-	fi; \
-	folder="$(SERVER_FAMILY)_$(VERSION)_$(GOOS)_$(GOARCH)"; \
-	stage="$(STAGE_DIR)/$$folder"; \
-	ext=""; [ "$(GOOS)" = "windows" ] && ext=".exe"; \
-	rm -rf "$$stage"; mkdir -p "$$stage/db" "$$stage/scripts" "$$stage/secrets" "$(DIST_DIR)"; \
-	echo "server $(VERSION) $(GOOS)/$(GOARCH)"; \
-	api_syso=""; \
-	if [ "$(GOOS)" = "windows" ]; then \
-	  if [ ! -f "$(ICON)" ]; then \
-	    echo "ERROR: $(ICON) is missing -- it is the one icon source; restore it (see assets/README.md)" >&2; exit 1; \
-	  fi; \
-	  if [ ! -f "$(WINRES)/main.go" ]; then \
-	    echo "ERROR: $(WINRES) is missing -- copy templates/go/internal/tools/winres there" >&2; exit 1; \
-	  fi; \
-	  api_syso="$(API_FOLDER)/rsrc_windows_$(GOARCH).syso"; \
-	  trap 'rm -f "$$api_syso"' EXIT; \
-	  GOOS="$$(go env GOHOSTOS)" GOARCH="$$(go env GOHOSTARCH)" CGO_ENABLED=0 \
-	    go run "./$(WINRES)" -icon "$(ICON)" -out "$$api_syso" -arch "$(GOARCH)" \
-	      -name "$(APP_NAME)-server" -description "$(DESCRIPTION)" -company "$(COMPANY)" \
-	      -app-id "$(APP_ID)" -version "$(VERSION)"; \
-	fi; \
-	CGO_ENABLED=0 GOOS="$(GOOS)" GOARCH="$(GOARCH)" go build -trimpath \
-	  -ldflags "-s -w -X $(INJECT_VERSION)=$(VERSION)" \
-	  -o "$$stage/$(APP_NAME)-server$$ext" $(API_FOLDER); \
-	if [ -n "$$api_syso" ]; then \
-	  GOOS="$$(go env GOHOSTOS)" GOARCH="$$(go env GOHOSTARCH)" CGO_ENABLED=0 \
-	    go run "./$(WINRES)" -require-resources -verify-console "$$stage/$(APP_NAME)-server.exe"; \
-	fi; \
-	cp -R $(MIGRATIONS) "$$stage/db/"; \
-	cp $(SCRIPT_MIGRATION) "$$stage/scripts/"; \
-	cp $(DOCKER_COMPOSE) $(ENV_EXAMPLE) README.md LICENSE RUNNING.md "$$stage/"; \
-	cp $(SECRETS_EXAMPLE) "$$stage/secrets/"; \
-	archive="$(abspath $(DIST_DIR))/$$folder"; \
-	if [ "$(GOOS)" = "windows" ]; then \
-	  archive="$$archive.zip"; rm -f "$$archive"; \
-	  (cd "$(STAGE_DIR)" && zip -q -r "$$archive" "$$folder"); \
-	  tops="$$(zip -sf "$$archive" | sed -n 's/^  \([^/]*\).*$$/\1/p' | sort -u)"; \
-	else \
-	  archive="$$archive.tar.gz"; rm -f "$$archive"; \
-	  tar -czf "$$archive" -C "$(STAGE_DIR)" "$$folder"; \
-	  tops="$$(tar -tzf "$$archive" | sed 's|^\./||' | cut -d/ -f1 | sort -u)"; \
-	fi; \
-	if [ "$$tops" != "$$folder" ]; then \
-	  echo "ERROR: $$archive does not carry one folder $$folder (found: $$tops)" >&2; exit 1; \
-	fi; \
-	echo "       $$archive"
-
-# Check the finished archives, per family. The verifier reads the artifact that
-# would be uploaded: the folder layout, the names inside it, the PE in each
-# Windows archive, and — with PROVENANCE_COMMIT — the revision and cleanliness
-# the binary claims.
+# Check the finished archives. The verifier reads the artifact that would be
+# uploaded: the folder layout, the names inside it, the PE in each Windows
+# archive, and — with PROVENANCE_COMMIT — the revision and cleanliness the
+# binary claims.
 verify-release: ## Verify build/dist: layout, names, PE and provenance
 	@set -eu; \
 	if [ ! -f "$(WINRES)/main.go" ]; then \
 	  echo "ERROR: $(WINRES) is missing -- the release cannot be verified" >&2; exit 1; \
 	fi; \
-	rm -rf "$(BUILD_DIR)/verify"; mkdir -p "$(BUILD_DIR)/verify/cli" "$(BUILD_DIR)/verify/server"; \
-	for archive in "$(DIST_DIR)"/*-cli_*; do \
-	  [ -e "$$archive" ] || continue; ln "$$archive" "$(BUILD_DIR)/verify/cli/"; \
-	done; \
-	for archive in "$(DIST_DIR)"/*-server_*; do \
-	  [ -e "$$archive" ] || continue; ln "$$archive" "$(BUILD_DIR)/verify/server/"; \
+	rm -rf "$(BUILD_DIR)/verify"; mkdir -p "$(BUILD_DIR)/verify/all"; \
+	for archive in "$(DIST_DIR)"/*.tar.gz "$(DIST_DIR)"/*.zip; do \
+	  [ -e "$$archive" ] || continue; ln "$$archive" "$(BUILD_DIR)/verify/all/"; \
 	done; \
 	host="GOOS=$$(go env GOHOSTOS) GOARCH=$$(go env GOHOSTARCH) CGO_ENABLED=0"; \
-	env $$host go run "./$(WINRES)" -verify-archives "$(BUILD_DIR)/verify/cli" \
-	  -app "$(APP_NAME)" -short "$(APP_NAME_SHORT)" -files "$(VERIFY_FILES_CLI)" \
-	  $(if $(PROVENANCE_COMMIT),-commit "$(PROVENANCE_COMMIT)",); \
-	env $$host go run "./$(WINRES)" -verify-archives "$(BUILD_DIR)/verify/server" \
-	  -app "$(APP_NAME)-server" -files "$(VERIFY_FILES_SERVER)" \
+	env $$host go run "./$(WINRES)" -verify-archives "$(BUILD_DIR)/verify/all" \
+	  -app "$(APP_NAME)" -short "$(APP_NAME_SHORT)" -files "$(VERIFY_FILES)" \
 	  $(if $(PROVENANCE_COMMIT),-commit "$(PROVENANCE_COMMIT)",)
 
 # A download nobody can verify is only assumed intact. The hash list sits next
