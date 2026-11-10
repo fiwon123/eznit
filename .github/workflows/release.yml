@@ -16,10 +16,11 @@ name: Release
 #
 #   guard   the tag is on main, and the version/commit are resolved once
 #   build   the twelve cgo-free archives plus checksums.txt, read-only
-#   gui     eznit-gui on the four platforms that build it natively: Linux amd64,
-#           Windows amd64 (mingw) and both macOS targets. Fyne needs cgo, so it
-#           is not a cross-compile; the Linux/Windows arm64 CLI archives carry
-#           no window yet (#219)
+#   gui     eznit-gui on all six targets: Linux amd64 and arm64 natively (the
+#           arm64 one on an arm64 runner), Windows amd64 with mingw, Windows
+#           arm64 with llvm-mingw, and both macOS targets natively. Fyne needs
+#           cgo, so a target that cannot be built natively is built with a
+#           cross toolchain, never as a plain `go build`
 #   pack    add the window and its licences to each CLI archive, verify every
 #           archive (PE, Mach-O, provenance), and regenerate checksums.txt
 #   smoke   the Windows CLI and the window are started on windows-latest
@@ -138,10 +139,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { goos: linux,   goarch: amd64, runner: ubuntu-latest,  method: native }
-          - { goos: windows, goarch: amd64, runner: ubuntu-latest,  method: mingw }
-          - { goos: darwin,  goarch: amd64, runner: macos-15-intel, method: native }
-          - { goos: darwin,  goarch: arm64, runner: macos-latest,   method: native }
+          # The arm64 entries name an arm64 runner, not a cross compiler: the
+          # Fyne tree compiles natively there with nothing extra to pin. Only
+          # Windows arm64 has no native cgo story that is worth the moving
+          # parts, so it is cross-linked with llvm-mingw below.
+          - { goos: linux,   goarch: amd64, runner: ubuntu-latest,    method: native }
+          - { goos: linux,   goarch: arm64, runner: ubuntu-24.04-arm, method: native }
+          - { goos: windows, goarch: amd64, runner: ubuntu-latest,    method: mingw }
+          - { goos: windows, goarch: arm64, runner: ubuntu-latest,    method: llvm-mingw }
+          - { goos: darwin,  goarch: amd64, runner: macos-15-intel,   method: native }
+          - { goos: darwin,  goarch: arm64, runner: macos-latest,     method: native }
     steps:
       - uses: actions/checkout@v7
 
@@ -162,6 +169,25 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq gcc-mingw-w64-x86-64 zip
+
+      # llvm-mingw is the maintained aarch64-w64-mingw32 toolchain, and Ubuntu
+      # ships no mingw targeting arm64. Pin the release and the hash: this
+      # tarball is a build input, not a convenience download.
+      - name: Install llvm-mingw (Windows arm64)
+        if: matrix.method == 'llvm-mingw'
+        env:
+          LLVM_MINGW_VERSION: '20261104'
+          LLVM_MINGW_SHA256: '919380403de87dca3c581c2053230cd298af5e891286628ba0613b7fed370926'
+        run: |
+          set -euo pipefail
+          archive="llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-22.04-x86_64.tar.xz"
+          url="https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/${archive}"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" "$url"
+          printf '%s  %s\n' "$LLVM_MINGW_SHA256" "$RUNNER_TEMP/$archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/llvm-mingw"
+          tar -xJf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/llvm-mingw" --strip-components=1
+          echo "$RUNNER_TEMP/llvm-mingw/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/llvm-mingw/bin/aarch64-w64-mingw32-clang" --version | head -1
 
       - name: Build (native runner)
         if: matrix.method == 'native'
@@ -213,6 +239,45 @@ jobs:
 
           go run ./internal/tools/winres -verify out/gui-windows-amd64/eznit-gui.exe
 
+      - name: Build (llvm-mingw, Windows arm64)
+        if: matrix.method == 'llvm-mingw'
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p out/gui-windows-arm64
+
+          # Same .syso beside the package, generated for this architecture.
+          GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 \
+            go run ./internal/tools/winres -icon assets/logo.png \
+              -out cmd/gui/rsrc_windows_arm64.syso -arch arm64 \
+              -name eznit-gui -description "eznit desktop app" -company eznit \
+              -app-id com.fiwon123.eznit.gui -version "$VERSION"
+          trap 'rm -f cmd/gui/rsrc_windows_arm64.syso' EXIT
+
+          CC=aarch64-w64-mingw32-clang CGO_ENABLED=1 GOOS=windows GOARCH=arm64 \
+            go build -tags fyne -trimpath \
+              -ldflags "-H windowsgui -X main.Version=$VERSION" \
+              -o out/gui-windows-arm64/eznit-gui.exe ./cmd/gui
+
+          # llvm-mingw has no msvcrt target for arm64: the window links the UCRT
+          # API sets, which Windows 11 on ARM ships. The amd64 mingw assertion
+          # below pins msvcrt instead, so this is a different runtime on
+          # purpose, not a drift. What must not appear either way is a compiler
+          # runtime DLL — that is a file the user would have to go and find
+          # before the window starts.
+          imports="$(aarch64-w64-mingw32-objdump -p out/gui-windows-arm64/eznit-gui.exe)"
+          if printf '%s\n' "$imports" | grep -qE 'DLL Name: (libwinpthread|libgcc_s|libstdc\+\+|libc\+\+)'; then
+            echo "::error::eznit-gui.exe imports a compiler runtime DLL; the link must be static"
+            exit 1
+          fi
+          if ! printf '%s\n' "$imports" | grep -q 'api-ms-win-crt'; then
+            echo "::error::eznit-gui.exe does not import the UCRT API sets; the cross-link changed runtime"
+            exit 1
+          fi
+
+          go run ./internal/tools/winres -verify out/gui-windows-arm64/eznit-gui.exe
+
       - name: Upload the window
         uses: actions/upload-artifact@v7
         with:
@@ -258,24 +323,16 @@ jobs:
           PROVENANCE_COMMIT: ${{ needs.guard.outputs.commit }}
         run: |
           set -euo pipefail
-          rm -rf verify && mkdir -p verify/cli-gui verify/cli-plain verify/server
-          for archive in dist/*-cli_*; do
-            case "$archive" in
-              # The arm64 CLI archives carry no window yet (#219).
-              *linux_arm64*|*windows_arm64*) ln "$archive" verify/cli-plain/ ;;
-              *) ln "$archive" verify/cli-gui/ ;;
-            esac
-          done
+          rm -rf verify && mkdir -p verify/cli verify/server
+          for archive in dist/*-cli_*; do ln "$archive" verify/cli/; done
           for archive in dist/*-server_*; do ln "$archive" verify/server/; done
 
           host="GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) CGO_ENABLED=0"
-          env $host go run ./internal/tools/winres -verify-archives verify/cli-gui \
+          # Every CLI archive carries the window now, so one group with -gui:
+          # a platform the packer skipped fails here instead of shipping.
+          env $host go run ./internal/tools/winres -verify-archives verify/cli \
             -app eznit -short ez -gui \
             -files README.md,LICENSE,LICENSE-FYNE,LICENSE-APACHE,NOTICE \
-            -commit "$PROVENANCE_COMMIT"
-          env $host go run ./internal/tools/winres -verify-archives verify/cli-plain \
-            -app eznit -short ez \
-            -files README.md,LICENSE \
             -commit "$PROVENANCE_COMMIT"
           env $host go run ./internal/tools/winres -verify-archives verify/server \
             -app eznit-server \
@@ -429,8 +486,9 @@ jobs:
           - It does not run the API against a database, and it does not run the
             migrations. `RUNNING.md` and the known gaps in the repository say
             what that leaves unproven.
-          - The macOS and ARM64 archives are cross-compiled on Linux and never
-            executed. Only the Windows amd64 CLI is started by this workflow.
+          - The macOS archives are cross-compiled on Linux, and none of the
+            ARM64 binaries is executed on ARM hardware. Only the Windows amd64
+            CLI and window are started by this workflow.
 
           <details>
           <summary>🧾 Merged pull requests</summary>
