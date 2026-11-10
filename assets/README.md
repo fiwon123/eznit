@@ -4,10 +4,11 @@
 1024 px raster the build reads (the Windows resource object's icon is generated
 from it, and no `.ico` is committed).
 
-The mark is a rounded blue square with a white **E** built from four bars: a
-monogram that also reads as a stack of files. It is flat on purpose — no
-gradient, shadow or badge — so it stays legible at 16 px, the smallest size the
-Windows icon carries.
+The mark is a starting dot and two forward chevrons on a rounded blue square:
+"start, quickly" — eznit is *easy init*. The far chevron is a lighter tint so
+the direction has depth. It is flat on purpose — no gradient, shadow or badge —
+and the shapes are cut as filled polygons, not strokes, so every rasterizer
+(the Windows slicer included) draws the same thing at 16 px.
 
 `web/public/` holds the same two files plus a 32 px `favicon.svg`; the web
 header draws its own inline copy (`web/src/components/Logo.tsx`) so the
