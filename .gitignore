@@ -82,3 +82,6 @@ web/dist/*
 # The release workflow writes the tag here for fyne-cross, then removes it.
 # Gitignored so the binary keeps vcs.modified=false.
 cmd/gui/zz_version_generated.go
+
+# fyne-cross writes its bin/dist/tmp inside the repository.
+fyne-cross/
