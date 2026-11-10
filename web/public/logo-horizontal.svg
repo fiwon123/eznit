@@ -1,43 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="200" viewBox="0 0 900 200">
-  <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1e293b;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#0f172a;stop-opacity:1" />
-    </linearGradient>
-    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#22d3ee;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
-    </linearGradient>
-  </defs>
-  
-  <!-- Icon -->
-  <g transform="translate(20, 20)">
-    <rect width="160" height="160" rx="36" fill="url(#bg)"/>
-    
-    <g transform="translate(20, 20)">
-      <!-- Back file -->
-      <path d="M 30 25 L 75 25 L 80 30 L 80 80 L 30 80 Z" 
-            fill="none" stroke="#64748b" stroke-width="6" opacity="0.5"/>
-      <!-- Middle file -->
-      <path d="M 35 30 L 80 30 L 85 35 L 85 85 L 35 85 Z" 
-            fill="none" stroke="#94a3b8" stroke-width="6" opacity="0.7"/>
-      <!-- Front file -->
-      <path d="M 40 35 L 90 35 L 90 90 L 40 90 Z" 
-            fill="none" stroke="#ffffff" stroke-width="7"/>
-      <path d="M 75 35 L 90 35 L 75 20 Z" fill="#ffffff"/>
-    </g>
-    
-    <!-- Arrow -->
-    <g transform="translate(95, 95)">
-      <circle cx="0" cy="0" r="16" fill="url(#accent)"/>
-      <g stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none">
-        <path d="M -7 0 L 7 0"/>
-        <polyline points="3,-4 7,0 3,4"/>
-      </g>
-    </g>
+  <g transform="translate(24 23.2) scale(0.3)">
+    <rect width="512" height="512" rx="112" fill="#2563EB"/>
+    <rect x="130" y="140" width="60" height="232" rx="30" fill="#FFFFFF"/>
+    <rect x="130" y="140" width="252" height="60" rx="30" fill="#FFFFFF"/>
+    <rect x="130" y="226" width="204" height="60" rx="30" fill="#FFFFFF"/>
+    <rect x="130" y="312" width="252" height="60" rx="30" fill="#FFFFFF"/>
   </g>
-  
-  <!-- Text -->
-  <text x="210" y="125" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif" font-size="90" font-weight="700" fill="#e2e8f0" letter-spacing="-2px">eznit</text>
-  <text x="210" y="155" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="500" fill="#94a3b8" letter-spacing="3px">SELF-HOSTED STORAGE</text>
+  <text x="206" y="120" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="88" font-weight="700" fill="#0F172A" letter-spacing="-2">eznit</text>
+  <text x="208" y="152" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#5B6577" letter-spacing="3.5">PROJECT SETUP, SELF-HOSTED</text>
 </svg>
