@@ -216,9 +216,10 @@ the storage path, fixed in #117), #109 (the admin guard was a TODO) and #110
 (any session could read any account's email). The OpenAPI document describes the
 API that exists, the admin guard included.
 
-**The files, sessions, users, templates and commands domains, the CLI, the
-schema helper, the middleware, the web UI, the OpenAPI package, the path
-helper, the logger, the error type and the response envelope have tests;
+**The files, sessions, users, templates and commands domains, the CLI, the git
+providers, the schema helper, the middleware, the web UI, the OpenAPI package,
+the path helper, the logger, the error type and the response envelope have
+tests;
 `cmd/cli` has none** — it is the kong wiring the `internal/cli` tests cover
 one layer down. `make check` still never runs SQL; `make test_integration`
 (and the CI (Go) integration step) does, against a real PostgreSQL.
