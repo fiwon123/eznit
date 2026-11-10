@@ -61,9 +61,13 @@ drive a server on another machine, start the window there instead:
 GUI_API_URL=http://<server>:4000 ./eznit-gui
 ```
 
-The window is a GUI binary and needs the platform's GL libraries (on
-Debian/Ubuntu: `libgl1`, `libx11-6`, `libxkbcommon0`). There is no headless
-mode; `--help` and `--version` exit before the toolkit starts.
+The window is a GUI binary: it needs `libGL.so.1` and `libwayland-client.so.0`
+(on Debian/Ubuntu: `libgl1 libwayland-client0`, plus a working GL driver) and a
+glibc of at least **2.34** (Ubuntu 22.04, Debian 12) — the Linux windows are
+linked inside a Debian 12 image for that reason. The server binary has no such
+requirement: it is `CGO_ENABLED=0` and runs wherever a Go binary runs. There is
+no headless mode; `--help` and `--version` exit before the toolkit starts, which
+is what lets CI smoke the download.
 
 ## Migrating by hand
 

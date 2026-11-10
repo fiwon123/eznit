@@ -30,9 +30,12 @@ label, so they read as a changelog rather than a raw commit list.
 
 - **guard** — the tag is on `main`, and the version/commit are resolved once.
 - **build** — the archives plus `checksums.txt`, built with read-only permissions.
-- **gui** — `eznit-gui` for all six platforms: Linux amd64 and arm64 on runners of
-  that architecture, Windows amd64 with mingw, Windows arm64 with llvm-mingw, and
-  both macOS targets natively.
+- **gui** — `eznit-gui` for all six platforms: Windows amd64 with mingw, Windows
+  arm64 with llvm-mingw, both macOS targets natively, and the two Linux windows
+  in a separate job built inside an **Debian 12** container on a runner of each
+  architecture — the builder's glibc becomes the download's floor, and a current
+  runner produced a window Debian 12 could not start (#232). The job asserts the
+  floor (glibc 2.34) from the binary's own versioned symbols.
 - **pack** — the window and its licences are added to every archive, CLI and
   server alike, then each archive is verified (names, PE, Mach-O, provenance) and
   the checksums are rebuilt. The server group is checked with `-gui -gui-name
