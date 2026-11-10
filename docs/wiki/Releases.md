@@ -39,11 +39,10 @@ label, so they read as a changelog rather than a raw commit list.
 - **pack** — the window and its licences are added to every archive, CLI and
   server alike, then each archive is verified (names, PE, Mach-O, provenance) and
   the checksums are rebuilt. The server group is checked with `-gui -gui-name
-  eznit-gui`: a server bundle without the window fails here.
+  eznit-gui`: an archive without the window fails here.
 - **smoke** — on `windows-latest`, the Windows CLI archive is unpacked and `eznit
   -v` and `ez -v` are actually run, then `eznit-gui.exe --help` in both the CLI
-  and the server archive. A binary that cannot start fails the release instead of
-  shipping.
+  archive. A binary that cannot start fails the release instead of shipping.
 - **publish** — runs only on a tag push; needs all three above. It re-verifies the
   checksums, composes the notes, and creates the GitHub Release.
 
@@ -57,13 +56,12 @@ green dry run does not prove the publish step; only a real tag does.
 download extracts into a folder named after it instead of scattering files into the
 directory you ran the command in. `PLATFORMS` defaults to `windows/amd64`,
 `windows/arm64`, `linux/amd64`, `linux/arm64`, `darwin/amd64` and
-`darwin/arm64` — **12 archives** plus `checksums.txt`; the platform is in the
-archive name, never in the binary name.
+`darwin/arm64` — **one archive per platform**, six plus `checksums.txt`; the
+platform is in the archive name, never in the binary name.
 
 | Asset | Contents |
 | --- | --- |
-| `eznit-cli_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux, macOS) | `eznit`, `ez`, `eznit-gui`, `add_to_path.ps1` or `add_to_path.sh`, README, LICENSE, LICENSE-FYNE, LICENSE-APACHE, NOTICE |
-| `eznit-server_<version>_<os>_<arch>.zip` / `.tar.gz` | `eznit-server`, `eznit-gui`, `db/migrations/`, `scripts/run_migrate.sh`, `docker-compose.yml`, the example configuration and secret files, `RUNNING.md`, README, LICENSE, LICENSE-FYNE, LICENSE-APACHE, NOTICE |
+| `eznit_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux, macOS) | `eznit`, `ez`, `eznit-server`, `eznit-gui`, `add_to_path.ps1` or `add_to_path.sh`, `db/migrations/`, `scripts/run_migrate.sh`, `docker-compose.yml`, the example configuration and secret files, `RUNNING.md`, README, LICENSE, LICENSE-FYNE, LICENSE-APACHE, NOTICE |
 | `checksums.txt` | SHA-256 of every archive |
 
 Each archive is checked after it is written: exactly one top-level folder, named
@@ -91,7 +89,7 @@ sha256sum -c checksums.txt          # macOS: shasum -a 256 -c checksums.txt
 
 ## 🏃 Running a download
 
-A release archive is a **server bundle**, not a source checkout: there is no
+A release archive is the whole product, not a source checkout: there is no
 `go.mod`, no `web/`, and no image to build. The database and migration job are
 published images plus the SQL in `db/migrations/`; run the prebuilt server against
 them. The bundle's `RUNNING.md` has the exact steps and says what the bundle does

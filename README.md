@@ -115,20 +115,20 @@ a file in your home directory unless you point `--target` there.
 
 ## 📦 Download
 
-| Platform | CLI | Server bundle |
-| --- | --- | --- |
-| 🐧 Linux amd64 | `eznit-cli_<tag>_linux_amd64.tar.gz` | `eznit-server_<tag>_linux_amd64.tar.gz` |
-| 🐧 Linux arm64 | `eznit-cli_<tag>_linux_arm64.tar.gz` | `eznit-server_<tag>_linux_arm64.tar.gz` |
-| 🪟 Windows amd64 | `eznit-cli_<tag>_windows_amd64.zip` | `eznit-server_<tag>_windows_amd64.zip` |
-| 🪟 Windows arm64 | `eznit-cli_<tag>_windows_arm64.zip` | `eznit-server_<tag>_windows_arm64.zip` |
-| 🍎 macOS amd64 | `eznit-cli_<tag>_darwin_amd64.tar.gz` | `eznit-server_<tag>_darwin_amd64.tar.gz` |
-| 🍎 macOS arm64 | `eznit-cli_<tag>_darwin_arm64.tar.gz` | `eznit-server_<tag>_darwin_arm64.tar.gz` |
+| Platform | Archive |
+| --- | --- |
+| 🐧 Linux amd64 | `eznit_<tag>_linux_amd64.tar.gz` |
+| 🐧 Linux arm64 | `eznit_<tag>_linux_arm64.tar.gz` |
+| 🪟 Windows amd64 | `eznit_<tag>_windows_amd64.zip` |
+| 🪟 Windows arm64 | `eznit_<tag>_windows_arm64.zip` |
+| 🍎 macOS amd64 | `eznit_<tag>_darwin_amd64.tar.gz` |
+| 🍎 macOS arm64 | `eznit_<tag>_darwin_arm64.tar.gz` |
 
-The CLI archive carries `eznit`, `ez`, `eznit-gui` and the licences. The server
-bundle carries `eznit-server`, `eznit-gui`, the migrations, the Compose services
-and `RUNNING.md`. Both bundles carry the same window — on a server bundle its
-**Server** tab starts and configures the server beside it. Verify a download
-against `checksums.txt` from the release page.
+One download holds the whole product: `eznit` and `ez` (the CLI), `eznit-server`
+(the API), `eznit-gui` (the desktop window, whose **Server** tab runs the API
+beside it), the migrations, `docker-compose.yml` and the example configuration.
+`RUNNING.md` says what runs from it and what does not. Verify a download against
+`checksums.txt` from the release page.
 
 ## 🔒 Security status
 
@@ -173,7 +173,7 @@ This project says what it verified.
 - **No test sends a request through the whole stack.** The router is tested with
   no database, and the repositories are tested against a real PostgreSQL; no
   test starts the API and makes an HTTP call that reaches a query.
-- **The Windows server bundle is built, never started.** CI smoke-tests the
+- **The Windows server binary is built, never started.** CI smoke-tests the
   Windows CLI; the server and the Compose stack are not run on Windows.
 - **The ARM64 binaries are built, never executed** on ARM hardware, and the
   macOS archives are cross-compiled on Linux and never started on a Mac.

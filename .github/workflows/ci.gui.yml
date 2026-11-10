@@ -54,4 +54,41 @@ jobs:
         run: go test -tags fyne ./...
 
       - name: Build the window
-        run: go build -tags fyne ./cmd/gui
+        run: go build -tags fyne -o /tmp/eznit-gui ./cmd/gui
+
+      # Every other check stops before the toolkit starts: `go test` uses the
+      # software driver, and -version/-help exit first. This is the only place
+      # the real driver, a real X server and a real frame exist (#238).
+      - name: Install a virtual display and software GL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth libgl1-mesa-dri
+
+      - name: Open the window on Xvfb
+        env:
+          # llvmpipe: the X server has no GPU, and Fyne needs a GL context.
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          # Keep the window's config store out of the runner's home.
+          EZNIT_CONFIG: ${{ runner.temp }}/eznit-config.json
+        run: |
+          set -euo pipefail
+
+          xvfb-run -a --server-args='-screen 0 1024x768x24' /tmp/eznit-gui >"$RUNNER_TEMP/window.log" 2>&1 &
+          runner_pid=$!
+
+          # A window that cannot start exits or panics within a few seconds; a
+          # window that started is still there. Waiting is the whole assertion.
+          for _ in $(seq 1 10); do
+            sleep 1
+            if ! kill -0 "$runner_pid" 2>/dev/null; then
+              wait "$runner_pid" || true
+              echo "::error::the window exited on its own; output follows"
+              cat "$RUNNER_TEMP/window.log"
+              exit 1
+            fi
+          done
+
+          echo "the window stayed up for 10 s; stopping it"
+          kill "$runner_pid" 2>/dev/null || true
+          wait "$runner_pid" 2>/dev/null || true
+          cat "$RUNNER_TEMP/window.log"

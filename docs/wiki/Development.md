@@ -128,14 +128,20 @@ so `make check` covers the parts that matter: what a start checks, what a stop
 means, and what a save preserves. `internal/fyneui`'s tests use Fyne's software
 driver (`go test -tags fyne`).
 
-The same window ships in the CLI and the server archives: the packer adds it to
-both from one build, and the server group is verified with `-gui -gui-name
-eznit-gui`.
+The window ships in the one archive per platform: the packer adds it from the
+matrix build, and the verify group requires `-gui -gui-name eznit-gui`.
 
 **CI (GUI)** runs the same vet/test/build on pull requests (the workflow is
 `.github/workflows/ci.gui.yml`). It is the only place the GUI is compiled in
 this repository's automation; the release matrix builds the six window
 binaries — one per platform — and packs each into both archives.
+
+It also **opens the window**: the built binary runs on a virtual X server
+(`xvfb` with software GL) and has to still be alive ten seconds later. Every
+other check stops before the toolkit starts — the unit tests use Fyne's software
+driver, and `-version`/`--help` exit first — so a driver that cannot initialise
+or a panic in a tab constructor would otherwise ship. A virtual display with
+software rendering is not a desktop: this proves startup, not looks.
 
 ## 🧱 Migrations
 

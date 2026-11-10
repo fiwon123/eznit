@@ -413,21 +413,18 @@ jobs:
           PROVENANCE_COMMIT: ${{ needs.guard.outputs.commit }}
         run: |
           set -euo pipefail
-          rm -rf verify && mkdir -p verify/cli verify/server
-          for archive in dist/*-cli_*; do ln "$archive" verify/cli/; done
-          for archive in dist/*-server_*; do ln "$archive" verify/server/; done
+          rm -rf verify && mkdir -p verify/all
+          for archive in dist/*.tar.gz dist/*.zip; do
+            [ -e "$archive" ] || continue
+            ln "$archive" verify/all/
+          done
 
           host="GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) CGO_ENABLED=0"
-          # Every CLI archive carries the window now, so one group with -gui:
-          # a platform the packer skipped fails here instead of shipping.
-          env $host go run ./internal/tools/winres -verify-archives verify/cli \
+          # One archive per platform holds the client, its alias, the server and
+          # the window: one group, with -gui so a platform the packer skipped
+          # fails here instead of shipping.
+          env $host go run ./internal/tools/winres -verify-archives verify/all \
             -app eznit -short ez -gui \
-            -files README.md,LICENSE,LICENSE-FYNE,LICENSE-APACHE,NOTICE \
-            -commit "$PROVENANCE_COMMIT"
-          # The server bundle carries the client's window, whose name is not
-          # the app's plus a suffix, so the name is given explicitly.
-          env $host go run ./internal/tools/winres -verify-archives verify/server \
-            -app eznit-server -gui -gui-name eznit-gui \
             -files README.md,LICENSE,LICENSE-FYNE,LICENSE-APACHE,NOTICE,RUNNING.md,docker-compose.yml \
             -commit "$PROVENANCE_COMMIT"
 
@@ -469,14 +466,16 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $zip = Get-ChildItem smoke -Recurse -Filter 'eznit-cli_*_windows_amd64.zip' | Select-Object -First 1
-          if (-not $zip) { throw 'the windows/amd64 CLI archive is missing from the artifact' }
+          $zip = Get-ChildItem smoke -Recurse -Filter 'eznit_*_windows_amd64.zip' | Select-Object -First 1
+          if (-not $zip) { throw 'the windows/amd64 archive is missing from the artifact' }
 
           Expand-Archive -LiteralPath $zip.FullName -DestinationPath smoke\extracted -Force
           $cli = Get-ChildItem smoke\extracted -Recurse -Filter 'eznit.exe' | Select-Object -First 1
           $alias = Get-ChildItem smoke\extracted -Recurse -Filter 'ez.exe' | Select-Object -First 1
+          $server = Get-ChildItem smoke\extracted -Recurse -Filter 'eznit-server.exe' | Select-Object -First 1
           if (-not $cli) { throw 'eznit.exe is missing from the archive' }
           if (-not $alias) { throw 'ez.exe is missing from the archive' }
+          if (-not $server) { throw 'eznit-server.exe is missing from the archive' }
 
           $reported = (& $cli.FullName -v | Out-String).Trim()
           if ($LASTEXITCODE -ne 0) { throw "eznit.exe -v exited $LASTEXITCODE" }
@@ -498,27 +497,88 @@ jobs:
           }
           if ($window.ExitCode -ne 0) { throw "eznit-gui.exe --help failed (exit $($window.ExitCode))" }
 
-          # The server bundle carries the same window: run the copy that came
-          # from that archive, so a bundle shipped without it fails here.
-          $serverZip = Get-ChildItem smoke -Recurse -Filter 'eznit-server_*_windows_amd64.zip' | Select-Object -First 1
-          if (-not $serverZip) { throw 'the windows/amd64 server archive is missing from the artifact' }
+          Write-Host "smoke ok: $reported; the window and the server are in the archive"
 
-          Expand-Archive -LiteralPath $serverZip.FullName -DestinationPath smoke\server -Force
-          $panel = Get-ChildItem smoke\server -Recurse -Filter 'eznit-gui.exe' | Select-Object -First 1
-          if (-not $panel) { throw 'eznit-gui.exe is missing from the server bundle' }
+  smoke-linux:
+    name: Linux window smoke test
+    # The Linux window is verified as an ELF for the right machine type with the
+    # right glibc floor, and never started. Those checks passed on the v0.23.0
+    # window that Debian 12 could not run (#232). Start the copy that comes out
+    # of the archive, on a virtual display, before anything is published.
+    needs: [guard, pack]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download the archives
+        uses: actions/download-artifact@v8
+        with:
+          name: archives-packed
+          path: smoke
 
-          $bundleWindow = Start-Process $panel.FullName -ArgumentList '--help' -PassThru
-          if (-not $bundleWindow.WaitForExit(60000)) {
-            $bundleWindow.Kill()
-            throw 'the server bundle window did not exit within 60 s'
-          }
-          if ($bundleWindow.ExitCode -ne 0) { throw "the server bundle window failed (exit $($bundleWindow.ExitCode))" }
+      - name: Install a virtual display and software GL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth libgl1-mesa-dri
 
-          Write-Host "smoke ok: $reported; the window starts in both bundles"
+      - name: Start the window a user downloads
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          EZNIT_CONFIG: ${{ runner.temp }}/eznit-config.json
+        run: |
+          set -euo pipefail
+
+          archive="$(find smoke -maxdepth 1 -name 'eznit_*_linux_amd64.tar.gz' | head -1)"
+          if [ -z "$archive" ]; then
+            echo "::error::the linux/amd64 archive is missing from the artifact"
+            exit 1
+          fi
+
+          mkdir -p unpacked
+          tar -xzf "$archive" -C unpacked --strip-components=1
+          window=unpacked/eznit-gui
+          if [ ! -x "$window" ]; then
+            echo "::error::eznit-gui is missing from the linux archive"
+            exit 1
+          fi
+          for binary in eznit eznit-server; do
+            if [ ! -x "unpacked/$binary" ]; then
+              echo "::error::$binary is missing from the linux archive"
+              exit 1
+            fi
+          done
+
+          # The packed binary must be the release the tag names.
+          reported="$("$window" --version)"
+          if [ "$reported" != "$VERSION" ]; then
+            echo "::error::the window reports '$reported', expected '$VERSION'"
+            exit 1
+          fi
+
+          xvfb-run -a --server-args='-screen 0 1024x768x24' "$window" >"$RUNNER_TEMP/window.log" 2>&1 &
+          runner_pid=$!
+
+          # A window that cannot start has already exited; a window that started
+          # is still there. Waiting is the whole assertion.
+          for _ in $(seq 1 10); do
+            sleep 1
+            if ! kill -0 "$runner_pid" 2>/dev/null; then
+              wait "$runner_pid" || true
+              echo "::error::the window exited on its own; output follows"
+              cat "$RUNNER_TEMP/window.log"
+              exit 1
+            fi
+          done
+
+          echo "the window stayed up for 10 s; stopping it"
+          kill "$runner_pid" 2>/dev/null || true
+          wait "$runner_pid" 2>/dev/null || true
+          echo "smoke ok: the packed window reports $reported and starts"
 
   publish:
     name: Publish the release
-    needs: [guard, pack, smoke]
+    needs: [guard, pack, smoke, smoke-linux]
     # A dry run builds and smokes; only a tag publishes.
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -569,19 +629,19 @@ jobs:
           Each archive extracts into one folder named after it. The platform is
           in the archive name; the binaries inside are plain.
 
-          | | CLI | Server bundle |
-          |:--:|---|---|
-          | 🐧 amd64 | `eznit-cli_@VERSION@_linux_amd64.tar.gz` | `eznit-server_@VERSION@_linux_amd64.tar.gz` |
-          | 🐧 arm64 | `eznit-cli_@VERSION@_linux_arm64.tar.gz` | `eznit-server_@VERSION@_linux_arm64.tar.gz` |
-          | 🪟 amd64 | `eznit-cli_@VERSION@_windows_amd64.zip` | `eznit-server_@VERSION@_windows_amd64.zip` |
-          | 🪟 arm64 | `eznit-cli_@VERSION@_windows_arm64.zip` | `eznit-server_@VERSION@_windows_arm64.zip` |
-          | 🍎 amd64 | `eznit-cli_@VERSION@_darwin_amd64.tar.gz` | `eznit-server_@VERSION@_darwin_amd64.tar.gz` |
-          | 🍎 arm64 | `eznit-cli_@VERSION@_darwin_arm64.tar.gz` | `eznit-server_@VERSION@_darwin_arm64.tar.gz` |
+          | | Archive |
+          |:--:|---|
+          | 🐧 amd64 | `eznit_@VERSION@_linux_amd64.tar.gz` |
+          | 🐧 arm64 | `eznit_@VERSION@_linux_arm64.tar.gz` |
+          | 🪟 amd64 | `eznit_@VERSION@_windows_amd64.zip` |
+          | 🪟 arm64 | `eznit_@VERSION@_windows_arm64.zip` |
+          | 🍎 amd64 | `eznit_@VERSION@_darwin_amd64.tar.gz` |
+          | 🍎 arm64 | `eznit_@VERSION@_darwin_arm64.tar.gz` |
 
-          The CLI archive carries `eznit`, `ez`, `eznit-gui` and the licences.
-          The server bundle carries
-          `eznit-server`, the migrations, the Compose services and
-          `RUNNING.md`, which says what runs from it and what does not.
+          One download holds the whole product: `eznit` (the CLI), `ez` (its
+          alias), `eznit-server` (the API), `eznit-gui` (the desktop window),
+          the migrations, the Compose file and the example configuration.
+          `RUNNING.md` says what runs from it and what does not.
 
           ## ✅ Verify
 

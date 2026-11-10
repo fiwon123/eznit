@@ -1,8 +1,9 @@
 # Running a release bundle
 
-This folder is a **server bundle**: the API, the window, the migrations and the
-Compose services that give it a database. It is not a source checkout — there is
-no `go.mod`, no `web/` and no image to build.
+This folder is a **release archive**: the client (`eznit`, `ez`), the API
+(`eznit-server`), the window (`eznit-gui`), the migrations and the Compose
+services that give the API a database. It is not a source checkout — there is no
+`go.mod`, no `web/` and no image to build.
 
 ## What works from here
 
