@@ -11,7 +11,7 @@ subscription, no third party.
 
 [![Release](https://img.shields.io/github/v/release/fiwon123/eznit?color=4c8bf5)](https://github.com/fiwon123/eznit/releases)
 [![License: MIT](https://img.shields.io/github/license/fiwon123/eznit)](LICENSE)
-[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-blue)](https://github.com/fiwon123/eznit/releases)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-blue)](https://github.com/fiwon123/eznit/releases)
 [![CI (Go)](https://github.com/fiwon123/eznit/actions/workflows/ci.go.yml/badge.svg)](https://github.com/fiwon123/eznit/actions/workflows/ci.go.yml)
 [![Pre-1.0](https://img.shields.io/badge/status-pre--1.0-orange)](https://github.com/fiwon123/eznit)
 
