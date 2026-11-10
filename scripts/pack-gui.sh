@@ -52,7 +52,13 @@ for archive in "$dist"/eznit-cli_*; do
 	windows_*) binary=eznit-gui.exe ;;
 	esac
 
+	# The workflow names the artifact directory with hyphens (gui-linux-amd64);
+	# a caller may also lay it out with the archive's underscore form.
 	source="$guis/gui-$osarch/$binary"
+	if [ ! -f "$source" ]; then
+		hyphenated=$(printf '%s' "$osarch" | tr '_' '-')
+		source="$guis/gui-$hyphenated/$binary"
+	fi
 	if [ ! -f "$source" ]; then
 		echo "ERROR: $archive needs $source, which the GUI build did not produce" >&2
 		exit 1
