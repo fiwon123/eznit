@@ -5,9 +5,11 @@ package fyneui
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 
 	"github.com/fiwon123/eznit/internal/config"
@@ -195,5 +197,153 @@ func TestServerViewRefusesToSaveWithoutAnEnv(t *testing.T) {
 
 	if !strings.Contains(view.note.Text, "create one") {
 		t.Errorf("note = %q, want it to point at creating the .env", view.note.Text)
+	}
+}
+
+// The API prints one JSON record per line (pkg/logger.NewJson). The grid must
+// show what a person reads, not the record's keys.
+func TestServerViewFormatsTheServerLog(t *testing.T) {
+	view := newTestServerView(t, bundleDir(t, "API_PORT=\"4321\"\n"))
+
+	line := `{"level":"info","ts":"2026-11-12T14:03:05Z","msg":"Server Running...","caller":"main.go:110"}` + "\n"
+	if _, err := view.server().Write([]byte(line)); err != nil {
+		t.Fatalf("write the log: %v", err)
+	}
+
+	view.refresh()
+
+	row := view.log.RowText(0)
+	if !strings.Contains(row, "INFO") || !strings.Contains(row, "Server Running...") {
+		t.Errorf("row 0 = %q, want a level column and the message", row)
+	}
+	if strings.Contains(row, `"msg"`) || strings.Contains(row, `"level"`) {
+		t.Errorf("row 0 = %q, want the JSON keys gone", row)
+	}
+	if !strings.Contains(row, "caller=main.go:110") {
+		t.Errorf("row 0 = %q, want the field as key=value", row)
+	}
+}
+
+// A new line appends a row: the grid must not be rebuilt from scratch, which
+// is what made a chatty server stall the window.
+func TestServerViewAppendsNewLines(t *testing.T) {
+	view := newTestServerView(t, bundleDir(t, "API_PORT=\"4321\"\n"))
+
+	for _, message := range []string{"first", "second"} {
+		if _, err := view.server().Write([]byte("INFO\t" + message + "\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	view.refresh()
+
+	if rows := len(view.log.Rows); rows != 2 {
+		t.Fatalf("the grid holds %d rows, want 2", rows)
+	}
+	if got := view.log.RowText(1); !strings.Contains(got, "second") {
+		t.Errorf("row 1 = %q, want the second line", got)
+	}
+}
+
+// The supervisor keeps only the newest lines; the grid drops the same rows
+// from the top, so it keeps showing the buffer rather than a stale prefix.
+func TestServerViewFollowsATrimmedLog(t *testing.T) {
+	view := newTestServerView(t, bundleDir(t, "API_PORT=\"4321\"\n"))
+
+	const total = 505
+	for line := 1; line <= total; line++ {
+		if _, err := view.server().Write([]byte("INFO\tline " + strconv.Itoa(line) + "\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	view.refresh()
+
+	held := len(view.server().Output())
+	if rows := len(view.log.Rows); rows != held {
+		t.Fatalf("the grid holds %d rows, want the %d the supervisor kept", rows, held)
+	}
+
+	// The oldest line the buffer still holds is the one it kept: total - held.
+	if got := view.log.RowText(0); !strings.Contains(got, "line "+strconv.Itoa(total-held+1)) {
+		t.Errorf("row 0 = %q, want the oldest line still buffered", got)
+	}
+	if got := view.log.RowText(held - 1); !strings.Contains(got, "line "+strconv.Itoa(total)) {
+		t.Errorf("last row = %q, want the newest line", got)
+	}
+}
+
+// Clearing forgets the grid, and the next line starts a new one.
+func TestServerViewClearsTheLog(t *testing.T) {
+	view := newTestServerView(t, bundleDir(t, "API_PORT=\"4321\"\n"))
+
+	for _, message := range []string{"first", "second"} {
+		if _, err := view.server().Write([]byte("INFO\t" + message + "\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	view.refresh()
+	view.clearLog()
+
+	if got := view.log.Text(); got != "" {
+		t.Errorf("the grid still holds %q after a clear", got)
+	}
+
+	if _, err := view.server().Write([]byte("INFO\tafter the clear\n")); err != nil {
+		t.Fatal(err)
+	}
+	view.refresh()
+
+	if rows := len(view.log.Rows); rows != 1 {
+		t.Fatalf("the grid holds %d rows, want the one new line", rows)
+	}
+	if got := view.log.RowText(0); !strings.Contains(got, "after the clear") {
+		t.Errorf("row 0 = %q, want the new line", got)
+	}
+}
+
+// The log has no selection of its own, so copying is the button. It copies
+// what is on screen, formatted.
+func TestServerViewCopiesTheLog(t *testing.T) {
+	view := newTestServerView(t, bundleDir(t, "API_PORT=\"4321\"\n"))
+	view.ui.clip = test.NewClipboard()
+
+	if _, err := view.server().Write([]byte("INFO\tsomething happened\n")); err != nil {
+		t.Fatal(err)
+	}
+	view.refresh()
+	view.copyLog()
+
+	copied := view.ui.clip.Content()
+	if !strings.Contains(copied, "something happened") {
+		t.Errorf("clipboard = %q, want the log line", copied)
+	}
+	if !strings.Contains(view.note.Text, "Copied") {
+		t.Errorf("note = %q, want confirmation of the copy", view.note.Text)
+	}
+}
+
+// Following is on by default and turns itself off when the reader scrolls
+// away from the end, so new output cannot yank the view back.
+func TestServerViewStopsFollowingWhenTheReaderScrollsUp(t *testing.T) {
+	view := newTestServerView(t, bundleDir(t, "API_PORT=\"4321\"\n"))
+
+	for range 200 {
+		if _, err := view.server().Write([]byte("INFO\tline\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	size := fyne.NewSize(800, 600)
+	view.ui.window.Resize(size)
+	view.ui.window.Content().Resize(size)
+	view.refresh()
+
+	if !view.follow.Checked {
+		t.Fatal("following is off before the reader scrolled")
+	}
+
+	view.followOutput(fyne.NewPos(0, 0))
+
+	if view.follow.Checked {
+		t.Error("following is still on after the reader scrolled to the top")
 	}
 }

@@ -31,6 +31,10 @@ type ui struct {
 	window  fyne.Window
 	version string
 
+	// clip is the system clipboard. It is a field rather than a call so a test
+	// can supply one: the software driver's clipboard is nil.
+	clip fyne.Clipboard
+
 	client  *apiclient.Client
 	files   *filesView
 	server  *serverView
@@ -52,6 +56,7 @@ func Run(version string, apiURL string, serverDir string) error {
 		app:     a,
 		window:  window,
 		version: version,
+		clip:    a.Clipboard(),
 		client:  apiclient.New(apiFrom(apiURL)),
 		updater: newAppUpdater(version),
 	}
@@ -173,4 +178,23 @@ func (u *ui) signOut() {
 
 	u.client.Token = ""
 	u.showLogin("You are signed out.")
+}
+
+// copyToClipboard puts text where a person can paste it. It reports whether a
+// clipboard existed: the software driver used by the tests has none, and a
+// silent no-op would read as a successful copy.
+func (u *ui) copyToClipboard(text string) bool {
+	clipboard := u.clip
+
+	if clipboard == nil && u.app != nil {
+		clipboard = u.app.Clipboard()
+	}
+
+	if clipboard == nil {
+		return false
+	}
+
+	clipboard.SetContent(text)
+
+	return true
 }
