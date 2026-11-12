@@ -46,6 +46,10 @@ func newTestServerViewIn(t *testing.T, dir, store string) *serverView {
 		updater: &appUpdater{version: "test"},
 	}, dir)
 
+	// Run wires the panel back into the window; a test that leaves it out would
+	// not see the address the Server tab's configuration names.
+	view.ui.server = view
+
 	// Lay the tab out as the window would: a test that only builds it cannot
 	// see what a person would (or would not) be able to reach.
 	window.SetContent(view.content())
