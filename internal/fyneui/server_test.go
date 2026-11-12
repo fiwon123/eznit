@@ -3,11 +3,14 @@
 package fyneui
 
 import (
+	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
@@ -21,8 +24,16 @@ import (
 func newTestServerView(t *testing.T, dir string) *serverView {
 	t.Helper()
 
+	return newTestServerViewIn(t, dir, filepath.Join(t.TempDir(), "config.json"))
+}
+
+// newTestServerViewIn builds the panel against a named config file, so a test
+// can read what was kept for the next start.
+func newTestServerViewIn(t *testing.T, dir, store string) *serverView {
+	t.Helper()
+
 	// The panel stores the chosen folder; a test must not touch the real one.
-	t.Setenv(config.Env, filepath.Join(t.TempDir(), "config.json"))
+	t.Setenv(config.Env, store)
 
 	app := test.NewApp()
 	t.Cleanup(app.Quit)
@@ -346,4 +357,149 @@ func TestServerViewStopsFollowingWhenTheReaderScrollsUp(t *testing.T) {
 	if view.follow.Checked {
 		t.Error("following is still on after the reader scrolled to the top")
 	}
+}
+
+// The resolved folder is the flag, then the stored choice, then the folder the
+// window was installed in.
+func TestServerFromPrefersTheFlagThenTheStore(t *testing.T) {
+	t.Setenv(config.Env, filepath.Join(t.TempDir(), "config.json"))
+
+	flagged := t.TempDir()
+	if got := serverFrom(flagged); got != flagged {
+		t.Errorf("serverFrom(flag) = %q, want the flag %q", got, flagged)
+	}
+
+	if got := serverFrom(""); got != defaultServerDir() {
+		t.Errorf("serverFrom(\"\") = %q, want the installed folder %q", got, defaultServerDir())
+	}
+
+	stored := t.TempDir()
+	if err := config.Set("server_dir", stored); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := serverFrom(""); got != stored {
+		t.Errorf("serverFrom(\"\") = %q, want the stored folder %q", got, stored)
+	}
+}
+
+// Building the tab must not record the default as if it were a choice: that is
+// what made the folder impossible to get back to.
+func TestServerViewDoesNotStoreTheDefaultFolder(t *testing.T) {
+	store := filepath.Join(t.TempDir(), "config.json")
+
+	newTestServerViewIn(t, t.TempDir(), store)
+
+	if _, err := os.Stat(store); err == nil {
+		t.Error("building the tab wrote the config file, so the default became a choice")
+	}
+}
+
+// A folder a person picks is remembered for the next start.
+func TestServerViewRemembersAChosenFolder(t *testing.T) {
+	store := filepath.Join(t.TempDir(), "config.json")
+	view := newTestServerViewIn(t, t.TempDir(), store)
+
+	chosen := t.TempDir()
+	if !view.useChosenDir(chosen) {
+		t.Fatal("the folder change was refused while the server is stopped")
+	}
+
+	if got := view.folderPath(); got != chosen {
+		t.Errorf("the panel drives %q, want %q", got, chosen)
+	}
+	if got := view.folder.Text; got != chosen {
+		t.Errorf("the header shows %q, want %q", got, chosen)
+	}
+
+	stored, err := config.Value("server_dir")
+	if err != nil || stored != chosen {
+		t.Errorf("stored server_dir = %q (%v), want %q", stored, err, chosen)
+	}
+}
+
+// Resetting forgets the stored choice and points the panel at the folder the
+// window was installed in, so a moved binary picks its own folder next launch.
+func TestServerViewResetsToTheInstalledFolder(t *testing.T) {
+	store := filepath.Join(t.TempDir(), "config.json")
+	view := newTestServerViewIn(t, t.TempDir(), store)
+
+	view.useChosenDir(t.TempDir())
+	view.applyReset()
+
+	if got := view.folderPath(); got != defaultServerDir() {
+		t.Errorf("the panel drives %q, want the installed folder %q", got, defaultServerDir())
+	}
+	if got := view.folder.Text; got != defaultServerDir() {
+		t.Errorf("the header shows %q, want %q", got, defaultServerDir())
+	}
+
+	if _, err := config.Value("server_dir"); err == nil {
+		t.Error("server_dir is still stored after a reset, so the default did not stick")
+	}
+}
+
+// A running server belongs to the folder it was started from; swapping folders
+// would leave the process with nobody holding it.
+func TestServerViewRefusesAFolderChangeWhileRunning(t *testing.T) {
+	dir := bundleDir(t, "API_PORT=\"4321\"\n")
+	view := newTestServerViewIn(t, dir, filepath.Join(t.TempDir(), "config.json"))
+
+	startFakeServer(t, view)
+
+	other := t.TempDir()
+	if view.useChosenDir(other) {
+		t.Error("a folder change was accepted while the server runs")
+	}
+	if got := view.folderPath(); got != dir {
+		t.Errorf("the panel drives %q, want the folder the server was started from", got)
+	}
+	if !strings.Contains(view.note.Text, "Stop the server first") {
+		t.Errorf("note = %q, want it to say the server has to stop first", view.note.Text)
+	}
+	if !view.choose.Disabled() || !view.reset.Disabled() {
+		t.Error("the folder controls are still enabled while the server runs")
+	}
+}
+
+// startFakeServer puts a sleeping eznit-server in the panel's folder and starts
+// it, so a test can exercise the rules that only hold while it runs.
+func startFakeServer(t *testing.T, view *serverView) {
+	t.Helper()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake server is a shell script; Windows builds cannot run it")
+	}
+
+	dir := view.folderPath()
+
+	binary := filepath.Join(dir, serverctl.ServerBinaryName)
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nexec sleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// The start checks the port is free before it runs anything, so the .env
+	// must name one nothing is using.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
+	listener.Close()
+
+	env := "API_PORT=\"" + port + "\"\n"
+	if err := os.WriteFile(filepath.Join(dir, serverctl.EnvFileName), []byte(env), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	view.loadConfig()
+
+	if err := view.server().Start(); err != nil {
+		t.Fatalf("start the fake server: %v", err)
+	}
+
+	t.Cleanup(func() { _ = view.server().Stop(5 * time.Second) })
+
+	view.refresh()
 }

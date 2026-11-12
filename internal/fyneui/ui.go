@@ -113,8 +113,7 @@ func Run(version string, apiURL string, serverDir string) error {
 }
 
 // serverFrom decides the server folder: the flag, then the stored setting,
-// then the folder this binary was installed into — which is the bundle a
-// released window sits in.
+// then the folder this binary was installed into.
 func serverFrom(flagValue string) string {
 	if value := strings.TrimSpace(flagValue); value != "" {
 		return value
@@ -124,6 +123,14 @@ func serverFrom(flagValue string) string {
 		return stored
 	}
 
+	return defaultServerDir()
+}
+
+// defaultServerDir is the folder this window was installed into — the bundle a
+// released window sits in. It is what "reset to default" returns to, and it is
+// never written to the config file: a default that was stored on the first
+// launch is indistinguishable from a choice.
+func defaultServerDir() string {
 	if executable, err := os.Executable(); err == nil {
 		if resolved, err := filepath.EvalSymlinks(executable); err == nil {
 			executable = resolved
