@@ -85,9 +85,17 @@ out; a port change on one host keeps the session.
 
 The **Templates** tab reads that server's catalogue: filter by kind or down to
 your own templates, then select one to see its files, the variables it asks for
-and the commands it pulls in — every line selectable. **Save as bundle…** writes
-the `.eznit` file that `eznit template apply --from-file` reads; it is the same
-file `template export` produces, from the same code.
+and the commands it pulls in — every line selectable. Two actions follow:
+
+- **Save as bundle…** writes the `.eznit` file that `eznit template apply
+  --from-file` reads; it is the same file `template export` produces, from the
+  same code.
+- **Apply…** writes the template into a folder you pick. It checks the folder
+  first and lists any file it would overwrite before asking anything, then asks
+  the template's variables (and any `{{PLACEHOLDER}}` its files use without
+  declaring), refuses to write while a required answer is empty, and names every
+  path it wrote — selectable, with **Copy paths**. The rules are shared with the
+  CLI, so the two cannot disagree about what applying means.
 
 ```sh
 GUI_API_URL=http://<server>:4000 ./eznit-gui

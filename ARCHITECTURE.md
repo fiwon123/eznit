@@ -329,9 +329,16 @@ in the answer) and writes an offline bundle with `templates.NewBundle` and
 than being copied into the client: the bundle format has one definition, shared
 with `template export`, so the window cannot write a file the CLI refuses to
 read. It is a data dependency — DTOs and the bundle — and `apiclient` returns
-those DTOs instead of a second set, for the same reason. Applying a template
-into a folder is not in the window yet; that needs the CLI's apply rules to move
-somewhere both callers can use.
+those DTOs instead of a second set, for the same reason.
+
+Applying a template is `internal/templateapply`, a toolkit-free package the CLI
+and the window both call: `Files` turns a detail into writeable files (base64
+decoded once, before anything touches disk), `Substitute` and `Undeclared`
+answer the placeholders, `Existing` says what a write would overwrite after
+refusing paths outside the folder and two entries at one path, and `Write` is
+the only place that touches the filesystem. The CLI keeps its prompts and its
+wording; the window collects the same answers in a form. That is why the window
+and `template apply` cannot drift about safe paths or a silent overwrite.
 
 The tab's Output is a log viewer over the child's own console output, which the
 API writes as JSON (`pkg/logger.NewJson`). `serverctl.ParseLine` reads one line
