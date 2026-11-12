@@ -8,14 +8,14 @@
 # the image cannot quietly drift from the local toolchain:
 #
 #   web    node 24.22.1  (mise.toml)
-#   build  go 1.27.3     (go.mod)
+#   build  go 1.27.4     (go.mod)
 #   final  alpine 3.23
 #
 # The UI is embedded (`web/embed.go`, `//go:embed all:dist`), so the runtime
 # image needs no `web/dist` directory, no Node and no source tree.
 
 ARG NODE_VERSION=24.22.1
-ARG GO_VERSION=1.27.3
+ARG GO_VERSION=1.27.4
 ARG ALPINE_VERSION=3.23
 
 FROM node:${NODE_VERSION}-bookworm-slim AS web

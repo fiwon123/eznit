@@ -28,7 +28,7 @@ so `:4000` stays the API only; the released binary keeps the embedded UI and
 needs neither the proxy nor the second port.
 
 The developer loop is the same split with a different pair of processes:
-`make dev-up` runs the API from the source inside the `dev` sandbox (Go 1.27.3)
+`make dev-up` runs the API from the source inside the `dev` sandbox (Go 1.27.4)
 and the UI as Vite in `web-dev` (Node 24.22.1), both over the bind mount. The
 same two ports, the same `/v1` proxy, the same `API_SERVE_WEB=false` — so a bug
 that is caused by the two tiers is reproducible in either mode. Neither
@@ -71,7 +71,7 @@ web/                the React UI; embed.go embeds the build into the binaries
                     nginx.conf   SPA fallback and the /v1 proxy
 db/migrations/      golang-migrate SQL, one .up/.down pair per change
 scripts/            migrations runner, dev sandbox helpers, path setup
-Dockerfile          the dev sandbox image (Go 1.27.3, gh, zip)
+Dockerfile          the dev sandbox image (Go 1.27.4, gh, zip)
 Dockerfile.api      the application image: Node builds the UI, Go embeds it
 docker-compose.yml  the product (db, migrate, api, web) and the developer loop (profile: dev: dev, web-dev)
 ```
