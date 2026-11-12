@@ -42,6 +42,11 @@ machine next to it is solving the wrong problem.
   the server this machine runs and any other address, testing it first
   ([#248](https://github.com/fiwon123/eznit/issues/248), v0.25.0). A different
   host signs you out, because a session belongs to the server that issued it.
+- **Templates are browsable from the window** — a Templates tab lists the
+  catalogue (filtered by kind or to your own), shows one template's files,
+  variables and commands, and writes the offline `.eznit` bundle the CLI reads
+  ([#260](https://github.com/fiwon123/eznit/issues/260), v0.26.0). Applying a
+  template into a folder from the window is still planned.
 
 ## 📱 Device-to-device over cthrone — not implemented
 

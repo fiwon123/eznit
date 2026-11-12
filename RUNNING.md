@@ -83,6 +83,12 @@ The address is resolved as `-api`, then `GUI_API_URL`, then the address saved in
 server that issued it: changing to a different host asks first, then signs you
 out; a port change on one host keeps the session.
 
+The **Templates** tab reads that server's catalogue: filter by kind or down to
+your own templates, then select one to see its files, the variables it asks for
+and the commands it pulls in — every line selectable. **Save as bundle…** writes
+the `.eznit` file that `eznit template apply --from-file` reads; it is the same
+file `template export` produces, from the same code.
+
 ```sh
 GUI_API_URL=http://<server>:4000 ./eznit-gui
 ```

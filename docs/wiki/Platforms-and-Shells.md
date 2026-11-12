@@ -42,10 +42,11 @@ tested on Linux only.
 
 `eznit-gui` is the native desktop app (Fyne) and ships in **every** archive:
 Linux and Windows on amd64 and arm64, and macOS on both architectures. It has
-two jobs: the **Files** tab is a client of one API — its header names the
+three jobs: the **Files** tab is a client of one API — its header names the
 address in use, and **Change…** switches between this machine's server and any
 other, so `GUI_API_URL` is a startup default rather than the only way to point
-it — and the **Server** tab starts and stops the
+it; the **Templates** tab reads that server's catalogue and writes the `.eznit`
+bundle `template export` writes; and the **Server** tab starts and stops the
 `eznit-server` beside it, shows its log, and edits the `.env` and password file
 it reads. Building it needs cgo and the platform's GL/X11 headers
 (`make build_gui`); at run time the Linux window needs `libGL.so.1` and
