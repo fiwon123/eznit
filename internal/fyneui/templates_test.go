@@ -194,10 +194,10 @@ func TestBundleFilename(t *testing.T) {
 		slug  string
 		want  string
 	}{
-		{"a slug wins", "Ignored", "my-starter", "my-starter.ezinit"},
-		{"spaces become dashes", "My Starter", "", "my-starter.ezinit"},
-		{"punctuation goes", "A / b? c!", "", "a-b-c.ezinit"},
-		{"nothing usable", "???", "", "template.ezinit"},
+		{"a slug wins", "Ignored", "my-starter", "my-starter.eznit"},
+		{"spaces become dashes", "My Starter", "", "my-starter.eznit"},
+		{"punctuation goes", "A / b? c!", "", "a-b-c.eznit"},
+		{"nothing usable", "???", "", "template.eznit"},
 	}
 
 	for _, tt := range tests {
@@ -208,5 +208,29 @@ func TestBundleFilename(t *testing.T) {
 				t.Errorf("bundleFilename(%q, %q) = %q, want %q", tt.slug, tt.title, got, tt.want)
 			}
 		})
+	}
+}
+
+// Deselecting drops the detail too: Save as bundle must not stay on for a
+// template that is no longer selected.
+func TestTemplatesHeaderRowDeselects(t *testing.T) {
+	view := newTestTemplatesView(t, apiChoice{url: "http://127.0.0.1:4321", source: "the default"})
+
+	detail := sampleDetail(t)
+	view.items = []templates.TemplateData{detail.TemplateData}
+	view.showDetail(detail)
+	view.updateActions()
+
+	if view.export.Disabled() {
+		t.Fatal("Save as bundle is off before anything was deselected")
+	}
+
+	view.table.OnSelected(widget.TableCellID{Row: 0})
+
+	if !view.export.Disabled() {
+		t.Error("Save as bundle is still on after the selection was cleared")
+	}
+	if !strings.Contains(view.summary.Text, "Select a template") {
+		t.Errorf("summary = %q, want the empty state", view.summary.Text)
 	}
 }

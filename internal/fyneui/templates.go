@@ -351,6 +351,8 @@ func (v *templatesView) loadSelected() {
 
 // showDetail fills the four sections, or says how to fill them.
 func (v *templatesView) showDetail(detail *templates.TemplateDetail) {
+	v.detail = detail
+
 	if v.summary == nil {
 		return
 	}
@@ -523,7 +525,12 @@ func bundleFilename(detail *templates.TemplateDetail) string {
 		}
 	}
 
-	name := strings.Trim(kept.String(), "-")
+	name := kept.String()
+	for strings.Contains(name, "--") {
+		name = strings.ReplaceAll(name, "--", "-")
+	}
+
+	name = strings.Trim(name, "-")
 	if name == "" {
 		name = "template"
 	}
