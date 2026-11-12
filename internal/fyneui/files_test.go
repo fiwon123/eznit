@@ -96,3 +96,54 @@ func TestTakeOfflineNamesTheAddress(t *testing.T) {
 		t.Error("the view is still ready after a failed load")
 	}
 }
+
+// The table's cells cannot be selected — a selectable cell would take the tap
+// that selects the row — so the selected row is described under it, and both
+// copies work from that line.
+func TestSelectedFileIsDescribedAndCopied(t *testing.T) {
+	view := newTestFilesView(t, apiChoice{url: "http://127.0.0.1:4321", source: "the default"})
+	view.ui.clip = test.NewClipboard()
+
+	view.files = []apiclient.File{{ID: "9f1a", Name: "notes.txt", Version: 3}}
+	view.selected = 0
+	view.ready = true
+	view.updateActions()
+
+	if !strings.Contains(view.detail.Text, "notes.txt") || !strings.Contains(view.detail.Text, "9f1a") {
+		t.Errorf("detail = %q, want the name and the id", view.detail.Text)
+	}
+	if !view.detail.Selectable {
+		t.Error("the detail line is not selectable")
+	}
+
+	view.copySelectedName()
+
+	if got := view.ui.clip.Content(); got != "notes.txt" {
+		t.Errorf("clipboard = %q, want just the name", got)
+	}
+
+	view.copySelectedDetails()
+
+	if got := view.ui.clip.Content(); got != "notes.txt\t3\tprivate\t9f1a" {
+		t.Errorf("clipboard = %q, want a tab-separated record", got)
+	}
+	if !strings.Contains(view.status.Text, "Copied") {
+		t.Errorf("status = %q, want confirmation of the copy", view.status.Text)
+	}
+}
+
+// With no row selected there is nothing to copy, and nothing to describe.
+func TestCopyIsOffWithoutASelection(t *testing.T) {
+	view := newTestFilesView(t, apiChoice{url: "http://127.0.0.1:4321", source: "the default"})
+
+	view.selected = -1
+	view.ready = true
+	view.updateActions()
+
+	if !view.copyName.Disabled() || !view.copyDetails.Disabled() {
+		t.Error("the copy buttons are enabled with no row selected")
+	}
+	if !strings.Contains(view.detail.Text, "Select a file") {
+		t.Errorf("detail = %q, want it to ask for a selection", view.detail.Text)
+	}
+}

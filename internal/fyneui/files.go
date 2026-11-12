@@ -40,6 +40,13 @@ type filesView struct {
 	download *widget.Button
 	remove   *widget.Button
 	share    *widget.Button
+
+	// The table's cells cannot be selectable — a selectable cell would take the
+	// tap that selects the row — so the selected file is described under the
+	// table, in a line that can be selected and copied.
+	detail      *widget.Label
+	copyName    *widget.Button
+	copyDetails *widget.Button
 }
 
 func newFilesView(u *ui) *filesView {
@@ -147,7 +154,19 @@ func (v *filesView) content() fyne.CanvasObject {
 	refresh := widget.NewButtonWithIcon("Refresh", theme.ViewRefreshIcon(), v.refresh)
 
 	toolbar := container.NewHBox(refresh, v.upload, widget.NewSeparator(), v.download, v.remove, v.share)
-	body := container.NewBorder(toolbar, v.status, nil, nil, v.table)
+
+	v.detail = widget.NewLabel("")
+	v.detail.Wrapping = fyne.TextWrapWord
+	v.detail.Selectable = true
+
+	v.copyName = widget.NewButton("Copy name", v.copySelectedName)
+	v.copyDetails = widget.NewButton("Copy details", v.copySelectedDetails)
+
+	detailRow := container.NewBorder(nil, nil, nil,
+		container.NewHBox(v.copyName, v.copyDetails), v.detail)
+
+	footer := container.NewVBox(container.NewPadded(detailRow), v.status)
+	body := container.NewBorder(toolbar, footer, nil, nil, v.table)
 
 	// A rebuilt view has not listed anything yet.
 	v.ready = false
@@ -189,6 +208,24 @@ func (v *filesView) updateActions() {
 
 	file, ok := v.selectedFile()
 
+	if v.detail != nil {
+		if !ok {
+			v.detail.SetText("Select a file to see its details here.")
+		} else {
+			v.detail.SetText(fileDescription(file))
+		}
+	}
+
+	if v.copyName != nil {
+		for _, button := range []*widget.Button{v.copyName, v.copyDetails} {
+			if ok {
+				button.Enable()
+			} else {
+				button.Disable()
+			}
+		}
+	}
+
 	if !ok || !v.ready {
 		v.download.Disable()
 		v.remove.Disable()
@@ -206,6 +243,56 @@ func (v *filesView) updateActions() {
 	} else {
 		v.share.SetText("Share")
 	}
+}
+
+// fileDescription is the line under the table: what the row is, in words a
+// person can read and copy.
+func fileDescription(file apiclient.File) string {
+	visibility := "private"
+	if file.IsPublic {
+		visibility = "shared"
+	}
+
+	return fmt.Sprintf("%s · version %d · %s · id %s", file.Name, file.Version, visibility, file.ID)
+}
+
+// fileRecord is the same thing as one tab-separated line, for a spreadsheet or
+// a script.
+func fileRecord(file apiclient.File) string {
+	visibility := "private"
+	if file.IsPublic {
+		visibility = "shared"
+	}
+
+	return fmt.Sprintf("%s\t%d\t%s\t%s", file.Name, file.Version, visibility, file.ID)
+}
+
+func (v *filesView) copySelectedName() {
+	file, ok := v.selectedFile()
+	if !ok {
+		return
+	}
+
+	if !v.ui.copyToClipboard(file.Name) {
+		v.setStatus("This window has no clipboard available — the name could not be copied.", statusError)
+		return
+	}
+
+	v.setStatus("Copied the name of "+file.Name+".", statusOK)
+}
+
+func (v *filesView) copySelectedDetails() {
+	file, ok := v.selectedFile()
+	if !ok {
+		return
+	}
+
+	if !v.ui.copyToClipboard(fileRecord(file)) {
+		v.setStatus("This window has no clipboard available — the details could not be copied.", statusError)
+		return
+	}
+
+	v.setStatus("Copied the details of "+file.Name+".", statusOK)
 }
 
 // refresh reloads the library. The request runs off the UI goroutine and the
