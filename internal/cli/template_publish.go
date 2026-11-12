@@ -11,13 +11,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/fiwon123/eznit/internal/domain/templates"
+	"github.com/fiwon123/eznit/internal/templateapply"
 	"github.com/fiwon123/eznit/pkg/helper"
 	"github.com/fiwon123/eznit/pkg/types"
 )
@@ -55,30 +55,11 @@ var skipFolders = map[string]bool{
 	".turbo":        true,
 }
 
-// placeholderPattern matches a variable placeholder: {{PROJECT_NAME}}. The
-// name is the same shape the API accepts, so a placeholder that the CLI finds
-// is a placeholder the server would accept.
-var placeholderPattern = regexp.MustCompile(`\{\{([A-Z][A-Z0-9_]{0,63})\}\}`)
-
 // Template Publish Cmd publishes a folder as a template.
 type TemplatePublishCmd struct {
 	Folder   string   `arg:"" optional:"" help:"the folder to publish" default:"."`
 	Public   bool     `help:"publish to the shared catalogue"`
 	Commands []string `help:"pull a command into the template as <id>=<path> (repeatable)" optional:""`
-}
-
-// templateFile is a file of a template on the client side: the path it takes
-// inside the project, and its content.
-type templateFile struct {
-	Path string
-	// Kind is FileKindText or FileKindBinary. An empty Kind is text, so a
-	// starter template and an old API response read the same.
-	Kind          string
-	Content       string
-	ContentBase64 string
-	// Bytes is the decoded content of a binary file, for writing it.
-	Bytes        []byte
-	IsExecutable bool
 }
 
 // Run publishes the folder as a template.
@@ -149,7 +130,7 @@ func (cmd *TemplatePublishCmd) Run(g *Globals) error {
 
 	// The placeholders in the files are the variables the template asks
 	// for: the author declares them by writing them.
-	keys := findPlaceholders(files)
+	keys := templateapply.Undeclared(files, nil)
 
 	variables := make([]templates.PublishVariable, 0, len(keys))
 
@@ -216,8 +197,8 @@ func (cmd *TemplatePublishCmd) Run(g *Globals) error {
 //
 // The names of the files that were left out come back too: a file that is
 // skipped has to be named, or the template is quietly incomplete.
-func collectTemplateFiles(root string) ([]templateFile, []string, error) {
-	var files []templateFile
+func collectTemplateFiles(root string) ([]templateapply.File, []string, error) {
+	var files []templateapply.File
 	var skipped []string
 
 	total := 0
@@ -286,7 +267,7 @@ func collectTemplateFiles(root string) ([]templateFile, []string, error) {
 				return fmt.Errorf("the folder holds more than %d bytes", maxTemplateBinaryTotalBytes)
 			}
 
-			files = append(files, templateFile{
+			files = append(files, templateapply.File{
 				Path:          safe,
 				Kind:          templates.FileKindBinary,
 				ContentBase64: base64.StdEncoding.EncodeToString(content),
@@ -312,7 +293,7 @@ func collectTemplateFiles(root string) ([]templateFile, []string, error) {
 			return fmt.Errorf("the folder holds more than %d bytes of text", maxTemplateTotalBytes)
 		}
 
-		files = append(files, templateFile{
+		files = append(files, templateapply.File{
 			Path:         safe,
 			Kind:         templates.FileKindText,
 			Content:      string(content),
@@ -344,28 +325,6 @@ func isBinary(content []byte) bool {
 // isExecutable reports whether a file mode says the file is executable.
 func isExecutable(mode fs.FileMode) bool {
 	return mode&0111 != 0
-}
-
-// findPlaceholders returns the names of the placeholders the files hold, in
-// the order they are first seen.
-func findPlaceholders(files []templateFile) []string {
-	seen := map[string]bool{}
-	var keys []string
-
-	for _, file := range files {
-		for _, match := range placeholderPattern.FindAllStringSubmatch(file.Content, -1) {
-			key := match[1]
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			keys = append(keys, key)
-		}
-	}
-
-	sort.Strings(keys)
-
-	return keys
 }
 
 // sendPublishRequest sends the template to the API.

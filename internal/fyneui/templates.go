@@ -5,6 +5,7 @@ package fyneui
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/fiwon123/eznit/internal/apiclient"
 	"github.com/fiwon123/eznit/internal/domain/templates"
+	"github.com/fiwon123/eznit/internal/templateapply"
 )
 
 // allKinds is the filter's "no filter" entry. A Select cannot hold an empty
@@ -45,6 +47,7 @@ type templatesView struct {
 	mine    *widget.Check
 	refresh *widget.Button
 	export  *widget.Button
+	apply   *widget.Button
 
 	address *widget.Label
 	source  *widget.Label
@@ -133,6 +136,7 @@ func newTemplatesView(u *ui) *templatesView {
 
 	view.refresh = widget.NewButtonWithIcon("Refresh", theme.ViewRefreshIcon(), view.reload)
 	view.export = widget.NewButtonWithIcon("Save as bundle…", theme.DownloadIcon(), view.exportSelected)
+	view.apply = widget.NewButtonWithIcon("Apply…", theme.ConfirmIcon(), view.applySelected)
 
 	// The handler goes on after the first selection: SetSelected calls it, and
 	// a fetch during construction would race the tab that owns the status line.
@@ -163,7 +167,7 @@ func (v *templatesView) content() fyne.CanvasObject {
 
 	header := container.NewBorder(nil, nil,
 		container.NewHBox(dotBox, widget.NewLabel("Server")),
-		container.NewHBox(v.refresh, v.export),
+		container.NewHBox(v.refresh, v.export, v.apply),
 		container.NewHBox(v.address, v.source),
 	)
 
@@ -449,10 +453,16 @@ func (v *templatesView) updateActions() {
 		return
 	}
 
-	if v.detail != nil {
-		v.export.Enable()
-	} else {
-		v.export.Disable()
+	for _, button := range []*widget.Button{v.export, v.apply} {
+		if button == nil {
+			continue
+		}
+
+		if v.detail != nil {
+			button.Enable()
+		} else {
+			button.Disable()
+		}
 	}
 }
 
@@ -550,4 +560,189 @@ func (v *templatesView) setStatus(text string, kind statusKind) {
 		v.dot.FillColor = statusColour(v.ui.app.Settings().ThemeVariant(), kind)
 		v.dot.Refresh()
 	}
+}
+
+// applySelected writes the selected template into a folder the person picks:
+// check what is there, ask the questions the template needs, then write.
+//
+// The order is the CLI's: the files are checked before anything is asked,
+// because a person should not answer what a template wants to know for a write
+// that cannot happen.
+func (v *templatesView) applySelected() {
+	detail := v.detail
+	if detail == nil {
+		v.setStatus("Select a template first — Apply writes the selected one.", statusWarn)
+		return
+	}
+
+	files, err := templateapply.Files(detail)
+	if err != nil {
+		v.setStatus("This template cannot be written: "+err.Error(), statusError)
+		return
+	}
+
+	dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
+		if err != nil {
+			v.setStatus("The folder could not be chosen: "+err.Error(), statusError)
+			return
+		}
+		if uri == nil {
+			return
+		}
+
+		target := uri.Path()
+
+		existing, err := templateapply.Existing(target, files)
+		if err != nil {
+			v.setStatus("This template cannot be written into that folder: "+err.Error(), statusError)
+			return
+		}
+
+		if len(existing) == 0 {
+			v.askForValues(detail, files, target)
+			return
+		}
+
+		list := selectableWrap()
+		list.SetText("These files are already in " + target + " and would be overwritten:\n\n" + strings.Join(existing, "\n"))
+
+		dialog.ShowCustomConfirm(
+			fmt.Sprintf("Overwrite %d file(s)?", len(existing)),
+			"Overwrite", "Cancel",
+			list,
+			func(confirmed bool) {
+				if confirmed {
+					v.askForValues(detail, files, target)
+				}
+			}, v.ui.window)
+	}, v.ui.window)
+}
+
+// askForValues collects the answers a template needs: its declared variables
+// and the placeholders its files use without declaring them. Nothing is written
+// while a required answer is empty.
+func (v *templatesView) askForValues(detail *templates.TemplateDetail, files []templateapply.File, target string) {
+	undeclared := templateapply.Undeclared(files, detail.Variables)
+
+	rows := make([]formRow, 0, len(detail.Variables)+len(undeclared))
+	entries := make(map[string]*widget.Entry, len(detail.Variables)+len(undeclared))
+
+	for _, variable := range detail.Variables {
+		entry := widget.NewEntry()
+		entry.SetText(variable.DefaultValue)
+
+		caption := promptOf(variable) + " (" + variable.Key + ")"
+		if variable.Required {
+			caption += " *"
+		}
+
+		rows = append(rows, formRow{caption: caption, input: entry})
+		entries[variable.Key] = entry
+	}
+
+	for _, key := range undeclared {
+		entry := widget.NewEntry()
+
+		rows = append(rows, formRow{caption: key + " (not declared by the template)", input: entry})
+		entries[key] = entry
+	}
+
+	status := selectableWrap()
+	status.SetText("The files are written into " + target + ".")
+
+	form := formRows(rows...)
+	body := container.NewVBox(form, status)
+
+	// A template may ask many questions: the dialog keeps its height and the
+	// form scrolls inside it.
+	if len(rows) > 4 {
+		scroll := container.NewVScroll(form)
+		scroll.SetMinSize(fyne.NewSize(420, 220))
+		body = container.NewVBox(scroll, status)
+	}
+
+	var popup *dialog.CustomDialog
+
+	write := func() {
+		values := make(map[string]string, len(entries))
+		for key, entry := range entries {
+			values[key] = strings.TrimSpace(entry.Text)
+		}
+
+		if key := missingAnswer(detail.Variables, values); key != "" {
+			status.SetText("The template asks for {{" + key + "}} and it has no answer yet.")
+			return
+		}
+
+		if err := applyTemplate(target, files, values, true); err != nil {
+			status.SetText("The template was not written: " + err.Error())
+			return
+		}
+
+		if popup != nil {
+			popup.Hide()
+		}
+
+		v.showWritten(target, files)
+	}
+
+	content := container.NewVBox(
+		widget.NewLabel("Answers for "+detail.Name+":"),
+		body,
+		container.NewHBox(widget.NewButton("Write", write)),
+	)
+
+	popup = dialog.NewCustom("Apply "+detail.Name, "Cancel", content, v.ui.window)
+	popup.Show()
+}
+
+// missingAnswer names the first required variable that has no answer, or "".
+func missingAnswer(variables []templates.TemplateVariableData, values map[string]string) string {
+	for _, variable := range variables {
+		if variable.Required && strings.TrimSpace(values[variable.Key]) == "" {
+			return variable.Key
+		}
+	}
+
+	return ""
+}
+
+// applyTemplate fills in the answers and writes the files: the whole write
+// path, apart from the dialogs that collect the answers.
+func applyTemplate(target string, files []templateapply.File, values map[string]string, overwrite bool) error {
+	for i := range files {
+		if files[i].Kind == templates.FileKindBinary {
+			continue
+		}
+
+		files[i].Content = templateapply.Substitute(files[i].Content, values)
+	}
+
+	return templateapply.Write(target, files, overwrite)
+}
+
+// showWritten names every path that was written, selectable, with a copy.
+func (v *templatesView) showWritten(target string, files []templateapply.File) {
+	paths := make([]string, 0, len(files))
+
+	for _, file := range files {
+		paths = append(paths, filepath.Join(target, filepath.FromSlash(file.Path)))
+	}
+
+	list := selectableWrap()
+	list.SetText(strings.Join(paths, "\n"))
+
+	copyPaths := widget.NewButton("Copy paths", func() {
+		if !v.ui.copyToClipboard(strings.Join(paths, "\n")) {
+			list.SetText(list.Text + "\n\n(This window has no clipboard available.)")
+		}
+	})
+
+	body := container.NewBorder(nil,
+		container.NewHBox(copyPaths), nil, nil,
+		container.NewVScroll(list))
+
+	dialog.ShowCustom(fmt.Sprintf("Wrote %d file(s)", len(paths)), "Close", body, v.ui.window)
+
+	v.setStatus(fmt.Sprintf("Wrote %d file(s) into %s.", len(paths), target), statusOK)
 }

@@ -5,6 +5,7 @@ package fyneui
 import (
 	"bytes"
 	"encoding/base64"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"github.com/fiwon123/eznit/internal/apiclient"
 	"github.com/fiwon123/eznit/internal/config"
 	"github.com/fiwon123/eznit/internal/domain/templates"
+	"github.com/fiwon123/eznit/internal/templateapply"
 )
 
 // newTestTemplatesView builds the tab for an address. Nothing is fetched: the
@@ -232,5 +234,82 @@ func TestTemplatesHeaderRowDeselects(t *testing.T) {
 	}
 	if !strings.Contains(view.summary.Text, "Select a template") {
 		t.Errorf("summary = %q, want the empty state", view.summary.Text)
+	}
+}
+
+// Applying writes the template with the answers filled in, and leaves a binary
+// file's bytes alone. This is the write path without the dialogs.
+func TestApplyTemplateSubstitutesAndWrites(t *testing.T) {
+	target := t.TempDir()
+
+	detail := sampleDetail(t)
+	detail.Files[0].Content = "# {{PROJECT}}\n"
+
+	files, err := templateapply.Files(detail)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := applyTemplate(target, files, map[string]string{"PROJECT": "eznit"}, false); err != nil {
+		t.Fatalf("applyTemplate() = %v", err)
+	}
+
+	written, err := os.ReadFile(filepath.Join(target, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("AGENTS.md was not written: %v", err)
+	}
+	if string(written) != "# eznit\n" {
+		t.Errorf("AGENTS.md = %q, want the placeholder filled in", written)
+	}
+
+	binary, err := os.ReadFile(filepath.Join(target, "bin", "tool"))
+	if err != nil {
+		t.Fatalf("the binary file was not written: %v", err)
+	}
+	if !bytes.Equal(binary, []byte{0x7f, 'E', 'L', 'F'}) {
+		t.Errorf("the binary file = %v, want its bytes untouched", binary)
+	}
+
+	if _, err := os.Stat(filepath.Join(target, "scripts", "run.sh")); err != nil {
+		t.Errorf("the command was not written at its target path: %v", err)
+	}
+}
+
+// A required answer that is empty stops the write; the other cases do not.
+func TestMissingAnswer(t *testing.T) {
+	variables := []templates.TemplateVariableData{
+		{Key: "OPTIONAL"},
+		{Key: "REQUIRED", Required: true},
+		{Key: "SPACE", Required: true},
+	}
+
+	tests := []struct {
+		name   string
+		values map[string]string
+		want   string
+	}{
+		{"answered", map[string]string{"REQUIRED": "x", "SPACE": "y"}, ""},
+		{"unanswered", map[string]string{"REQUIRED": "", "SPACE": "y"}, "REQUIRED"},
+		{"whitespace", map[string]string{"REQUIRED": "x", "SPACE": "   "}, "SPACE"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := missingAnswer(variables, tt.values); got != tt.want {
+				t.Errorf("missingAnswer() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// Apply without a selected template says so and opens nothing.
+func TestApplyNeedsASelection(t *testing.T) {
+	view := newTestTemplatesView(t, apiChoice{url: "http://127.0.0.1:4321", source: "the default"})
+
+	view.showDetail(nil)
+	view.applySelected()
+
+	if !strings.Contains(view.status.Text, "Select a template") {
+		t.Errorf("status = %q, want it to ask for a selection", view.status.Text)
 	}
 }
