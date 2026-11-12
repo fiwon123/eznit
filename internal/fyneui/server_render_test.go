@@ -21,9 +21,11 @@ import (
 //
 // It is the test that would have caught #235: the Save button used to sit at
 // the bottom of the scrolling pane, below the fold, on a card that looked
-// finished.
+// finished. And it is the test that guards the wheel: a Fyne entry keeps a
+// scroll of its own and swallows the wheel over it, so the form must fit
+// instead of scrolling at every size the window can be.
 func TestServerTabFitsTheConfiguration(t *testing.T) {
-	sizes := []fyne.Size{fyne.NewSize(980, 640), fyne.NewSize(1024, 720)}
+	sizes := []fyne.Size{fyne.NewSize(980, 640), fyne.NewSize(1024, 720), fyne.NewSize(800, 520)}
 	themes := map[string]fyne.Theme{"light": theme.LightTheme(), "dark": theme.DarkTheme()}
 
 	for name, th := range themes {
@@ -99,7 +101,10 @@ func TestServerTabKeepsTheSaveButtonVisible(t *testing.T) {
 	dir := bundleDir(t, "API_PORT=\"4000\"\nDB_HOST=\"127.0.0.1\"\nDB_PORT=\"5432\"\nDB_USER=\"root\"\nDB_NAME=\"eznit\"\n")
 
 	view := newTestServerView(t, dir)
-	size := fyne.NewSize(800, 520)
+	// Below the smallest supported layout on purpose: this is the one case the
+	// fields cannot fit, so the pinned row is under pressure. A real window
+	// refuses to shrink this far, because the pane's minimum is the form.
+	size := fyne.NewSize(640, 360)
 	view.ui.window.Resize(size)
 	view.ui.window.Content().Resize(size)
 	view.panes.SelectIndex(1)

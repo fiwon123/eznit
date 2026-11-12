@@ -265,3 +265,33 @@ func newHealthServer() *http.Server {
 		_, _ = w.Write([]byte(`{"status":"available"}`))
 	})}
 }
+
+// Written counts the lines ever produced, not the ones still buffered: a
+// window that keeps its own copy needs the difference to know how many rows to
+// drop when the buffer is trimmed.
+func TestWrittenCountsPastTheBuffer(t *testing.T) {
+	supervisor := NewSupervisor(t.TempDir())
+
+	total := maxOutputLines + 5
+	for range total {
+		if _, err := supervisor.Write([]byte("one line\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if got := supervisor.Written(); got != total {
+		t.Errorf("Written() = %d, want %d", got, total)
+	}
+	if got := len(supervisor.Output()); got != maxOutputLines {
+		t.Errorf("Output() holds %d lines, want the cap of %d", got, maxOutputLines)
+	}
+
+	supervisor.ClearOutput()
+
+	if got := supervisor.Written(); got != total {
+		t.Errorf("Written() after a clear = %d, want the total %d", got, total)
+	}
+	if got := len(supervisor.Output()); got != 0 {
+		t.Errorf("Output() after a clear holds %d lines, want none", got)
+	}
+}

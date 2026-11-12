@@ -49,6 +49,12 @@ its log, and edits the `.env` and the database password the server reads:
 - The tab has two views: **Output** is the server's own log, and
   **Configuration** is the form that writes `.env` and the password file. Start
   switches to Output, because that is where the answer is.
+- The log is one row per line of output: time, level, message, then any
+  structured fields, with the level coloured (warnings and errors bold). A line
+  that is not a log record — a panic, a plain message from a tool the server
+  started — keeps its own text. **Copy log** puts the whole log on the
+  clipboard. **Follow output** stays on until you scroll away from the end;
+  **Jump to end** goes back.
 - **Stop** asks the server to shut down, which drains in-flight requests for up
   to 10 seconds. On Windows a stop is a kill: Windows cannot deliver an
   interrupt to another process.

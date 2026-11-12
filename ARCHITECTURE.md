@@ -304,6 +304,15 @@ child process, with that file as its environment. A stop is an interrupt, so the
 API drains (10s) before the window gives up and kills it; Windows cannot deliver
 an interrupt to another process, so there a stop is a kill.
 
+The tab's Output is a log viewer over the child's own console output, which the
+API writes as JSON (`pkg/logger.NewJson`). `serverctl.ParseLine` reads one line
+into time, level, message and fields, `Format` lays it out in fixed columns, and
+the window colours it by level — so a line that is not a record (a panic) is
+kept as text rather than dropped. The supervisor keeps the newest 500 lines and
+counts every line it has written, which is what lets the grid append a row per
+new line and drop the rows the supervisor trimmed instead of rebuilding the
+whole buffer on every write.
+
 ## Gates
 
 | Command | Covers | Needs |

@@ -41,6 +41,11 @@ type Supervisor struct {
 	lines []string
 	rest  string // the tail of a line the process has not finished writing
 
+	// written is how many lines the child has produced, ever. Output is
+	// capped, so a window keeping its own copy needs the total to tell a
+	// trimmed buffer from an unchanged one.
+	written int
+
 	// notifyMu guards the callback on its own: changed() runs while mu is
 	// held (a start, a write), and the callback reads Output() through mu.
 	notifyMu sync.Mutex
@@ -87,6 +92,16 @@ func (s *Supervisor) Output() []string {
 	copy(lines, s.lines)
 
 	return lines
+}
+
+// Written is how many lines the child has written in total. Output keeps only
+// the last maxOutputLines, so a caller that keeps its own copy uses this to
+// work out how many of the lines it shows have been dropped underneath it.
+func (s *Supervisor) Written() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.written
 }
 
 // ClearOutput forgets the log so far.
@@ -207,6 +222,7 @@ func (s *Supervisor) Write(data []byte) (int, error) {
 	if text != "" {
 		for _, line := range strings.Split(text, "\n") {
 			s.lines = append(s.lines, strings.TrimSuffix(line, "\r"))
+			s.written++
 		}
 	}
 
