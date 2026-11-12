@@ -32,12 +32,19 @@ func TestAPISourceOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fromStore := apiFrom("")
-	if fromStore.url != "http://saved.test:4000" || fromStore.source != "the saved address" {
-		t.Errorf("apiFrom(\"\") = %+v with a stored address, want the store", fromStore)
+	// With both set, the environment still wins: that is the order that keeps
+	// the documented GUI_API_URL working after a login has stored an address.
+	both := apiFrom("")
+	if both.url != "http://from-env.test:4000" || both.source != "GUI_API_URL" {
+		t.Errorf("apiFrom(\"\") = %+v with both set, want the environment", both)
 	}
 
 	t.Setenv("GUI_API_URL", "")
+
+	fromStore := apiFrom("")
+	if fromStore.url != "http://saved.test:4000" || fromStore.source != "the saved address" {
+		t.Errorf("apiFrom(\"\") = %+v without the environment, want the store", fromStore)
+	}
 
 	fromStore = apiFrom("")
 	if fromStore.url != "http://saved.test:4000" {
