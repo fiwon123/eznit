@@ -46,6 +46,11 @@ its log, and edits the `.env` and the database password the server reads:
 - **Start** checks the API port and reads the `.env` before it runs anything. A
   folder with no `.env` gets one created from `.env.example`, pointed at
   `127.0.0.1` and at this bundle's secret file.
+- **Choose folder…** points the tab at another bundle and remembers the choice
+  in `~/.eznit/config.json`. **Reset to default** asks first, then forgets the
+  choice and returns to the folder this window was installed in — so a moved
+  bundle picks its own folder again. Both are refused while the server runs: the
+  process belongs to the folder it was started from.
 - The tab has two views: **Output** is the server's own log, and
   **Configuration** is the form that writes `.env` and the password file. Start
   switches to Output, because that is where the answer is.

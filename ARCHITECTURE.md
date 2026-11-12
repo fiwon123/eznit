@@ -304,6 +304,13 @@ child process, with that file as its environment. A stop is an interrupt, so the
 API drains (10s) before the window gives up and kills it; Windows cannot deliver
 an interrupt to another process, so there a stop is a kill.
 
+The folder it resolved *by default* is never written to the config file: only a
+folder a person picked is stored, which is what keeps the default distinct from
+a decision. "Reset to default" removes the key and returns to the folder
+`os.Executable()` sits in, so a moved bundle finds its own server again; both
+controls refuse while the server runs, because the process belongs to the folder
+it was started from.
+
 The tab's Output is a log viewer over the child's own console output, which the
 API writes as JSON (`pkg/logger.NewJson`). `serverctl.ParseLine` reads one line
 into time, level, message and fields, `Format` lays it out in fixed columns, and

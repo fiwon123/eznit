@@ -295,3 +295,45 @@ func TestWrittenCountsPastTheBuffer(t *testing.T) {
 		t.Errorf("Output() after a clear holds %d lines, want none", got)
 	}
 }
+
+// The notify callback must run without the supervisor's lock: a window's
+// redraw reads State and Output, and a driver that runs the callback inline
+// (the test driver does) would otherwise deadlock on the lock Start holds.
+func TestStartNotifiesWithoutHoldingTheLock(t *testing.T) {
+	dir := t.TempDir()
+	writeFakeServer(t, dir, "exec sleep 30\n")
+	writeEnv(t, dir, freePort(t))
+
+	supervisor := NewSupervisor(dir)
+
+	notified := make(chan struct{}, 4)
+	supervisor.SetNotify(func() {
+		_ = supervisor.State()
+		_ = supervisor.Output()
+
+		select {
+		case notified <- struct{}{}:
+		default:
+		}
+	})
+
+	started := make(chan error, 1)
+	go func() { started <- supervisor.Start() }()
+
+	select {
+	case err := <-started:
+		if err != nil {
+			t.Fatalf("Start() = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start() did not return: the notify ran while the lock was held")
+	}
+
+	select {
+	case <-notified:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the notify never ran after a start")
+	}
+
+	_ = supervisor.Stop(2 * time.Second)
+}

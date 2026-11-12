@@ -121,6 +121,20 @@ func (s *Supervisor) ClearOutput() {
 // created from the example when it is missing, and the API port must be free.
 // Those are the three failures a person can fix without reading a stack trace.
 func (s *Supervisor) Start() error {
+	if err := s.start(); err != nil {
+		return err
+	}
+
+	// The notify runs outside the lock. A window's redraw reads State and
+	// Output, so calling it while this method holds the mutex is a deadlock
+	// waiting for a driver that runs the callback inline.
+	s.changed()
+
+	return nil
+}
+
+// start does the work with the supervisor's lock held.
+func (s *Supervisor) start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -172,8 +186,6 @@ func (s *Supervisor) Start() error {
 		close(done)
 		s.changed()
 	}()
-
-	s.changed()
 
 	return nil
 }

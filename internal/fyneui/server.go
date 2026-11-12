@@ -59,6 +59,8 @@ type serverView struct {
 	start  *widget.Button
 	stop   *widget.Button
 	open   *widget.Button
+	choose *widget.Button
+	reset  *widget.Button
 
 	log    *widget.TextGrid
 	scroll *container.Scroll
@@ -106,7 +108,9 @@ func newServerView(u *ui, dir string) *serverView {
 	return view
 }
 
-// useDir points the panel at another bundle folder.
+// useDir points the panel at another bundle folder. It does not remember the
+// choice: only a folder a person picked is stored, so the default stays
+// distinguishable from a decision and can be returned to.
 func (v *serverView) useDir(dir string) {
 	supervisor := serverctl.NewSupervisor(dir)
 	supervisor.SetNotify(func() { fyne.Do(v.refresh) })
@@ -125,9 +129,88 @@ func (v *serverView) useDir(dir string) {
 	if v.log != nil {
 		v.log.SetText("")
 	}
+}
+
+// canChangeFolder refuses a folder change while the server runs: the process
+// belongs to the folder it was started from, and swapping the supervisor would
+// leave it with nobody holding it.
+func (v *serverView) canChangeFolder() bool {
+	if !v.running() {
+		return true
+	}
+
+	v.setNote("Stop the server first — it belongs to the folder it was started from, and changing the folder would leave it with nobody watching it.")
+
+	return false
+}
+
+// useChosenDir points the panel at a folder a person picked and remembers it
+// for the next start.
+func (v *serverView) useChosenDir(dir string) bool {
+	if !v.canChangeFolder() {
+		return false
+	}
+
+	v.useDir(dir)
+	v.folder.SetText(dir)
+	v.loadConfig()
+	v.refresh()
 
 	if err := config.Set("server_dir", dir); err != nil {
-		v.setNote("The folder could not be saved for the next start: " + err.Error())
+		v.setNote("The folder changed for this session, but it could not be saved for the next start: " + err.Error())
+	}
+
+	return true
+}
+
+// resetDir asks before pointing the panel back at the folder the window was
+// installed in, and forgets the stored choice.
+func (v *serverView) resetDir() {
+	if !v.canChangeFolder() {
+		return
+	}
+
+	if v.folderPath() == defaultServerDir() {
+		v.setNote("The Server tab is already using the folder this window was installed in.")
+		return
+	}
+
+	body := widget.NewLabel(fmt.Sprintf(
+		"Point the Server tab back at the default folder?\n\nThe window was installed in: %s\nIt is using: %s\n\nNo .env and no secret file is changed.",
+		defaultServerDir(), v.folderPath()))
+	body.Wrapping = fyne.TextWrapWord
+	body.Selectable = true
+
+	dialog.ShowCustomConfirm("Reset to the default folder", "Reset", "Cancel", body,
+		func(confirmed bool) {
+			if confirmed {
+				v.applyReset()
+			}
+		}, v.ui.window)
+}
+
+// applyReset forgets the stored folder and points the panel at the default.
+func (v *serverView) applyReset() {
+	if !v.canChangeFolder() {
+		return
+	}
+
+	target := defaultServerDir()
+
+	if err := config.Remove("server_dir"); err != nil {
+		v.setNote("The stored folder could not be forgotten: " + err.Error())
+		return
+	}
+
+	v.useDir(target)
+	v.folder.SetText(target)
+	v.loadConfig()
+	v.refresh()
+
+	// A folder with no .env already explains itself in the note; do not cover
+	// that up with a confirmation.
+	if v.env != nil {
+		v.setNote("Using the folder this window was installed in: " + target)
 	}
 }
 
@@ -193,7 +276,8 @@ func (v *serverView) content() fyne.CanvasObject {
 	v.folder.Wrapping = fyne.TextWrapWord
 	v.folder.Selectable = true
 
-	choose := widget.NewButtonWithIcon("Choose folder…", theme.FolderOpenIcon(), v.chooseFolder)
+	v.choose = widget.NewButtonWithIcon("Choose folder…", theme.FolderOpenIcon(), v.chooseFolder)
+	v.reset = widget.NewButtonWithIcon("Reset to default", theme.ViewRefreshIcon(), v.resetDir)
 
 	// One compact header rather than a card: the card left the panes 121 px
 	// tall at 980x640 (#235), which is why the log could not be read and the
@@ -203,7 +287,8 @@ func (v *serverView) content() fyne.CanvasObject {
 		container.NewHBox(v.start, v.stop, v.open),
 		v.health,
 	)
-	folderRow := container.NewBorder(nil, nil, widget.NewLabel("Folder"), choose, v.folder)
+	folderRow := container.NewBorder(nil, nil, widget.NewLabel("Folder"),
+		container.NewHBox(v.choose, v.reset), v.folder)
 
 	v.note = widget.NewLabel("")
 	v.note.Wrapping = fyne.TextWrapWord
@@ -401,9 +486,13 @@ func (v *serverView) refresh() {
 	if state.Running {
 		v.start.Disable()
 		v.stop.Enable()
+		// The running process belongs to this folder; a change is refused
+		// rather than applied behind the server's back.
+		v.setFolderEditable(false)
 	} else {
 		v.start.Enable()
 		v.stop.Disable()
+		v.setFolderEditable(true)
 	}
 
 	v.drawLog()
@@ -627,7 +716,26 @@ func (v *serverView) openBrowser() {
 	}
 }
 
+// setFolderEditable turns the two folder controls on or off together.
+func (v *serverView) setFolderEditable(editable bool) {
+	for _, button := range []*widget.Button{v.choose, v.reset} {
+		if button == nil {
+			continue
+		}
+
+		if editable {
+			button.Enable()
+		} else {
+			button.Disable()
+		}
+	}
+}
+
 func (v *serverView) chooseFolder() {
+	if !v.canChangeFolder() {
+		return
+	}
+
 	dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
 		if err != nil {
 			v.setNote(err.Error())
@@ -637,10 +745,7 @@ func (v *serverView) chooseFolder() {
 			return
 		}
 
-		v.useDir(uri.Path())
-		v.folder.SetText(uri.Path())
-		v.loadConfig()
-		v.refresh()
+		v.useChosenDir(uri.Path())
 	}, v.ui.window)
 }
 
