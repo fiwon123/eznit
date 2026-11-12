@@ -23,11 +23,13 @@ name: Release
 #           cross toolchain, never as a plain `go build`
 #   pack    add the window and its licences to each CLI archive, verify every
 #           archive (PE, Mach-O, provenance), and regenerate checksums.txt
-#   smoke   the Windows CLI and the window are started on windows-latest
+#   smoke   the Windows CLI and window are started on windows-latest
+#   smoke-linux  the linux/amd64 window unpacked from its archive is started on
+#           Xvfb, so the copy Debian 12 has to run is the copy that is tested
 #
 # `publish` needs all of them and runs only on a tag push. `workflow_dispatch`
-# runs guard/build/gui/pack/smoke, keeps the archives on the run, and publishes
-# nothing -- the way to exercise this pipeline without a tag.
+# runs guard/build/gui/pack/smoke/smoke-linux, keeps the archives on the run,
+# and publishes nothing -- the way to exercise this pipeline without a tag.
 
 on:
   push:
@@ -621,7 +623,9 @@ jobs:
           cat > header.md <<'EOF'
           ## 📦 eznit @VERSION@
 
-          Self-hosted file storage: the API, the CLI and the web UI. Built from
+          Self-hosted project setup: an API, a CLI, a web UI served by that API
+          and a desktop window, for keeping a project's files and putting them
+          on any machine. Built from
           `@COMMIT@` · [workflow run](@RUN@)
 
           ## 📦 Download
@@ -655,8 +659,10 @@ jobs:
             migrations. `RUNNING.md` and the known gaps in the repository say
             what that leaves unproven.
           - The macOS archives are cross-compiled on Linux, and none of the
-            ARM64 binaries is executed on ARM hardware. Only the Windows amd64
-            CLI and window are started by this workflow.
+            ARM64 binaries is executed on ARM hardware. What this workflow
+            starts is the Windows amd64 CLI and window and the Linux amd64
+            window (on a virtual display); the API is never run against a
+            database here.
 
           <details>
           <summary>🧾 Merged pull requests</summary>

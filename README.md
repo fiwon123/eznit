@@ -125,8 +125,9 @@ a file in your home directory unless you point `--target` there.
 | 🍎 macOS arm64 | `eznit_<tag>_darwin_arm64.tar.gz` |
 
 One download holds the whole product: `eznit` and `ez` (the CLI), `eznit-server`
-(the API), `eznit-gui` (the desktop window, whose **Server** tab runs the API
-beside it), the migrations, `docker-compose.yml` and the example configuration.
+(the API), `eznit-gui` (the desktop window: **Files** and **Templates** are
+clients of an API, **Server** runs one beside it), the migrations,
+`docker-compose.yml` and the example configuration.
 `RUNNING.md` says what runs from it and what does not. Verify a download against
 `checksums.txt` from the release page.
 
