@@ -34,14 +34,6 @@ func (u *ui) changeServer() {
 	remote := widget.NewEntry()
 	remote.SetPlaceHolder("https://eznit.example.com")
 
-	isLocal := current.url == apiclient.NormalizeBaseURL(local)
-	if isLocal {
-		mode.SetSelected(optionLocal)
-	} else {
-		mode.SetSelected(optionRemote)
-		remote.SetText(current.url)
-	}
-
 	status := widget.NewLabel("")
 	status.Wrapping = fyne.TextWrapWord
 	status.Selectable = true
@@ -49,6 +41,16 @@ func (u *ui) changeServer() {
 	result := widget.NewLabel("")
 	result.Wrapping = fyne.TextWrapWord
 	result.Selectable = true
+
+	// Selecting a radio option may run its handler, so the labels it writes to
+	// exist before the first selection.
+	isLocal := current.url == apiclient.NormalizeBaseURL(local)
+	if isLocal {
+		mode.SetSelected(optionLocal)
+	} else {
+		mode.SetSelected(optionRemote)
+		remote.SetText(current.url)
+	}
 
 	var popup *dialog.CustomDialog
 
@@ -124,8 +126,8 @@ func (u *ui) changeServer() {
 			return
 		}
 
+		// showMain reloads the library, which reports the new address itself.
 		u.showMain()
-		u.files.setStatus("Using "+choice.url+".", statusOK)
 	}
 
 	use := func() {

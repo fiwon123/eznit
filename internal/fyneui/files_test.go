@@ -84,7 +84,7 @@ func TestTakeOfflineNamesTheAddress(t *testing.T) {
 	view := newTestFilesView(t, apiChoice{url: "https://eznit.example.com", source: "the saved address"})
 
 	view.ready = true
-	view.takeOffline(&apiclient.APIError{Status: 401, Message: "no session"})
+	view.takeOffline("https://eznit.example.com", &apiclient.APIError{Status: 401, Message: "no session"})
 
 	if !strings.Contains(view.status.Text, "https://eznit.example.com") {
 		t.Errorf("status = %q, want the address that failed", view.status.Text)

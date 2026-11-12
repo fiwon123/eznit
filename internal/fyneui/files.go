@@ -219,7 +219,7 @@ func (v *filesView) refresh() {
 
 		fyne.Do(func() {
 			if err != nil {
-				v.takeOffline(err)
+				v.takeOffline(address, err)
 				return
 			}
 
@@ -242,7 +242,7 @@ func (v *filesView) refresh() {
 
 // takeOffline is the answer to a server that did not answer: say which address
 // failed and what to do about it, and switch the actions off.
-func (v *filesView) takeOffline(err error) {
+func (v *filesView) takeOffline(address string, err error) {
 	v.ready = false
 	v.files = nil
 	v.selected = -1
@@ -251,7 +251,7 @@ func (v *filesView) takeOffline(err error) {
 
 	v.setStatus(fmt.Sprintf(
 		"The server at %s did not answer (%s). Use Change… above to point the tab somewhere else, or Refresh to try again.",
-		v.ui.client.BaseURL, messageOf(err)), statusError)
+		address, messageOf(err)), statusError)
 }
 
 // testServer asks the instance whether it answers, without listing anything:

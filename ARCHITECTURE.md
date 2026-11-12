@@ -298,6 +298,17 @@ the token in a file git owns, and it is stated rather than hidden.
 The GUI reads `GUI_API_URL` (the default server address), `-api` and
 `-server-dir` (flags, which win), and stores its choices in
 `~/.eznit/config.json` beside the CLI's: `api_url`, `token` and `server_dir`.
+The address is resolved as `-api`, then `GUI_API_URL`, then the saved address,
+then `http://localhost:4000`; the Files tab's header names both the address and
+which of those produced it, because the previous order let a saved address
+silently disable the documented `GUI_API_URL`. `apiclient.ValidateBaseURL` and
+`SameHost` decide whether a typed address is usable and whether a session token
+still belongs to it: a different host means a different instance, so the token
+is forgotten and the login form follows, while a port change on one host keeps
+the session. The tab's actions stay disabled until `/v1/healthcheck` has
+answered through a listing, so a wrong address cannot look like an empty
+library.
+
 The Server tab reads the env file of `server_dir` — the folder the window was
 installed into unless another is chosen — and starts `eznit-server` from it as a
 child process, with that file as its environment. A stop is an interrupt, so the
