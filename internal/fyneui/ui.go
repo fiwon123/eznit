@@ -9,6 +9,7 @@
 package fyneui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/fiwon123/eznit/internal/apiclient"
 	"github.com/fiwon123/eznit/internal/config"
+	"github.com/fiwon123/eznit/internal/serverctl"
 )
 
 // projectURL is where About sends a reader.
@@ -31,12 +33,26 @@ type ui struct {
 	window  fyne.Window
 	version string
 
+	// clip is the system clipboard. It is a field rather than a call so a test
+	// can supply one: the software driver's clipboard is nil.
+	clip fyne.Clipboard
+
+	// address is the instance the Files tab talks to, and where that address
+	// came from — shown in the tab's header rather than picked silently.
+	address apiChoice
+
 	client  *apiclient.Client
 	files   *filesView
 	server  *serverView
 	updater *appUpdater
 
 	tabs *container.AppTabs
+}
+
+// apiChoice is one server address and the reason it is the current one.
+type apiChoice struct {
+	url    string
+	source string
 }
 
 // Run opens the window and blocks until it closes.
@@ -52,9 +68,12 @@ func Run(version string, apiURL string, serverDir string) error {
 		app:     a,
 		window:  window,
 		version: version,
-		client:  apiclient.New(apiFrom(apiURL)),
+		clip:    a.Clipboard(),
+		address: apiFrom(apiURL),
 		updater: newAppUpdater(version),
 	}
+
+	u.client = apiclient.New(u.address.url)
 	u.files = newFilesView(u)
 	u.server = newServerView(u, serverFrom(serverDir))
 
@@ -108,8 +127,7 @@ func Run(version string, apiURL string, serverDir string) error {
 }
 
 // serverFrom decides the server folder: the flag, then the stored setting,
-// then the folder this binary was installed into — which is the bundle a
-// released window sits in.
+// then the folder this binary was installed into.
 func serverFrom(flagValue string) string {
 	if value := strings.TrimSpace(flagValue); value != "" {
 		return value
@@ -119,6 +137,14 @@ func serverFrom(flagValue string) string {
 		return stored
 	}
 
+	return defaultServerDir()
+}
+
+// defaultServerDir is the folder this window was installed into — the bundle a
+// released window sits in. It is what "reset to default" returns to, and it is
+// never written to the config file: a default that was stored on the first
+// launch is indistinguishable from a choice.
+func defaultServerDir() string {
 	if executable, err := os.Executable(); err == nil {
 		if resolved, err := filepath.EvalSymlinks(executable); err == nil {
 			executable = resolved
@@ -130,18 +156,74 @@ func serverFrom(flagValue string) string {
 	return "."
 }
 
-// apiFrom decides the API base: the flag, then the stored setting, then the
-// environment, then the local stack.
-func apiFrom(flagValue string) string {
+// apiFrom decides the API base: the flag, then GUI_API_URL, then the saved
+// address, then the local stack. The environment beats the saved address so
+// the documented GUI_API_URL keeps working after a login has stored one; the
+// Files tab's header names whichever source won, so it is never silent.
+func apiFrom(flagValue string) apiChoice {
 	if value := strings.TrimSpace(flagValue); value != "" {
-		return value
+		return apiChoice{url: apiclient.NormalizeBaseURL(value), source: "the -api flag"}
 	}
 
-	if stored, err := config.Value("api_url"); err == nil {
-		return stored
+	if value := strings.TrimSpace(os.Getenv("GUI_API_URL")); value != "" {
+		return apiChoice{url: apiclient.NormalizeBaseURL(value), source: "GUI_API_URL"}
 	}
 
-	return apiclient.NormalizeBaseURL(os.Getenv("GUI_API_URL"))
+	if stored, err := config.Value("api_url"); err == nil && strings.TrimSpace(stored) != "" {
+		return apiChoice{url: apiclient.NormalizeBaseURL(stored), source: "the saved address"}
+	}
+
+	return apiChoice{url: apiclient.NormalizeBaseURL(""), source: "the default"}
+}
+
+// localAddress is the API that a server started from the Server tab's folder
+// answers on. The port comes from that folder's configuration, so the two tabs
+// cannot disagree about where "this machine" is.
+func (u *ui) localAddress() string {
+	if u.server == nil {
+		return apiclient.NormalizeBaseURL("")
+	}
+
+	return serverctl.LocalAddress(u.server.folderPath())
+}
+
+// setAPI points the client at an instance and keeps the stored session: the
+// caller decides whether that token still belongs there.
+func (u *ui) setAPI(address apiChoice) {
+	u.address = apiChoice{
+		url:    apiclient.NormalizeBaseURL(address.url),
+		source: address.source,
+	}
+	u.client = apiclient.New(u.address.url)
+
+	if token, err := config.Value("token"); err == nil {
+		u.client.Token = token
+	}
+}
+
+// useServer points the Files tab at another instance and remembers the choice.
+// A different host is a different instance, and the token was issued by the old
+// one, so it is forgotten; it reports whether the session had to go.
+func (u *ui) useServer(address apiChoice) (bool, error) {
+	sameHost := apiclient.SameHost(u.client.BaseURL, address.url)
+
+	if err := config.Set("api_url", address.url); err != nil {
+		return false, fmt.Errorf("the address could not be saved: %w", err)
+	}
+
+	u.setAPI(address)
+
+	if sameHost {
+		return false, nil
+	}
+
+	if err := config.Remove("token"); err != nil {
+		return false, fmt.Errorf("the old session could not be forgotten: %w", err)
+	}
+
+	u.client.Token = ""
+
+	return true, nil
 }
 
 // showMain swaps the Files tab to the signed-in library.
@@ -173,4 +255,23 @@ func (u *ui) signOut() {
 
 	u.client.Token = ""
 	u.showLogin("You are signed out.")
+}
+
+// copyToClipboard puts text where a person can paste it. It reports whether a
+// clipboard existed: the software driver used by the tests has none, and a
+// silent no-op would read as a successful copy.
+func (u *ui) copyToClipboard(text string) bool {
+	clipboard := u.clip
+
+	if clipboard == nil && u.app != nil {
+		clipboard = u.app.Clipboard()
+	}
+
+	if clipboard == nil {
+		return false
+	}
+
+	clipboard.SetContent(text)
+
+	return true
 }

@@ -4,8 +4,10 @@ package fyneui
 
 import (
 	"fmt"
+	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
@@ -14,7 +16,8 @@ import (
 	"github.com/fiwon123/eznit/internal/apiclient"
 )
 
-// filesView is the caller's library: list, upload, download, delete and share.
+// filesView is the caller's library: list, upload, download, delete and share,
+// on one server — the one the header names.
 type filesView struct {
 	ui       *ui
 	table    *widget.Table
@@ -22,9 +25,28 @@ type filesView struct {
 	selected int
 	status   *widget.Label
 
+	// ready is set by the first successful listing. Actions that need the
+	// server stay off until then, so a stale or wrong address cannot look like
+	// an empty library.
+	ready bool
+
+	address *widget.Label
+	source  *widget.Label
+	dot     *canvas.Circle
+	test    *widget.Button
+	change  *widget.Button
+
+	upload   *widget.Button
 	download *widget.Button
 	remove   *widget.Button
 	share    *widget.Button
+
+	// The table's cells cannot be selectable — a selectable cell would take the
+	// tap that selects the row — so the selected file is described under the
+	// table, in a line that can be selected and copied.
+	detail      *widget.Label
+	copyName    *widget.Button
+	copyDetails *widget.Button
 }
 
 func newFilesView(u *ui) *filesView {
@@ -33,6 +55,8 @@ func newFilesView(u *ui) *filesView {
 		selected: -1,
 		status:   widget.NewLabel(""),
 	}
+	view.status.Selectable = true
+	view.status.Wrapping = fyne.TextWrapWord
 
 	view.table = widget.NewTable(
 		func() (int, int) { return len(view.files) + 1, 3 },
@@ -89,6 +113,7 @@ func newFilesView(u *ui) *filesView {
 		view.updateActions()
 	}
 
+	view.upload = widget.NewButtonWithIcon("Upload", theme.ContentAddIcon(), view.uploadFile)
 	view.download = widget.NewButtonWithIcon("Download", theme.DownloadIcon(), view.downloadSelected)
 	view.remove = widget.NewButtonWithIcon("Delete", theme.DeleteIcon(), view.deleteSelected)
 	view.share = widget.NewButton("Share", view.toggleShare)
@@ -98,13 +123,70 @@ func newFilesView(u *ui) *filesView {
 	return view
 }
 
+// header is the line that says which server this tab is talking to, and what
+// put that address there. It is rebuilt with the content, so a change shows up
+// without a restart.
+func (v *filesView) header() fyne.CanvasObject {
+	v.address = widget.NewLabel(v.ui.address.url)
+	v.address.Wrapping = fyne.TextWrapWord
+	v.address.Selectable = true
+
+	v.source = widget.NewLabel("(" + v.ui.address.source + ")")
+	v.source.Wrapping = fyne.TextWrapWord
+	v.source.Selectable = true
+
+	v.dot = canvas.NewCircle(statusColour(v.ui.app.Settings().ThemeVariant(), statusIdle))
+	dotBox := container.NewGridWrap(fyne.NewSize(10, 10), v.dot)
+
+	v.test = widget.NewButton("Test", v.testServer)
+	v.change = widget.NewButtonWithIcon("Change…", theme.SettingsIcon(), v.ui.changeServer)
+
+	line := container.NewBorder(nil, nil,
+		container.NewHBox(dotBox, widget.NewLabel("Server")),
+		container.NewHBox(v.test, v.change),
+		container.NewHBox(v.address, v.source),
+	)
+
+	return container.NewVBox(container.NewPadded(line), widget.NewSeparator())
+}
+
 func (v *filesView) content() fyne.CanvasObject {
 	refresh := widget.NewButtonWithIcon("Refresh", theme.ViewRefreshIcon(), v.refresh)
-	upload := widget.NewButtonWithIcon("Upload", theme.ContentAddIcon(), v.upload)
 
-	toolbar := container.NewHBox(refresh, upload, widget.NewSeparator(), v.download, v.remove, v.share)
+	toolbar := container.NewHBox(refresh, v.upload, widget.NewSeparator(), v.download, v.remove, v.share)
 
-	return container.NewBorder(toolbar, v.status, nil, nil, v.table)
+	v.detail = widget.NewLabel("")
+	v.detail.Wrapping = fyne.TextWrapWord
+	v.detail.Selectable = true
+
+	v.copyName = widget.NewButton("Copy name", v.copySelectedName)
+	v.copyDetails = widget.NewButton("Copy details", v.copySelectedDetails)
+
+	detailRow := container.NewBorder(nil, nil, nil,
+		container.NewHBox(v.copyName, v.copyDetails), v.detail)
+
+	footer := container.NewVBox(container.NewPadded(detailRow), v.status)
+	body := container.NewBorder(toolbar, footer, nil, nil, v.table)
+
+	// A rebuilt view has not listed anything yet.
+	v.ready = false
+	v.updateActions()
+
+	return container.NewBorder(v.header(), nil, nil, nil, body)
+}
+
+// setStatus writes the one line under the table and colours the dot with it.
+func (v *filesView) setStatus(text string, kind statusKind) {
+	if v.status == nil {
+		return
+	}
+
+	v.status.SetText(text)
+
+	if v.dot != nil {
+		v.dot.FillColor = statusColour(v.ui.app.Settings().ThemeVariant(), kind)
+		v.dot.Refresh()
+	}
 }
 
 func (v *filesView) selectedFile() (apiclient.File, bool) {
@@ -116,9 +198,35 @@ func (v *filesView) selectedFile() (apiclient.File, bool) {
 }
 
 func (v *filesView) updateActions() {
+	if v.upload != nil {
+		if v.ready {
+			v.upload.Enable()
+		} else {
+			v.upload.Disable()
+		}
+	}
+
 	file, ok := v.selectedFile()
 
-	if !ok {
+	if v.detail != nil {
+		if !ok {
+			v.detail.SetText("Select a file to see its details here.")
+		} else {
+			v.detail.SetText(fileDescription(file))
+		}
+	}
+
+	if v.copyName != nil {
+		for _, button := range []*widget.Button{v.copyName, v.copyDetails} {
+			if ok {
+				button.Enable()
+			} else {
+				button.Disable()
+			}
+		}
+	}
+
+	if !ok || !v.ready {
 		v.download.Disable()
 		v.remove.Disable()
 		v.share.Disable()
@@ -137,20 +245,72 @@ func (v *filesView) updateActions() {
 	}
 }
 
+// fileDescription is the line under the table: what the row is, in words a
+// person can read and copy.
+func fileDescription(file apiclient.File) string {
+	visibility := "private"
+	if file.IsPublic {
+		visibility = "shared"
+	}
+
+	return fmt.Sprintf("%s · version %d · %s · id %s", file.Name, file.Version, visibility, file.ID)
+}
+
+// fileRecord is the same thing as one tab-separated line, for a spreadsheet or
+// a script.
+func fileRecord(file apiclient.File) string {
+	visibility := "private"
+	if file.IsPublic {
+		visibility = "shared"
+	}
+
+	return fmt.Sprintf("%s\t%d\t%s\t%s", file.Name, file.Version, visibility, file.ID)
+}
+
+func (v *filesView) copySelectedName() {
+	file, ok := v.selectedFile()
+	if !ok {
+		return
+	}
+
+	if !v.ui.copyToClipboard(file.Name) {
+		v.setStatus("This window has no clipboard available — the name could not be copied.", statusError)
+		return
+	}
+
+	v.setStatus("Copied the name of "+file.Name+".", statusOK)
+}
+
+func (v *filesView) copySelectedDetails() {
+	file, ok := v.selectedFile()
+	if !ok {
+		return
+	}
+
+	if !v.ui.copyToClipboard(fileRecord(file)) {
+		v.setStatus("This window has no clipboard available — the details could not be copied.", statusError)
+		return
+	}
+
+	v.setStatus("Copied the details of "+file.Name+".", statusOK)
+}
+
 // refresh reloads the library. The request runs off the UI goroutine and the
 // widgets are touched only inside fyne.Do.
 func (v *filesView) refresh() {
-	v.status.SetText("Loading your files…")
+	address := v.ui.client.BaseURL
+	v.setStatus("Loading your files from "+address+"…", statusPending)
 
 	go func() {
 		files, err := v.ui.client.ListFiles()
 
 		fyne.Do(func() {
 			if err != nil {
-				v.status.SetText("The files could not be loaded: " + messageOf(err))
+				v.takeOffline(address, err)
 				return
 			}
 
+			v.ready = true
 			v.files = files
 			v.selected = -1
 			v.table.UnselectAll()
@@ -158,19 +318,62 @@ func (v *filesView) refresh() {
 			v.updateActions()
 
 			if len(files) == 0 {
-				v.status.SetText("No files yet. Upload one with the button above.")
+				v.setStatus("No files yet. Upload one with the button above.", statusOK)
 				return
 			}
 
-			v.status.SetText(fmt.Sprintf("%d file(s).", len(files)))
+			v.setStatus(fmt.Sprintf("%d file(s) on %s.", len(files), address), statusOK)
 		})
 	}()
 }
 
-func (v *filesView) upload() {
+// takeOffline is the answer to a server that did not answer: say which address
+// failed and what to do about it, and switch the actions off.
+func (v *filesView) takeOffline(address string, err error) {
+	v.ready = false
+	v.files = nil
+	v.selected = -1
+	v.table.Refresh()
+	v.updateActions()
+
+	v.setStatus(fmt.Sprintf(
+		"The server at %s did not answer (%s). Use Change… above to point the tab somewhere else, or Refresh to try again.",
+		address, messageOf(err)), statusError)
+}
+
+// testServer asks the instance whether it answers, without listing anything:
+// it is the "is this address right" button.
+func (v *filesView) testServer() {
+	address := v.ui.client.BaseURL
+	client := apiclient.New(address)
+
+	v.setStatus("Asking "+address+"…", statusPending)
+
+	go func() {
+		started := time.Now()
+		err := client.Health()
+		took := time.Since(started)
+
+		fyne.Do(func() {
+			if err != nil {
+				v.setStatus(fmt.Sprintf("No answer from %s: %s", address, messageOf(err)), statusError)
+				return
+			}
+
+			v.setStatus(fmt.Sprintf("%s answered in %s.", address, took.Round(time.Millisecond)), statusOK)
+		})
+	}()
+}
+
+func (v *filesView) uploadFile() {
+	if !v.ready {
+		v.setStatus("There is no server to upload to yet — check the address above.", statusError)
+		return
+	}
+
 	dialog.ShowFileOpen(func(reader fyne.URIReadCloser, err error) {
 		if err != nil {
-			v.status.SetText("The file could not be chosen: " + err.Error())
+			v.setStatus("The file could not be chosen: "+err.Error(), statusError)
 			return
 		}
 		if reader == nil {
@@ -180,14 +383,14 @@ func (v *filesView) upload() {
 		path := reader.URI().Path()
 		reader.Close()
 
-		v.status.SetText("Uploading " + path + "…")
+		v.setStatus("Uploading "+path+"…", statusPending)
 
 		go func() {
 			err := v.ui.client.UploadFile(path)
 
 			fyne.Do(func() {
 				if err != nil {
-					v.status.SetText("The upload failed: " + messageOf(err))
+					v.setStatus("The upload failed: "+messageOf(err), statusError)
 					return
 				}
 
@@ -205,7 +408,7 @@ func (v *filesView) downloadSelected() {
 
 	dialog.ShowFileSave(func(writer fyne.URIWriteCloser, err error) {
 		if err != nil {
-			v.status.SetText("The destination could not be chosen: " + err.Error())
+			v.setStatus("The destination could not be chosen: "+err.Error(), statusError)
 			return
 		}
 		if writer == nil {
@@ -215,18 +418,18 @@ func (v *filesView) downloadSelected() {
 		path := writer.URI().Path()
 		writer.Close()
 
-		v.status.SetText("Downloading " + file.Name + "…")
+		v.setStatus("Downloading "+file.Name+"…", statusPending)
 
 		go func() {
 			saved, err := v.ui.client.DownloadFile(file.ID, path)
 
 			fyne.Do(func() {
 				if err != nil {
-					v.status.SetText("The download failed: " + messageOf(err))
+					v.setStatus("The download failed: "+messageOf(err), statusError)
 					return
 				}
 
-				v.status.SetText("Saved to " + saved + ".")
+				v.setStatus("Saved to "+saved+".", statusOK)
 			})
 		}()
 	}, v.ui.window)
@@ -245,14 +448,14 @@ func (v *filesView) deleteSelected() {
 				return
 			}
 
-			v.status.SetText("Deleting " + file.Name + "…")
+			v.setStatus("Deleting "+file.Name+"…", statusPending)
 
 			go func() {
 				err := v.ui.client.DeleteFile(file.ID)
 
 				fyne.Do(func() {
 					if err != nil {
-						v.status.SetText("The delete failed: " + messageOf(err))
+						v.setStatus("The delete failed: "+messageOf(err), statusError)
 						return
 					}
 
@@ -269,14 +472,14 @@ func (v *filesView) toggleShare() {
 	}
 
 	apply := func(public bool) {
-		v.status.SetText("Updating " + file.Name + "…")
+		v.setStatus("Updating "+file.Name+"…", statusPending)
 
 		go func() {
 			err := v.ui.client.SetFilePublic(file.ID, public)
 
 			fyne.Do(func() {
 				if err != nil {
-					v.status.SetText("The change failed: " + messageOf(err))
+					v.setStatus("The change failed: "+messageOf(err), statusError)
 					return
 				}
 

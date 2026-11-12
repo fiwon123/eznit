@@ -265,3 +265,75 @@ func newHealthServer() *http.Server {
 		_, _ = w.Write([]byte(`{"status":"available"}`))
 	})}
 }
+
+// Written counts the lines ever produced, not the ones still buffered: a
+// window that keeps its own copy needs the difference to know how many rows to
+// drop when the buffer is trimmed.
+func TestWrittenCountsPastTheBuffer(t *testing.T) {
+	supervisor := NewSupervisor(t.TempDir())
+
+	total := maxOutputLines + 5
+	for range total {
+		if _, err := supervisor.Write([]byte("one line\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if got := supervisor.Written(); got != total {
+		t.Errorf("Written() = %d, want %d", got, total)
+	}
+	if got := len(supervisor.Output()); got != maxOutputLines {
+		t.Errorf("Output() holds %d lines, want the cap of %d", got, maxOutputLines)
+	}
+
+	supervisor.ClearOutput()
+
+	if got := supervisor.Written(); got != total {
+		t.Errorf("Written() after a clear = %d, want the total %d", got, total)
+	}
+	if got := len(supervisor.Output()); got != 0 {
+		t.Errorf("Output() after a clear holds %d lines, want none", got)
+	}
+}
+
+// The notify callback must run without the supervisor's lock: a window's
+// redraw reads State and Output, and a driver that runs the callback inline
+// (the test driver does) would otherwise deadlock on the lock Start holds.
+func TestStartNotifiesWithoutHoldingTheLock(t *testing.T) {
+	dir := t.TempDir()
+	writeFakeServer(t, dir, "exec sleep 30\n")
+	writeEnv(t, dir, freePort(t))
+
+	supervisor := NewSupervisor(dir)
+
+	notified := make(chan struct{}, 4)
+	supervisor.SetNotify(func() {
+		_ = supervisor.State()
+		_ = supervisor.Output()
+
+		select {
+		case notified <- struct{}{}:
+		default:
+		}
+	})
+
+	started := make(chan error, 1)
+	go func() { started <- supervisor.Start() }()
+
+	select {
+	case err := <-started:
+		if err != nil {
+			t.Fatalf("Start() = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start() did not return: the notify ran while the lock was held")
+	}
+
+	select {
+	case <-notified:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the notify never ran after a start")
+	}
+
+	_ = supervisor.Stop(2 * time.Second)
+}

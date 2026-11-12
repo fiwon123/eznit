@@ -41,6 +41,11 @@ type Supervisor struct {
 	lines []string
 	rest  string // the tail of a line the process has not finished writing
 
+	// written is how many lines the child has produced, ever. Output is
+	// capped, so a window keeping its own copy needs the total to tell a
+	// trimmed buffer from an unchanged one.
+	written int
+
 	// notifyMu guards the callback on its own: changed() runs while mu is
 	// held (a start, a write), and the callback reads Output() through mu.
 	notifyMu sync.Mutex
@@ -89,6 +94,16 @@ func (s *Supervisor) Output() []string {
 	return lines
 }
 
+// Written is how many lines the child has written in total. Output keeps only
+// the last maxOutputLines, so a caller that keeps its own copy uses this to
+// work out how many of the lines it shows have been dropped underneath it.
+func (s *Supervisor) Written() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.written
+}
+
 // ClearOutput forgets the log so far.
 func (s *Supervisor) ClearOutput() {
 	s.mu.Lock()
@@ -106,6 +121,20 @@ func (s *Supervisor) ClearOutput() {
 // created from the example when it is missing, and the API port must be free.
 // Those are the three failures a person can fix without reading a stack trace.
 func (s *Supervisor) Start() error {
+	if err := s.start(); err != nil {
+		return err
+	}
+
+	// The notify runs outside the lock. A window's redraw reads State and
+	// Output, so calling it while this method holds the mutex is a deadlock
+	// waiting for a driver that runs the callback inline.
+	s.changed()
+
+	return nil
+}
+
+// start does the work with the supervisor's lock held.
+func (s *Supervisor) start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -158,8 +187,6 @@ func (s *Supervisor) Start() error {
 		s.changed()
 	}()
 
-	s.changed()
-
 	return nil
 }
 
@@ -207,6 +234,7 @@ func (s *Supervisor) Write(data []byte) (int, error) {
 	if text != "" {
 		for _, line := range strings.Split(text, "\n") {
 			s.lines = append(s.lines, strings.TrimSuffix(line, "\r"))
+			s.written++
 		}
 	}
 
@@ -235,10 +263,18 @@ func (s *Supervisor) changed() {
 // LocalURL is where the server answers on this machine, for the health check
 // and the "open in a browser" button.
 func (s *Supervisor) LocalURL() string {
+	return LocalAddress(s.dir)
+}
+
+// LocalAddress is the API a server started in dir listens on: API_PORT from its
+// configuration file, or the default when the file has none.
+func LocalAddress(dir string) string {
 	port := defaultPort
 
-	if env, err := LoadEnv(filepath.Join(s.dir, EnvFileName)); err == nil {
-		port = env.Value("API_PORT", defaultPort)
+	if env, err := LoadEnv(filepath.Join(dir, EnvFileName)); err == nil {
+		if value := env.Value("API_PORT", defaultPort); value != "" {
+			port = value
+		}
 	}
 
 	return "http://127.0.0.1:" + port

@@ -21,9 +21,11 @@ import (
 //
 // It is the test that would have caught #235: the Save button used to sit at
 // the bottom of the scrolling pane, below the fold, on a card that looked
-// finished.
+// finished. And it is the test that guards the wheel: a Fyne entry keeps a
+// scroll of its own and swallows the wheel over it, so the form must fit
+// instead of scrolling at every size the window can be.
 func TestServerTabFitsTheConfiguration(t *testing.T) {
-	sizes := []fyne.Size{fyne.NewSize(980, 640), fyne.NewSize(1024, 720)}
+	sizes := []fyne.Size{fyne.NewSize(980, 640), fyne.NewSize(1024, 720), fyne.NewSize(800, 520)}
 	themes := map[string]fyne.Theme{"light": theme.LightTheme(), "dark": theme.DarkTheme()}
 
 	for name, th := range themes {
@@ -99,7 +101,10 @@ func TestServerTabKeepsTheSaveButtonVisible(t *testing.T) {
 	dir := bundleDir(t, "API_PORT=\"4000\"\nDB_HOST=\"127.0.0.1\"\nDB_PORT=\"5432\"\nDB_USER=\"root\"\nDB_NAME=\"eznit\"\n")
 
 	view := newTestServerView(t, dir)
-	size := fyne.NewSize(800, 520)
+	// Below the smallest supported layout on purpose: this is the one case the
+	// fields cannot fit, so the pinned row is under pressure. A real window
+	// refuses to shrink this far, because the pane's minimum is the form.
+	size := fyne.NewSize(640, 360)
 	view.ui.window.Resize(size)
 	view.ui.window.Content().Resize(size)
 	view.panes.SelectIndex(1)
@@ -107,7 +112,11 @@ func TestServerTabKeepsTheSaveButtonVisible(t *testing.T) {
 
 	content, pane := view.configScroll.Content.MinSize(), view.configScroll.Size()
 	if content.Height <= pane.Height {
-		t.Skipf("the fields fit at %v, so the pinned row is not under pressure", size)
+		// A skip would read as a pass. This test only means something while the
+		// size forces the pane to scroll; if the layout grows, lower the size
+		// rather than lose the guard.
+		t.Fatalf("the fields fit at %v (%.0f px of content in %.0f px), so the pinned row is not under pressure",
+			size, content.Height, pane.Height)
 	}
 
 	captured := view.ui.window.Canvas().Capture()

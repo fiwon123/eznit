@@ -113,7 +113,7 @@ jobs:
       #   - A red symbol-level run means something reachable regressed, which
       #     is the actionable signal.
       #
-      # Baseline when this step landed (Go 1.27.3, chi v5.5.0):
+      # Baseline when this step landed (Go 1.27.4, chi v5.5.0):
       #   0 reachable findings, 1 module-level (the openpgp entry above).
       #
       # The tool is pinned so a new release cannot change the verdict on an

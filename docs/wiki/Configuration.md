@@ -39,12 +39,17 @@ The window is a client: it talks to an eznit API and runs no server.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `GUI_API_URL` | `http://localhost:4000` | the API to talk to, when no address is stored in the app |
+| `GUI_API_URL` | `http://localhost:4000` | the API to talk to; it wins over the address saved in the app, so a wrapper script keeps working after a login |
 | `EZNIT_CONFIG` | `~/.eznit/config.json` | the shared store: the server address (`api_url`) and the session token |
 
 The server address is also a field on the sign-in screen and is stored in the
-config file, so the window and the CLI use the same file. There is no
-`GUI_PORT`: the window has no HTTP server of its own.
+config file, so the window and the CLI use the same file. The Files tab's header
+always names the address in use and where it came from — the `-api` flag,
+`GUI_API_URL`, the saved address, or the default — and **Change…** switches it,
+offering **This machine** (the port the Server tab's configuration names) or any
+other address, with a health check before it is saved. A session belongs to the
+server that issued it: changing hosts signs you out, changing ports on one host
+does not. There is no `GUI_PORT`: the window has no HTTP server of its own.
 
 ## 🔒 Auth rate limiting
 

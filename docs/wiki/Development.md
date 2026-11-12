@@ -44,7 +44,7 @@ carry a copy of it. `make check` stays Go-only; the web has its own gate.
 ## 🧪 The dev sandbox
 
 The commands above need a Go toolchain on the host. The sandbox removes that
-requirement: a container with Go **1.27.3** — the version in `go.mod`, the same one
+requirement: a container with Go **1.27.4** — the version in `go.mod`, the same one
 CI uses — with the workspace bind-mounted, so the files you edit are the same
 files. The frontend has the same arrangement in `web-dev`: the Node from
 `mise.toml`, running Vite against the same bind mount.

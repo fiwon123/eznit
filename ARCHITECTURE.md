@@ -28,7 +28,7 @@ so `:4000` stays the API only; the released binary keeps the embedded UI and
 needs neither the proxy nor the second port.
 
 The developer loop is the same split with a different pair of processes:
-`make dev-up` runs the API from the source inside the `dev` sandbox (Go 1.27.3)
+`make dev-up` runs the API from the source inside the `dev` sandbox (Go 1.27.4)
 and the UI as Vite in `web-dev` (Node 24.22.1), both over the bind mount. The
 same two ports, the same `/v1` proxy, the same `API_SERVE_WEB=false` — so a bug
 that is caused by the two tiers is reproducible in either mode. Neither
@@ -71,7 +71,7 @@ web/                the React UI; embed.go embeds the build into the binaries
                     nginx.conf   SPA fallback and the /v1 proxy
 db/migrations/      golang-migrate SQL, one .up/.down pair per change
 scripts/            migrations runner, dev sandbox helpers, path setup
-Dockerfile          the dev sandbox image (Go 1.27.3, gh, zip)
+Dockerfile          the dev sandbox image (Go 1.27.4, gh, zip)
 Dockerfile.api      the application image: Node builds the UI, Go embeds it
 docker-compose.yml  the product (db, migrate, api, web) and the developer loop (profile: dev: dev, web-dev)
 ```
@@ -298,11 +298,38 @@ the token in a file git owns, and it is stated rather than hidden.
 The GUI reads `GUI_API_URL` (the default server address), `-api` and
 `-server-dir` (flags, which win), and stores its choices in
 `~/.eznit/config.json` beside the CLI's: `api_url`, `token` and `server_dir`.
+The address is resolved as `-api`, then `GUI_API_URL`, then the saved address,
+then `http://localhost:4000`; the Files tab's header names both the address and
+which of those produced it, because the previous order let a saved address
+silently disable the documented `GUI_API_URL`. `apiclient.ValidateBaseURL` and
+`SameHost` decide whether a typed address is usable and whether a session token
+still belongs to it: a different host means a different instance, so the token
+is forgotten and the login form follows, while a port change on one host keeps
+the session. The tab's actions stay disabled until `/v1/healthcheck` has
+answered through a listing, so a wrong address cannot look like an empty
+library.
+
 The Server tab reads the env file of `server_dir` — the folder the window was
 installed into unless another is chosen — and starts `eznit-server` from it as a
 child process, with that file as its environment. A stop is an interrupt, so the
 API drains (10s) before the window gives up and kills it; Windows cannot deliver
 an interrupt to another process, so there a stop is a kill.
+
+The folder it resolved *by default* is never written to the config file: only a
+folder a person picked is stored, which is what keeps the default distinct from
+a decision. "Reset to default" removes the key and returns to the folder
+`os.Executable()` sits in, so a moved bundle finds its own server again; both
+controls refuse while the server runs, because the process belongs to the folder
+it was started from.
+
+The tab's Output is a log viewer over the child's own console output, which the
+API writes as JSON (`pkg/logger.NewJson`). `serverctl.ParseLine` reads one line
+into time, level, message and fields, `Format` lays it out in fixed columns, and
+the window colours it by level — so a line that is not a record (a panic) is
+kept as text rather than dropped. The supervisor keeps the newest 500 lines and
+counts every line it has written, which is what lets the grid append a row per
+new line and drop the rows the supervisor trimmed instead of rebuilding the
+whole buffer on every write.
 
 ## Gates
 

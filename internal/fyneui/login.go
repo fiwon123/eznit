@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/fiwon123/eznit/internal/apiclient"
@@ -79,12 +80,17 @@ func (l *loginView) content() fyne.CanvasObject {
 	}
 	mode := widget.NewButton(modeLabel, l.toggleMode)
 
+	useLocal := widget.NewButtonWithIcon("Use this machine", theme.ComputerIcon(), func() {
+		l.api.SetText(l.ui.localAddress())
+	})
+
 	body := container.NewVBox(
 		container.NewCenter(logo),
 		title,
 		subtitle,
 		widget.NewSeparator(),
 		form,
+		useLocal,
 		mode,
 		l.status,
 	)
@@ -125,7 +131,12 @@ func (l *loginView) submit() {
 		return
 	}
 
-	base := apiclient.NormalizeBaseURL(l.api.Text)
+	base, err := apiclient.ValidateBaseURL(l.api.Text)
+	if err != nil {
+		l.status.SetText(err.Error())
+		return
+	}
+
 	if err := config.Set("api_url", base); err != nil {
 		l.status.SetText("The server address could not be saved: " + err.Error())
 		return

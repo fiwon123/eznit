@@ -76,6 +76,66 @@ func NormalizeBaseURL(baseURL string) string {
 	return strings.TrimSuffix(base, "/")
 }
 
+// ValidateBaseURL normalises an address and refuses one this client cannot
+// use. A refusal names what is wrong, because it is shown to the person who
+// typed it.
+func ValidateBaseURL(raw string) (string, error) {
+	base := NormalizeBaseURL(raw)
+
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return "", fmt.Errorf("the server address is not a URL: %w", err)
+	}
+
+	switch {
+	case parsed.Scheme != "http" && parsed.Scheme != "https":
+		return "", fmt.Errorf("the server address must start with http:// or https://, not %q", parsed.Scheme)
+	case parsed.Host == "":
+		return "", fmt.Errorf("the server address needs a host, for example http://127.0.0.1:4000")
+	}
+
+	return base, nil
+}
+
+// SameHost reports whether two addresses name the same machine, whatever the
+// port, path or scheme. A session belongs to the instance that issued it, so a
+// port change on one host is the case worth keeping the token for.
+func SameHost(left, right string) bool {
+	first, err := url.Parse(NormalizeBaseURL(left))
+	if err != nil {
+		return false
+	}
+
+	second, err := url.Parse(NormalizeBaseURL(right))
+	if err != nil {
+		return false
+	}
+
+	return first.Hostname() != "" && first.Hostname() == second.Hostname()
+}
+
+// Health asks the instance whether it answers. It is the route the Server tab
+// polls, it needs no session, and it touches no database: it reports that the
+// process is up and nothing more.
+func (c *Client) Health() error {
+	request, err := http.NewRequest(http.MethodGet, c.BaseURL+"/v1/healthcheck", nil)
+	if err != nil {
+		return fmt.Errorf("build the request: %w", err)
+	}
+
+	response, err := c.HTTP.Do(request)
+	if err != nil {
+		return fmt.Errorf("the API could not be reached: %w", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("the health check answered %d", response.StatusCode)
+	}
+
+	return nil
+}
+
 type listResponse struct {
 	Data  []File `json:"data"`
 	Total int    `json:"total"`

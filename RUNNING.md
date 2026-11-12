@@ -46,9 +46,20 @@ its log, and edits the `.env` and the database password the server reads:
 - **Start** checks the API port and reads the `.env` before it runs anything. A
   folder with no `.env` gets one created from `.env.example`, pointed at
   `127.0.0.1` and at this bundle's secret file.
+- **Choose folder…** points the tab at another bundle and remembers the choice
+  in `~/.eznit/config.json`. **Reset to default** asks first, then forgets the
+  choice and returns to the folder this window was installed in — so a moved
+  bundle picks its own folder again. Both are refused while the server runs: the
+  process belongs to the folder it was started from.
 - The tab has two views: **Output** is the server's own log, and
   **Configuration** is the form that writes `.env` and the password file. Start
   switches to Output, because that is where the answer is.
+- The log is one row per line of output: time, level, message, then any
+  structured fields, with the level coloured (warnings and errors bold). A line
+  that is not a log record — a panic, a plain message from a tool the server
+  started — keeps its own text. **Copy log** puts the whole log on the
+  clipboard. **Follow output** stays on until you scroll away from the end;
+  **Jump to end** goes back.
 - **Stop** asks the server to shut down, which drains in-flight requests for up
   to 10 seconds. On Windows a stop is a kill: Windows cannot deliver an
   interrupt to another process.
@@ -58,8 +69,19 @@ its log, and edits the `.env` and the database password the server reads:
   `secrets/db_password.txt` (mode `0600`). The password is never displayed, never
   logged, and never copied into `~/.eznit/config.json`.
 
-The window is also a client: the **Files** tab signs in to any eznit API. To
-drive a server on another machine, start the window there instead:
+The window is also a client: the **Files** tab signs in to one eznit API and
+always shows which. Its header names the address and where it came from, a dot
+reports whether that server answered, and **Change…** offers two choices:
+
+- **This machine** — the server the Server tab would run, on the port that
+  folder's configuration names, so the two tabs cannot disagree.
+- **Another server** — any `http://` or `https://` address, validated and
+  testable with **Test** (a `/v1/healthcheck` call) before it is saved.
+
+The address is resolved as `-api`, then `GUI_API_URL`, then the address saved in
+`~/.eznit/config.json`, then `http://localhost:4000`. A session belongs to the
+server that issued it: changing to a different host asks first, then signs you
+out; a port change on one host keeps the session.
 
 ```sh
 GUI_API_URL=http://<server>:4000 ./eznit-gui
