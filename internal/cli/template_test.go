@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/fiwon123/eznit/internal/domain/templates"
+	"github.com/fiwon123/eznit/internal/templateapply"
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/google/uuid"
 )
@@ -210,7 +211,7 @@ func TestCollectTemplateFilesSendsTheBinaryFilesAsBase64(t *testing.T) {
 		t.Fatalf("expected both files, got %v", templateFilePaths(files))
 	}
 
-	byPath := map[string]templateFile{}
+	byPath := map[string]templateapply.File{}
 	for _, file := range files {
 		byPath[file.Path] = file
 	}
@@ -339,190 +340,6 @@ func TestCollectTemplateFilesKeepsTheExecutableFlag(t *testing.T) {
 	}
 }
 
-// The placeholders in the files are the questions the template asks. The
-// name has the shape the server accepts, so a placeholder the CLI finds is
-// a placeholder the server would accept.
-func TestFindPlaceholders(t *testing.T) {
-	files := []templateFile{
-		{Path: "AGENTS.md", Content: "# {{PROJECT_NAME}}\n\n{{PROJECT_DESCRIPTION}}\n"},
-		{Path: "src/main.go", Content: "// {{PROJECT_NAME}} again\n"},
-		{Path: "notes.md", Content: "{{ lowercase }} and {{MIXED-case}}\n"},
-	}
-
-	keys := findPlaceholders(files)
-
-	want := []string{"PROJECT_DESCRIPTION", "PROJECT_NAME"}
-
-	if len(keys) != len(want) {
-		t.Fatalf("expected %v, got %v", want, keys)
-	}
-
-	for i, key := range want {
-		if keys[i] != key {
-			t.Errorf("expected the key %q, got %q", key, keys[i])
-		}
-	}
-}
-
-// A placeholder that has a value is replaced. A placeholder that has none is
-// left as it is: the template may use the braces for something else.
-func TestSubstitute(t *testing.T) {
-	content := "# {{PROJECT_NAME}}\n\n{{PROJECT_DESCRIPTION}}\n\n{{UNKNOWN}}\n"
-
-	got := substitute(content, map[string]string{
-		"PROJECT_NAME": "eznit",
-	})
-
-	want := "# eznit\n\n{{PROJECT_DESCRIPTION}}\n\n{{UNKNOWN}}\n"
-
-	if got != want {
-		t.Errorf("expected %q, got %q", want, got)
-	}
-}
-
-// The placeholders the files hold that the template does not declare are
-// named: the user can see what the template left out.
-func TestUndeclaredPlaceholders(t *testing.T) {
-	files := []templateFile{
-		{Path: "AGENTS.md", Content: "{{PROJECT_NAME}} {{SECRET}} {{OTHER}}"},
-	}
-	variables := []templates.TemplateVariableData{
-		{Key: "PROJECT_NAME"},
-	}
-
-	keys := undeclaredPlaceholders(files, variables)
-
-	if len(keys) != 2 {
-		t.Fatalf("expected two undeclared placeholders, got %v", keys)
-	}
-
-	if keys[0] != "OTHER" || keys[1] != "SECRET" {
-		t.Errorf("expected the undeclared placeholders to be named, got %v", keys)
-	}
-}
-
-// A template writes into a folder the user names, and the paths come from
-// the server — from another user. A path that would land outside the folder
-// is refused, and nothing is written.
-func TestWriteTemplateFilesRefusesAPathOutsideTheTarget(t *testing.T) {
-	target := t.TempDir()
-
-	files := []templateFile{
-		{Path: "AGENTS.md", Content: "the project"},
-		{Path: "../escape.txt", Content: "the escape"},
-	}
-
-	err := writeTemplateFiles(target, files, false)
-	if err == nil {
-		t.Fatal("expected the path outside the folder to be refused")
-	}
-
-	if !strings.Contains(err.Error(), "outside") {
-		t.Errorf("expected the error to name the reason, got %v", err)
-	}
-
-	entries, err := os.ReadDir(target)
-	if err != nil {
-		t.Fatalf("failed to read the target folder: %v", err)
-	}
-
-	if len(entries) != 0 {
-		t.Errorf("expected nothing to be written, found %d entries", len(entries))
-	}
-}
-
-// A file that is already there is not overwritten: the user asks for it
-// with --force.
-func TestWriteTemplateFilesRefusesToOverwrite(t *testing.T) {
-	target := t.TempDir()
-
-	writeTestFile(t, filepath.Join(target, "AGENTS.md"), "the old one")
-
-	files := []templateFile{
-		{Path: "AGENTS.md", Content: "the new one"},
-	}
-
-	err := writeTemplateFiles(target, files, false)
-	if err == nil {
-		t.Fatal("expected the existing file to be protected")
-	}
-
-	if !strings.Contains(err.Error(), "AGENTS.md") {
-		t.Errorf("expected the error to name the file, got %v", err)
-	}
-
-	content, err := os.ReadFile(filepath.Join(target, "AGENTS.md"))
-	if err != nil {
-		t.Fatalf("failed to read the file: %v", err)
-	}
-
-	if string(content) != "the old one" {
-		t.Errorf("expected the file to be untouched, got %q", string(content))
-	}
-}
-
-// With --force the file is written over.
-func TestWriteTemplateFilesOverwritesWithForce(t *testing.T) {
-	target := t.TempDir()
-
-	writeTestFile(t, filepath.Join(target, "AGENTS.md"), "the old one")
-
-	files := []templateFile{
-		{Path: "AGENTS.md", Content: "the new one"},
-	}
-
-	if err := writeTemplateFiles(target, files, true); err != nil {
-		t.Fatalf("expected the file to be written, got error %v", err)
-	}
-
-	content, err := os.ReadFile(filepath.Join(target, "AGENTS.md"))
-	if err != nil {
-		t.Fatalf("failed to read the file: %v", err)
-	}
-
-	if string(content) != "the new one" {
-		t.Errorf("expected the new content, got %q", string(content))
-	}
-}
-
-// The files are written with the folders they need, and an executable file
-// is executable.
-func TestWriteTemplateFilesWritesTheTree(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the executable flag means nothing on windows")
-	}
-
-	target := t.TempDir()
-
-	files := []templateFile{
-		{Path: "AGENTS.md", Content: "the project"},
-		{Path: ".opencode/agents/build.md", Content: "the agent"},
-		{Path: "run.sh", Content: "#!/bin/sh", IsExecutable: true},
-	}
-
-	if err := writeTemplateFiles(target, files, false); err != nil {
-		t.Fatalf("expected the files to be written, got error %v", err)
-	}
-
-	content, err := os.ReadFile(filepath.Join(target, ".opencode", "agents", "build.md"))
-	if err != nil {
-		t.Fatalf("expected the nested file to be written: %v", err)
-	}
-
-	if string(content) != "the agent" {
-		t.Errorf("expected the file content, got %q", string(content))
-	}
-
-	info, err := os.Stat(filepath.Join(target, "run.sh"))
-	if err != nil {
-		t.Fatalf("failed to stat the executable: %v", err)
-	}
-
-	if info.Mode()&0111 == 0 {
-		t.Errorf("expected the file to be executable, got mode %v", info.Mode())
-	}
-}
-
 // The starter is a template like any other: it holds the placeholders, and
 // they are filled in with the answers.
 func TestStarterTemplateHoldsThePlaceholders(t *testing.T) {
@@ -556,7 +373,7 @@ func TestStarterTemplateHoldsThePlaceholders(t *testing.T) {
 	}
 
 	for _, file := range files {
-		content := substitute(file.Content, values)
+		content := templateapply.Substitute(file.Content, values)
 
 		if strings.Contains(content, "{{") {
 			t.Errorf("expected every placeholder of %q to be filled in, got %q", file.Path, content)
@@ -638,7 +455,7 @@ func TestShellStarterWritesOnlyItsShellFile(t *testing.T) {
 				t.Errorf("path = %q, want %q", files[0].Path, tt.path)
 			}
 
-			content := substitute(files[0].Content, values)
+			content := templateapply.Substitute(files[0].Content, values)
 
 			if strings.Contains(content, "{{") {
 				t.Errorf("a placeholder was not filled in:\n%s", content)
@@ -650,43 +467,6 @@ func TestShellStarterWritesOnlyItsShellFile(t *testing.T) {
 				t.Errorf("the file does not name %q:\n%s", tt.want, content)
 			}
 		})
-	}
-}
-
-// The files are checked before the questions are asked: a user is not asked
-// what a template wants to know when the template is not going to be
-// written.
-func TestCheckTemplateFilesRefusesAnExistingFile(t *testing.T) {
-	target := t.TempDir()
-
-	writeTestFile(t, filepath.Join(target, "AGENTS.md"), "the old one")
-
-	files := []templateFile{
-		{Path: "AGENTS.md", Content: "the new one"},
-	}
-
-	err := checkTemplateFiles(target, files, false)
-	if err == nil {
-		t.Fatal("expected the existing file to be protected")
-	}
-
-	if !strings.Contains(err.Error(), "AGENTS.md") {
-		t.Errorf("expected the error to name the file, got %v", err)
-	}
-}
-
-// A path that would land outside the target is refused by the check, before
-// anything is written.
-func TestCheckTemplateFilesRefusesAPathOutsideTheTarget(t *testing.T) {
-	target := t.TempDir()
-
-	files := []templateFile{
-		{Path: "../escape.txt", Content: "the escape"},
-	}
-
-	err := checkTemplateFiles(target, files, false)
-	if err == nil {
-		t.Fatal("expected the path outside the folder to be refused")
 	}
 }
 
@@ -727,7 +507,7 @@ func writeTestFile(t *testing.T, path string, content string) {
 }
 
 // templateFilePaths returns the paths of a list of files.
-func templateFilePaths(files []templateFile) []string {
+func templateFilePaths(files []templateapply.File) []string {
 	paths := make([]string, 0, len(files))
 
 	for _, file := range files {
@@ -735,152 +515,4 @@ func templateFilePaths(files []templateFile) []string {
 	}
 
 	return paths
-}
-
-// A binary file is decoded from the base64 the API sends, once, before
-// anything is written.
-func TestTemplateFilesOfDecodesBinaryContent(t *testing.T) {
-	content := []byte{0x00, 0x01, 0xfe, 0xff}
-
-	detail := &templates.TemplateDetail{
-		Files: []templates.TemplateFileData{{
-			Path:          "assets/logo.bin",
-			Kind:          templates.FileKindBinary,
-			Size:          int64(len(content)),
-			ContentBase64: base64.StdEncoding.EncodeToString(content),
-		}},
-	}
-
-	files, err := templateFilesOf(detail)
-	if err != nil {
-		t.Fatalf("expected the files to be decoded, got error %v", err)
-	}
-
-	if len(files) != 1 {
-		t.Fatalf("expected 1 file, got %d", len(files))
-	}
-
-	if string(files[0].Bytes) != string(content) {
-		t.Errorf("expected the bytes %v, got %v", content, files[0].Bytes)
-	}
-}
-
-// A binary file the API sent without valid base64 is an error, not a file
-// full of rubbish on disk.
-func TestTemplateFilesOfRefusesInvalidBase64(t *testing.T) {
-	detail := &templates.TemplateDetail{
-		Files: []templates.TemplateFileData{{
-			Path:          "assets/logo.bin",
-			Kind:          templates.FileKindBinary,
-			ContentBase64: "not base64!",
-		}},
-	}
-
-	if _, err := templateFilesOf(detail); err == nil {
-		t.Fatal("expected invalid base64 to be refused")
-	}
-}
-
-// A binary file is written with its bytes, and it keeps the executable flag.
-func TestWriteTemplateFilesWritesBinaryBytes(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the executable flag means nothing on windows")
-	}
-
-	target := t.TempDir()
-	content := []byte{0x7f, 'E', 'L', 'F', 0x00, 0x01}
-
-	files := []templateFile{{
-		Path:         "bin/tool",
-		Kind:         templates.FileKindBinary,
-		Bytes:        content,
-		IsExecutable: true,
-	}}
-
-	if err := writeTemplateFiles(target, files, false); err != nil {
-		t.Fatalf("expected the file to be written, got error %v", err)
-	}
-
-	path := filepath.Join(target, "bin", "tool")
-
-	got, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("failed to read the file: %v", err)
-	}
-
-	if string(got) != string(content) {
-		t.Errorf("expected the bytes %v, got %v", content, got)
-	}
-
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("failed to stat the file: %v", err)
-	}
-
-	if info.Mode().Perm()&0100 == 0 {
-		t.Errorf("expected the file to be executable, got mode %v", info.Mode())
-	}
-}
-
-// A command a template pulls in is written like a file, at its target path.
-func TestTemplateFilesOfIncludesTheCommands(t *testing.T) {
-	content := []byte{0x7f, 'E', 'L', 'F', 0x00}
-
-	detail := &templates.TemplateDetail{
-		Files: []templates.TemplateFileData{{Path: "AGENTS.md", Kind: templates.FileKindText, Content: "# hi"}},
-		Commands: []templates.TemplateCommandData{
-			{
-				CommandID:    uuid.New(),
-				TargetPath:   "scripts/fmt.sh",
-				Name:         "fmt",
-				Kind:         templates.FileKindText,
-				Content:      "#!/bin/sh\ngofmt -w .",
-				IsExecutable: true,
-			},
-			{
-				CommandID:     uuid.New(),
-				TargetPath:    "bin/tool",
-				Name:          "tool",
-				Kind:          templates.FileKindBinary,
-				Size:          int64(len(content)),
-				ContentBase64: base64.StdEncoding.EncodeToString(content),
-				IsExecutable:  true,
-			},
-		},
-	}
-
-	files, err := templateFilesOf(detail)
-	if err != nil {
-		t.Fatalf("expected the files to be decoded, got error %v", err)
-	}
-
-	if len(files) != 3 {
-		t.Fatalf("expected 3 entries, got %d", len(files))
-	}
-
-	byPath := map[string]templateFile{}
-	for _, file := range files {
-		byPath[file.Path] = file
-	}
-
-	if command := byPath["scripts/fmt.sh"]; command.Content != "#!/bin/sh\ngofmt -w ." || !command.IsExecutable {
-		t.Errorf("expected the text command at its target path, got %+v", command)
-	}
-
-	if command := byPath["bin/tool"]; string(command.Bytes) != string(content) {
-		t.Errorf("expected the binary command bytes, got %v", command.Bytes)
-	}
-}
-
-// Two entries at one path would write one over the other, so the template is
-// refused before anything is written.
-func TestCheckTemplateFilesRefusesADuplicatePath(t *testing.T) {
-	files := []templateFile{
-		{Path: "scripts/run.sh", Content: "one"},
-		{Path: "scripts/run.sh", Content: "two"},
-	}
-
-	if err := checkTemplateFiles(t.TempDir(), files, false); err == nil {
-		t.Fatal("expected the duplicate path to be refused")
-	}
 }

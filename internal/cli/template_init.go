@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/fiwon123/eznit/internal/domain/templates"
+	"github.com/fiwon123/eznit/internal/templateapply"
 )
 
 // fence is a markdown code fence.
@@ -37,7 +38,7 @@ func (cmd *TemplateInitCmd) Run(g *Globals) error {
 	// The files are checked before the questions are asked: a user is not
 	// asked what the starter wants to know when the starter is not going to
 	// be written.
-	if err := checkTemplateFiles(target, files, cmd.Force); err != nil {
+	if err := templateapply.Check(target, files, cmd.Force); err != nil {
 		g.logger.Warn("the starter was not written. ", slog.String("error", err.Error()))
 		return nil
 	}
@@ -48,10 +49,10 @@ func (cmd *TemplateInitCmd) Run(g *Globals) error {
 	}
 
 	for i := range files {
-		files[i].Content = substitute(files[i].Content, values)
+		files[i].Content = templateapply.Substitute(files[i].Content, values)
 	}
 
-	if err := writeTemplateFiles(target, files, cmd.Force); err != nil {
+	if err := templateapply.Write(target, files, cmd.Force); err != nil {
 		g.logger.Warn("the starter was not written. ", slog.String("error", err.Error()))
 		return nil
 	}
@@ -96,19 +97,19 @@ func starterVariables() []templates.TemplateVariableData {
 // The starter is a template like any other: the same substitution, the same
 // rules about where a file may land. It just happens to be built into the
 // binary instead of fetched from the catalogue.
-func starterTemplate(kind string) []templateFile {
+func starterTemplate(kind string) []templateapply.File {
 	switch kind {
 	case templates.KindBash:
-		return []templateFile{{Path: "shell/bashrc.sh", Content: starterBash}}
+		return []templateapply.File{{Path: "shell/bashrc.sh", Content: starterBash}}
 	case templates.KindZsh:
-		return []templateFile{{Path: "shell/zshrc.sh", Content: starterZsh}}
+		return []templateapply.File{{Path: "shell/zshrc.sh", Content: starterZsh}}
 	case templates.KindFish:
-		return []templateFile{{Path: "shell/config.fish", Content: starterFish}}
+		return []templateapply.File{{Path: "shell/config.fish", Content: starterFish}}
 	case templates.KindPowershell:
-		return []templateFile{{Path: "shell/profile.ps1", Content: starterPowershell}}
+		return []templateapply.File{{Path: "shell/profile.ps1", Content: starterPowershell}}
 	}
 
-	files := []templateFile{
+	files := []templateapply.File{
 		{
 			Path:    "AGENTS.md",
 			Content: starterAgentsMd,
@@ -118,36 +119,36 @@ func starterTemplate(kind string) []templateFile {
 	switch kind {
 	case templates.KindOpencode:
 		files = append(files,
-			templateFile{
+			templateapply.File{
 				Path:    ".opencode/agents/build.md",
 				Content: starterOpencodeBuild,
 			},
-			templateFile{
+			templateapply.File{
 				Path:    ".opencode/agents/plan.md",
 				Content: starterOpencodePlan,
 			},
-			templateFile{
+			templateapply.File{
 				Path:    ".opencode/agents/reviewer.md",
 				Content: starterOpencodeReviewer,
 			},
 		)
 	case templates.KindCopilot:
 		files = append(files,
-			templateFile{
+			templateapply.File{
 				Path:    ".github/copilot-instructions.md",
 				Content: starterCopilotInstructions,
 			},
 		)
 	case templates.KindCursor:
 		files = append(files,
-			templateFile{
+			templateapply.File{
 				Path:    ".cursor/rules/project.mdc",
 				Content: starterCursorRule,
 			},
 		)
 	case templates.KindWindsurf:
 		files = append(files,
-			templateFile{
+			templateapply.File{
 				Path:    ".windsurf/rules/project.md",
 				Content: starterWindsurfRule,
 			},
