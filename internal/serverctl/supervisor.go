@@ -263,10 +263,18 @@ func (s *Supervisor) changed() {
 // LocalURL is where the server answers on this machine, for the health check
 // and the "open in a browser" button.
 func (s *Supervisor) LocalURL() string {
+	return LocalAddress(s.dir)
+}
+
+// LocalAddress is the API a server started in dir listens on: API_PORT from its
+// configuration file, or the default when the file has none.
+func LocalAddress(dir string) string {
 	port := defaultPort
 
-	if env, err := LoadEnv(filepath.Join(s.dir, EnvFileName)); err == nil {
-		port = env.Value("API_PORT", defaultPort)
+	if env, err := LoadEnv(filepath.Join(dir, EnvFileName)); err == nil {
+		if value := env.Value("API_PORT", defaultPort); value != "" {
+			port = value
+		}
 	}
 
 	return "http://127.0.0.1:" + port

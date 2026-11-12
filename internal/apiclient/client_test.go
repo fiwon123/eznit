@@ -39,6 +39,114 @@ func TestNormalizeBaseURL(t *testing.T) {
 	}
 }
 
+// An address a person typed is checked before it is saved, and the refusal
+// says what to fix.
+func TestValidateBaseURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		want    string
+		wantErr string
+	}{
+		{"local", "http://127.0.0.1:4000", "http://127.0.0.1:4000", ""},
+		{"https with path", "https://eznit.example.com/api/", "https://eznit.example.com/api", ""},
+		{"surrounding space", "  http://example.test  ", "http://example.test", ""},
+		{"no scheme", "eznit.example.com", "", "http:// or https://"},
+		{"wrong scheme", "ftp://example.test", "", "http:// or https://"},
+		{"no host", "http://", "", "needs a host"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ValidateBaseURL(tt.in)
+
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("ValidateBaseURL(%q) = %q, want an error", tt.in, got)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error = %q, want it to mention %q", err, tt.wantErr)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("ValidateBaseURL(%q) error = %v", tt.in, err)
+			}
+			if got != tt.want {
+				t.Errorf("ValidateBaseURL(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// A token belongs to the instance that issued it, so a port change on one host
+// is the same instance and a different host is not.
+func TestSameHost(t *testing.T) {
+	tests := []struct {
+		left, right string
+		want        bool
+	}{
+		{"http://127.0.0.1:4000", "http://127.0.0.1:5000", true},
+		{"http://localhost:4000", "https://localhost:8443/api", true},
+		{"http://127.0.0.1:4000", "http://localhost:4000", false},
+		{"http://127.0.0.1:4000", "https://eznit.example.com", false},
+		{"", "", true},
+	}
+
+	for _, tt := range tests {
+		if got := SameHost(tt.left, tt.right); got != tt.want {
+			t.Errorf("SameHost(%q, %q) = %v, want %v", tt.left, tt.right, got, tt.want)
+		}
+	}
+}
+
+// Health is what the Files tab's Test button calls: it must not need a
+// session, and it must report a server that answers wrongly.
+func TestHealth(t *testing.T) {
+	t.Run("answering", func(t *testing.T) {
+		client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v1/healthcheck" {
+				t.Errorf("path = %q, want the health check", r.URL.Path)
+			}
+			if got := r.Header.Get("Authorization"); got != "" {
+				t.Errorf("Authorization = %q, want none: the health check needs no session", got)
+			}
+
+			w.WriteHeader(http.StatusOK)
+		})
+
+		if err := client.Health(); err != nil {
+			t.Errorf("Health() = %v, want nil", err)
+		}
+	})
+
+	t.Run("answering with an error", func(t *testing.T) {
+		client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		})
+
+		err := client.Health()
+		if err == nil {
+			t.Fatal("Health() = nil, want an error")
+		}
+		if !strings.Contains(err.Error(), "503") {
+			t.Errorf("Health() = %q, want the status", err)
+		}
+	})
+
+	t.Run("unreachable", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+		address := server.URL
+		server.Close()
+
+		if err := New(address).Health(); err == nil {
+			t.Error("Health() against a closed server = nil, want an error")
+		}
+	})
+}
+
 func TestLogin(t *testing.T) {
 	var got map[string]string
 
