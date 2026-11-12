@@ -1,6 +1,6 @@
 module github.com/fiwon123/eznit
 
-go 1.27.3
+go 1.27.4
 
 require (
 	fyne.io/fyne/v2 v2.8.2
