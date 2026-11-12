@@ -112,7 +112,11 @@ func TestServerTabKeepsTheSaveButtonVisible(t *testing.T) {
 
 	content, pane := view.configScroll.Content.MinSize(), view.configScroll.Size()
 	if content.Height <= pane.Height {
-		t.Skipf("the fields fit at %v, so the pinned row is not under pressure", size)
+		// A skip would read as a pass. This test only means something while the
+		// size forces the pane to scroll; if the layout grows, lower the size
+		// rather than lose the guard.
+		t.Fatalf("the fields fit at %v (%.0f px of content in %.0f px), so the pinned row is not under pressure",
+			size, content.Height, pane.Height)
 	}
 
 	captured := view.ui.window.Canvas().Capture()
