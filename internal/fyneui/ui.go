@@ -41,10 +41,11 @@ type ui struct {
 	// came from — shown in the tab's header rather than picked silently.
 	address apiChoice
 
-	client  *apiclient.Client
-	files   *filesView
-	server  *serverView
-	updater *appUpdater
+	client    *apiclient.Client
+	files     *filesView
+	templates *templatesView
+	server    *serverView
+	updater   *appUpdater
 
 	tabs *container.AppTabs
 }
@@ -75,16 +76,30 @@ func Run(version string, apiURL string, serverDir string) error {
 
 	u.client = apiclient.New(u.address.url)
 	u.files = newFilesView(u)
+	u.templates = newTemplatesView(u)
 	u.server = newServerView(u, serverFrom(serverDir))
 
 	// The tabs exist before a session does. The Server tab has to be usable on
 	// a machine whose server has never run — running it and pointing it at a
 	// database is how a first install gets something to log in to.
+	templatesTab := container.NewTabItemWithIcon("Templates", theme.ListIcon(), u.templates.content())
+
 	u.tabs = container.NewAppTabs(
 		container.NewTabItemWithIcon("Files", theme.FolderIcon(), u.files.content()),
+		templatesTab,
 		container.NewTabItemWithIcon("Server", theme.ComputerIcon(), u.server.content()),
 		container.NewTabItemWithIcon("About", theme.InfoIcon(), u.aboutContent()),
 	)
+
+	// The catalogue is fetched when the tab is first opened, not at startup: a
+	// window whose server is still being set up on another tab should not open
+	// with a red message about it.
+	u.tabs.OnSelected = func(item *container.TabItem) {
+		if item == templatesTab {
+			u.templates.ensureLoaded()
+		}
+	}
+
 	window.SetContent(u.tabs)
 
 	// A server this window started should not outlive it; ask before stopping
@@ -198,6 +213,11 @@ func (u *ui) setAPI(address apiChoice) {
 
 	if token, err := config.Value("token"); err == nil {
 		u.client.Token = token
+	}
+
+	// The catalogue is per instance: a new address is a new catalogue.
+	if u.templates != nil {
+		u.templates.forget()
 	}
 }
 

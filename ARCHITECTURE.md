@@ -322,6 +322,17 @@ a decision. "Reset to default" removes the key and returns to the folder
 controls refuse while the server runs, because the process belongs to the folder
 it was started from.
 
+The Templates tab reads the catalogue (`GET /v1/templates`, `/mine` and `/{id}`,
+the first two with an optional session so a caller's own private templates are
+in the answer) and writes an offline bundle with `templates.NewBundle` and
+`templates.WriteBundle`. That pair comes from `internal/domain/templates` rather
+than being copied into the client: the bundle format has one definition, shared
+with `template export`, so the window cannot write a file the CLI refuses to
+read. It is a data dependency — DTOs and the bundle — and `apiclient` returns
+those DTOs instead of a second set, for the same reason. Applying a template
+into a folder is not in the window yet; that needs the CLI's apply rules to move
+somewhere both callers can use.
+
 The tab's Output is a log viewer over the child's own console output, which the
 API writes as JSON (`pkg/logger.NewJson`). `serverctl.ParseLine` reads one line
 into time, level, message and fields, `Format` lays it out in fixed columns, and
