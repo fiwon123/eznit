@@ -35,18 +35,23 @@ import (
 	"github.com/fiwon123/eznit/internal/config"
 )
 
-// The release families and the executables inside them.
+// The members a release archive carries, and the family prefix of the archive
+// itself.
 const (
-	// CLIFamily carries the CLI and the desktop app.
-	CLIFamily = "eznit-cli"
-	// ServerFamily carries the server bundle.
-	ServerFamily = "eznit-server"
-
-	// MemberCLI, MemberGUI and MemberServer are the executables inside those
-	// archives.
+	// MemberCLI, MemberGUI and MemberServer are the executables inside the one
+	// archive a release publishes per platform.
 	MemberCLI    = "eznit"
 	MemberGUI    = "eznit-gui"
 	MemberServer = "eznit-server"
+
+	// ArchiveFamily prefixes every release archive:
+	// <ArchiveFamily>_<version>_<os>_<arch>. Since v0.24.0 (#242) one archive
+	// per platform carries every member, so this is a constant and not a
+	// parameter — the parameter that used to be here went stale when the
+	// archives were merged, and every update after that asked for a file the
+	// release no longer published. The Makefile's FAMILY is the same value, and
+	// a test reads it.
+	ArchiveFamily = "eznit"
 )
 
 const (
@@ -70,9 +75,7 @@ var applyUpdate = selfupdate.Apply
 
 // Updater downloads, verifies and applies one release.
 type Updater struct {
-	// Family is the archive a release is read from (CLIFamily or ServerFamily).
-	Family string
-	// Member is the executable installed from that archive.
+	// Member is the executable installed from the archive.
 	Member string
 
 	BaseURL    string
@@ -84,12 +87,11 @@ type Updater struct {
 	HTTP *http.Client
 }
 
-// New builds an Updater for one executable of one family.
-func New(family string, member string) *Updater {
+// New builds an Updater for one executable of the release archive.
+func New(member string) *Updater {
 	executable, _ := os.Executable()
 
 	return &Updater{
-		Family:     family,
 		Member:     member,
 		BaseURL:    ReleaseBaseURL,
 		LatestURL:  LatestReleaseURL,
@@ -105,14 +107,11 @@ func New(family string, member string) *Updater {
 
 // AssetName names the release archive for a platform. The platform and the
 // architecture belong in the filename, and the archive is a tar.gz everywhere
-// except Windows.
-func AssetName(family string, goos string, goarch string, version string) (string, error) {
+// except Windows. It is the shape the packer writes (<ArchiveFamily>_<version>
+// _<os>_<arch>) — an updater that asks for anything else is broken.
+func AssetName(goos string, goarch string, version string) (string, error) {
 	if !versionPattern.MatchString(version) {
 		return "", fmt.Errorf("invalid release version: %q", version)
-	}
-
-	if family != CLIFamily && family != ServerFamily {
-		return "", fmt.Errorf("unknown release family: %q", family)
 	}
 
 	if goarch != "amd64" && goarch != "arm64" {
@@ -121,9 +120,9 @@ func AssetName(family string, goos string, goarch string, version string) (strin
 
 	switch goos {
 	case "windows":
-		return fmt.Sprintf("%s_%s_%s_%s.zip", family, version, goos, goarch), nil
+		return fmt.Sprintf("%s_%s_%s_%s.zip", ArchiveFamily, version, goos, goarch), nil
 	case "linux", "darwin":
-		return fmt.Sprintf("%s_%s_%s_%s.tar.gz", family, version, goos, goarch), nil
+		return fmt.Sprintf("%s_%s_%s_%s.tar.gz", ArchiveFamily, version, goos, goarch), nil
 	default:
 		return "", fmt.Errorf("no release build for %s/%s", goos, goarch)
 	}
@@ -166,7 +165,7 @@ func (u *Updater) Latest() (string, error) {
 // current is recorded so the window can say what it came from; the updater
 // does not read the running version itself.
 func (u *Updater) Install(current string, version string) error {
-	asset, err := AssetName(u.Family, u.GOOS, u.GOARCH, version)
+	asset, err := AssetName(u.GOOS, u.GOARCH, version)
 	if err != nil {
 		return err
 	}

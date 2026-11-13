@@ -35,9 +35,9 @@ The `dev` and `web-dev` services (the developer loop) are not part of a bundle.
 
 ## The desktop app
 
-`eznit-gui` is in this bundle — the same window the CLI archive carries. Its
-**Server** tab runs `eznit-server` from this folder as a child process, shows
-its log, and edits the `.env` and the database password the server reads:
+`eznit-gui` is in this bundle. Its **Server** tab runs `eznit-server` from this
+folder as a child process, shows its log, and edits the `.env` and the database
+password the server reads:
 
 ```sh
 ./eznit-gui        # then: Server tab → Start

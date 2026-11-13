@@ -36,13 +36,15 @@ label, so they read as a changelog rather than a raw commit list.
   architecture — the builder's glibc becomes the download's floor, and a current
   runner produced a window Debian 12 could not start (#232). The job asserts the
   floor (glibc 2.34) from the binary's own versioned symbols.
-- **pack** — the window and its licences are added to every archive, CLI and
-  server alike, then each archive is verified (names, PE, Mach-O, provenance) and
-  the checksums are rebuilt. The server group is checked with `-gui -gui-name
-  eznit-gui`: an archive without the window fails here.
-- **smoke** — on `windows-latest`, the Windows CLI archive is unpacked and `eznit
-  -v` and `ez -v` are actually run, then `eznit-gui.exe --help` in both the CLI
-  archive. A binary that cannot start fails the release instead of shipping.
+- **pack** — the window and its licences are added to each platform's archive —
+  one archive per platform carries every member — then every archive is verified
+  (names, PE, Mach-O, provenance) and the checksums are rebuilt. The window is
+  required: `-app eznit -short ez -gui`, so a platform the packer skipped fails
+  here.
+- **smoke** — on `windows-latest`, the Windows archive is unpacked and the four
+  binaries are checked: `eznit -v` prints the version, `ez -v` runs,
+  `eznit-server.exe` is present, and `eznit-gui.exe --help` exits. A binary that
+  cannot start fails the release instead of shipping.
 - **publish** — runs only on a tag push; needs all three above. It re-verifies the
   checksums, composes the notes, and creates the GitHub Release.
 

@@ -22,7 +22,7 @@ type appUpdater struct {
 func newAppUpdater(version string) *appUpdater {
 	return &appUpdater{
 		version: version,
-		updater: update.New(update.CLIFamily, update.MemberGUI),
+		updater: update.New(update.MemberGUI),
 	}
 }
 

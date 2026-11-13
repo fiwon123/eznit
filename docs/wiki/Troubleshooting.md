@@ -54,10 +54,17 @@ only glibc **2.34**; use the CLI (`eznit`, `ez`) in the meantime, which is
 
 ## The Server tab says "not a server bundle"
 
-The panel runs the `eznit-server` in the folder it points at, and your CLI
-archive has no server binary in it. Download the **server** bundle for your
-platform, put the window in that folder (or choose it with **Choose folder…**),
-and start it from there.
+The panel runs the `eznit-server` **beside the window**, and the folder it is
+pointed at does not have one. Since v0.24.0 the release publishes **one archive
+per platform** that carries the window, the server, the migrations and the
+Compose file together, so there is no separate server download: extract the
+archive you already have and run `eznit-gui` from inside it (or point the tab at
+that folder with **Choose folder…**).
+
+The note under the header names what the folder is missing. If you only want to
+use a server that already runs, the Server tab is not needed — **Files →
+Change… → Another server**. The README's "From a download, in one minute" block
+has the same steps.
 
 ## The Server tab says the port is in use
 
@@ -85,6 +92,17 @@ refuses a missing, malformed or mismatched entry. That is deliberate: an
 archive that does not match its published hash is not installed. Check that the
 release has both the archive and `checksums.txt`, and that the tag is
 `vMAJOR.MINOR.PATCH`. Only HTTPS is accepted.
+
+## `Install failed: checksums.txt has no entry`
+
+Versions up to **v0.28.0** asked for an archive name the release stopped
+publishing in **v0.24.0** (`eznit-cli_…` instead of `eznit_…`), so neither
+`eznit update` nor the window's **Install** could work. The fix ships in
+**v0.28.1**. A binary from v0.28.0 or earlier cannot fetch it — the name it
+asks for is the bug — so upgrade once by hand: download
+`eznit_v0.28.1_<os>_<arch>` from the release page, verify it against
+`checksums.txt`, extract it, and run the binary from the extracted folder (or
+replace the old one). From v0.28.1 on, the built-in update works again.
 
 ## The update installed, but `-v` still shows the old version
 

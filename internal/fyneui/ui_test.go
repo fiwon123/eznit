@@ -136,7 +136,7 @@ func newTestUI(t *testing.T) *ui {
 		version: "test",
 		clip:    test.NewClipboard(),
 		address: apiChoice{url: "http://127.0.0.1:4321", source: "the default"},
-		updater: &appUpdater{version: "test", updater: update.New(update.CLIFamily, update.MemberGUI)},
+		updater: &appUpdater{version: "test", updater: update.New(update.MemberGUI)},
 	}
 	u.client = apiclient.New(u.address.url)
 	u.files = newFilesView(u)
