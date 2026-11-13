@@ -57,12 +57,19 @@ func newTestServerViewIn(t *testing.T, dir, store string) *serverView {
 	return view
 }
 
-// bundleDir writes a .env into a temp folder and returns it.
+// bundleDir writes a bundle into a temp folder and returns it: a
+// configuration, and the server executable the tab checks for before it offers
+// Start. The executable is a placeholder — these tests read and write the
+// configuration, they never run the server.
 func bundleDir(t *testing.T, content string) string {
 	t.Helper()
 
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, serverctl.EnvFileName), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, serverctl.BinaryName()), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -204,15 +211,105 @@ func TestServerViewCreatesTheEnvFromTheExample(t *testing.T) {
 	}
 }
 
-// Saving with no .env must say what to do instead of writing one silently.
+// Saving with no .env must say what to do instead of writing one silently. A
+// folder with the example can make one; a folder with neither is not a bundle.
 func TestServerViewRefusesToSaveWithoutAnEnv(t *testing.T) {
+	t.Run("a folder that is not a bundle", func(t *testing.T) {
+		view := newTestServerView(t, t.TempDir())
+
+		view.saveConfig()
+
+		if !strings.Contains(view.note.Text, "not a server bundle") {
+			t.Errorf("note = %q, want it to say the folder is not a bundle", view.note.Text)
+		}
+
+		if _, err := os.Stat(filepath.Join(view.folderPath(), serverctl.EnvFileName)); err == nil {
+			t.Error("a .env was written although there was nothing to copy")
+		}
+	})
+
+	t.Run("a folder with the example", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, serverctl.EnvExampleName), []byte("API_PORT=\"4000\"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		view := newTestServerView(t, dir)
+
+		view.saveConfig()
+
+		if !strings.Contains(view.note.Text, "create one") {
+			t.Errorf("note = %q, want it to point at creating the .env", view.note.Text)
+		}
+	})
+}
+
+// A folder that is not a bundle says so before anything is pressed: Start is
+// off, Create is not offered, and the note names what is missing and where a
+// bundle comes from.
+func TestServerViewSaysWhenTheFolderIsNotABundle(t *testing.T) {
 	view := newTestServerView(t, t.TempDir())
 
-	view.saveConfig()
-
-	if !strings.Contains(view.note.Text, "create one") {
-		t.Errorf("note = %q, want it to point at creating the .env", view.note.Text)
+	if !view.start.Disabled() {
+		t.Error("Start is enabled in a folder with no server binary")
 	}
+
+	if view.create.Visible() {
+		t.Error("Create .env is offered although there is no example to copy")
+	}
+
+	for _, want := range []string{"not a server bundle", serverctl.BinaryName(), "release archive", "Change…"} {
+		if !strings.Contains(view.note.Text, want) {
+			t.Errorf("note = %q, want it to mention %q", view.note.Text, want)
+		}
+	}
+}
+
+// The two halves of a bundle are judged separately: a configured folder with no
+// binary cannot start, and a folder with only the example can still make a
+// configuration.
+func TestServerViewJudgesTheTwoHalvesOfABundle(t *testing.T) {
+	t.Run("a configuration without a server", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, serverctl.EnvFileName), []byte("API_PORT=\"4000\"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		view := newTestServerView(t, dir)
+
+		if !view.start.Disabled() {
+			t.Error("Start is enabled with no server binary in the folder")
+		}
+
+		if !strings.Contains(view.note.Text, serverctl.BinaryName()) {
+			t.Errorf("note = %q, want it to name the missing binary", view.note.Text)
+		}
+	})
+
+	t.Run("an example without a server", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, serverctl.EnvExampleName), []byte("API_PORT=\"4000\"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		view := newTestServerView(t, dir)
+
+		if !view.create.Visible() {
+			t.Error("Create .env is hidden although the example is there")
+		}
+
+		if !view.start.Disabled() {
+			t.Error("Start is enabled with no server binary in the folder")
+		}
+
+		if !strings.Contains(view.note.Text, "docker compose up db migrate") {
+			t.Errorf("note = %q, want it to name the database that has to be up first", view.note.Text)
+		}
+
+		if !strings.Contains(view.note.Text, "Start also needs") {
+			t.Errorf("note = %q, want it to say Start needs the binary", view.note.Text)
+		}
+	})
 }
 
 // The API prints one JSON record per line (pkg/logger.NewJson). The grid must

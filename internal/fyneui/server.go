@@ -50,6 +50,11 @@ type serverView struct {
 	answered   bool
 	answerErr  error
 
+	// bundle is what the folder carries of a server bundle, read when the
+	// folder loads: a folder with no binary cannot start, and one with no
+	// example cannot make a configuration.
+	bundle serverctl.Bundle
+
 	built fyne.CanvasObject
 
 	folder *widget.Label
@@ -484,7 +489,15 @@ func (v *serverView) refresh() {
 		// rather than applied behind the server's back.
 		v.setFolderEditable(false)
 	} else {
-		v.start.Enable()
+		// A folder with no server cannot be started, and the note already says
+		// why; a button that only produces an error is worse than a disabled
+		// one.
+		if v.bundle.Binary {
+			v.start.Enable()
+		} else {
+			v.start.Disable()
+		}
+
 		v.stop.Disable()
 		v.setFolderEditable(true)
 	}
@@ -655,6 +668,11 @@ func (v *serverView) pollHealth() {
 func (v *serverView) startServer() {
 	v.setNote("")
 
+	if !v.bundle.Binary {
+		v.setNote(v.notBundleNote())
+		return
+	}
+
 	v.mu.Lock()
 	v.answered, v.answerErr = false, nil
 	v.mu.Unlock()
@@ -745,22 +763,44 @@ func (v *serverView) chooseFolder() {
 
 // loadConfig fills the form and the secret state from the folder. It never
 // creates anything: a folder with no .env shows the button that does.
+//
+// It also inspects the folder first. Both buttons below can fail for a reason
+// the folder already states — no server to run, no example to copy — and a
+// person should not have to press a button to be told that.
 func (v *serverView) loadConfig() {
 	dir := v.folderPath()
+
+	v.bundle = serverctl.Inspect(dir)
 
 	file, err := serverctl.LoadEnv(filepath.Join(dir, serverctl.EnvFileName))
 	v.env = file
 
 	switch {
-	case errors.Is(err, os.ErrNotExist):
-		v.create.Show()
-		v.setNote("There is no .env here yet — create it from the example, then set the database password.")
-	case err != nil:
+	case err == nil:
 		v.create.Hide()
-		v.setNote(err.Error())
+
+		if v.bundle.Binary {
+			v.setNote("")
+		} else {
+			v.setNote(v.notBundleNote())
+		}
+	case errors.Is(err, os.ErrNotExist):
+		if v.bundle.Example {
+			v.create.Show()
+
+			note := "There is no .env here yet — create it from the example, then set the database password. " +
+				"A database has to answer at DB_HOST:DB_PORT; `docker compose up db migrate` in this folder starts one."
+			if !v.bundle.Binary {
+				note += " Start also needs " + serverctl.BinaryName() + ", which this folder does not have."
+			}
+			v.setNote(note)
+		} else {
+			v.create.Hide()
+			v.setNote(v.notBundleNote())
+		}
 	default:
 		v.create.Hide()
-		v.setNote("")
+		v.setNote(err.Error())
 	}
 
 	for key, entry := range v.fields {
@@ -792,7 +832,23 @@ func (v *serverView) loadConfig() {
 	relayout(v.configScrollPane)
 }
 
+// notBundleNote explains a folder the tab cannot drive: what it is missing,
+// what a bundle is, and the two ways forward. It is the sentence a person needs
+// instead of a button that fails.
+func (v *serverView) notBundleNote() string {
+	return fmt.Sprintf(
+		"This folder is not a server bundle: it has no %s. A bundle is the extracted release archive — "+
+			"run eznit-gui from inside it, or choose that folder with Choose folder…. "+
+			"To use a server that already runs, use Change… on the Files tab instead.",
+		strings.Join(v.bundle.Missing(), " and "))
+}
+
 func (v *serverView) createEnv() {
+	if !v.bundle.Example {
+		v.setNote(v.notBundleNote())
+		return
+	}
+
 	if _, err := serverctl.LoadOrCreate(v.folderPath()); err != nil {
 		v.setNote(err.Error())
 		return
@@ -804,7 +860,13 @@ func (v *serverView) createEnv() {
 
 func (v *serverView) saveConfig() {
 	if v.env == nil {
-		v.setNote("There is no .env to save — create one from the example first.")
+		if v.bundle.Example {
+			v.setNote("There is no .env to save — create one from the example first.")
+		} else {
+			v.setNote("There is no .env and no " + serverctl.EnvExampleName +
+				" here — this folder is not a server bundle, so there is nothing to save.")
+		}
+
 		return
 	}
 
