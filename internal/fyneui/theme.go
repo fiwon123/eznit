@@ -57,3 +57,31 @@ func (t brandTheme) Size(name fyne.ThemeSizeName) float32 {
 
 	return t.Theme.Size(name)
 }
+
+// changedTheme tints an input that differs from the file it came from. It wraps
+// the theme it was made from, so only the input colours move: a field marked
+// here is a pending edit, not a different kind of field.
+type changedTheme struct {
+	fyne.Theme
+}
+
+func (t changedTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+	dark := variant == theme.VariantDark
+
+	switch name {
+	case theme.ColorNameInputBackground:
+		if dark {
+			return color.NRGBA{R: 0x4A, G: 0x3B, B: 0x12, A: 0xFF}
+		}
+
+		return color.NRGBA{R: 0xFE, G: 0xF3, B: 0xC7, A: 0xFF}
+	case theme.ColorNameInputBorder:
+		if dark {
+			return color.NRGBA{R: 0xFB, G: 0xBF, B: 0x24, A: 0xFF}
+		}
+
+		return color.NRGBA{R: 0xD9, G: 0x77, B: 0x06, A: 0xFF}
+	}
+
+	return t.Theme.Color(name, variant)
+}

@@ -14,6 +14,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 
 	"github.com/fiwon123/eznit/internal/config"
 	"github.com/fiwon123/eznit/internal/serverctl"
@@ -765,5 +766,115 @@ func TestConfigurationSavesNothingWhenUnchanged(t *testing.T) {
 
 	if !strings.Contains(view.note.Text, "nothing to save") {
 		t.Errorf("note = %q, want it to say there is nothing to save", view.note.Text)
+	}
+}
+
+// A pending edit is marked on the field itself: a tinted input and a warning
+// caption, cleared when the value matches the file again or when Revert runs.
+func TestConfigurationMarksChangedFields(t *testing.T) {
+	dir := bundleDir(t, "API_PORT=\"4000\"\nDB_HOST=\"127.0.0.1\"\n")
+	view := newTestServerView(t, dir)
+
+	if _, tinted := view.fieldOverrides["API_PORT"].Theme.(changedTheme); tinted {
+		t.Fatal("an untouched field starts tinted")
+	}
+
+	view.fields["API_PORT"].SetText("5000")
+
+	if _, tinted := view.fieldOverrides["API_PORT"].Theme.(changedTheme); !tinted {
+		t.Error("the changed field is not tinted")
+	}
+
+	if got := view.fieldCaptions["API_PORT"].Importance; got != widget.WarningImportance {
+		t.Errorf("caption importance = %v, want the warning colour", got)
+	}
+
+	if _, tinted := view.fieldOverrides["DB_HOST"].Theme.(changedTheme); tinted {
+		t.Error("an untouched field was tinted as well")
+	}
+
+	view.fields["API_PORT"].SetText("4000")
+
+	if _, tinted := view.fieldOverrides["API_PORT"].Theme.(changedTheme); tinted {
+		t.Error("the field is still tinted after being typed back to the file's value")
+	}
+
+	view.fields["API_PORT"].SetText("5000")
+	view.password.SetText("hunter2")
+
+	if _, tinted := view.passwordOverride.Theme.(changedTheme); !tinted {
+		t.Error("a typed password is not tinted")
+	}
+
+	view.revertChanges()
+
+	for key, override := range view.fieldOverrides {
+		if _, tinted := override.Theme.(changedTheme); tinted {
+			t.Errorf("%s is still tinted after a revert", key)
+		}
+	}
+
+	if _, tinted := view.passwordOverride.Theme.(changedTheme); tinted {
+		t.Error("the password is still tinted after a revert")
+	}
+}
+
+// An exit must not replace the address: the line beside the error still says
+// which server stopped.
+func TestServerHealthKeepsTheAddressAfterAnExit(t *testing.T) {
+	dir := bundleDir(t, "API_PORT=\"4321\"\n")
+	view := newTestServerViewIn(t, dir, filepath.Join(t.TempDir(), "config.json"))
+
+	startFakeServer(t, view)
+
+	if err := view.server().Stop(5 * time.Second); err != nil {
+		t.Fatalf("stop the fake server: %v", err)
+	}
+
+	view.refresh()
+
+	if view.localURL == "" {
+		t.Fatal("the tab has no local address to keep")
+	}
+
+	if !strings.Contains(view.health.Text, view.localURL) {
+		t.Errorf("health = %q, want the address %q to survive the exit", view.health.Text, view.localURL)
+	}
+
+	if !strings.Contains(view.health.Text, "last exit") {
+		t.Errorf("health = %q, want the exit reason as well", view.health.Text)
+	}
+}
+
+// The snapshot is the selectable copy of the log, and reading it does not
+// disturb the grid that follows the server.
+func TestOutputSnapshotIsSelectable(t *testing.T) {
+	view := newTestServerView(t, bundleDir(t, "API_PORT=\"4321\"\n"))
+
+	for _, message := range []string{"first", "second"} {
+		if _, err := view.server().Write([]byte("INFO\t" + message + "\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	view.refresh()
+	rows := len(view.log.Rows)
+
+	snapshot := view.outputSnapshot()
+
+	if !snapshot.Selectable {
+		t.Error("the snapshot cannot be selected")
+	}
+
+	if snapshot.Text != view.log.Text() {
+		t.Error("the snapshot is not the log the grid shows")
+	}
+
+	if !strings.Contains(snapshot.Text, "second") {
+		t.Errorf("snapshot = %q, want the last line", snapshot.Text)
+	}
+
+	if len(view.log.Rows) != rows {
+		t.Error("making the snapshot changed the live grid")
 	}
 }

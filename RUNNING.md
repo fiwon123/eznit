@@ -62,9 +62,12 @@ it is pointed at is another bundle.
 - The log is one row per line of output: time, level, message, then any
   structured fields, with the level coloured (warnings and errors bold). A line
   that is not a log record — a panic, a plain message from a tool the server
-  started — keeps its own text. **Copy log** puts the whole log on the
-  clipboard. **Follow output** stays on until you scroll away from the end;
-  **Jump to end** goes back.
+  started — keeps its own text. The grid itself cannot be selected, so **Copy
+  log** puts the whole buffer on the clipboard and **Select…** opens a frozen
+  snapshot in a dialog where a line or a range can be dragged and copied.
+  **Follow output** stays on until you scroll away from the end; **Jump to
+  end** goes back. The line next to the status always names the address,
+  including after an exit (`Stopped at http://… — last exit: …`).
 - **Stop** asks the server to shut down, which drains in-flight requests for up
   to 10 seconds. On Windows a stop is a kill: Windows cannot deliver an
   interrupt to another process.
@@ -75,8 +78,10 @@ it is pointed at is another bundle.
   logged, and never copied into `~/.eznit/config.json`. Its action row is the
   state of an edit: the password state when the form matches the file, and
   **`Unsaved changes: API_PORT 4000 → 5000; database password will be set.`**
-  when it does not. **Revert** reads the file again and discards the edit;
-  **Save configuration** answers "nothing to save" when nothing changed.
+  when it does not. A field that differs from the file is tinted and its caption
+  takes the warning colour, so the mark is on the field as well as in the line.
+  **Revert** reads the file again and discards the edit; **Save configuration**
+  answers "nothing to save" when nothing changed.
 
 The window is also a client: the **Files** tab signs in to one eznit API and
 always shows which. Its header holds the address in an editable field, with the
