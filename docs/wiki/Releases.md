@@ -43,8 +43,8 @@ label, so they read as a changelog rather than a raw commit list.
   here.
 - **smoke** — on `windows-latest`, the Windows archive is unpacked and the four
   binaries are checked: `eznit -v` prints the version, `ez -v` runs,
-  `eznit-server.exe` is present, and `eznit-gui.exe --help` exits. A binary that
-  cannot start fails the release instead of shipping.
+  `eznit-server.exe --version` prints the version too, and `eznit-gui.exe --help`
+  exits. A binary that cannot start fails the release instead of shipping.
 - **publish** — runs only on a tag push; needs all three above. It re-verifies the
   checksums, composes the notes, and creates the GitHub Release.
 

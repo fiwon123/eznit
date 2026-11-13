@@ -501,6 +501,17 @@ jobs:
           & $alias.FullName -v | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "ez.exe -v exited $LASTEXITCODE" }
 
+          # The server names the tag it was built from. The Makefile injects it
+          # with -X main.Version, and the linker ignores an -X for a symbol that
+          # does not exist without a word — so this run, on the published
+          # artifact, is what proves the injection landed. It answers before the
+          # .env, the log folder and the database, so it needs none of them.
+          $serverVersion = (& $server.FullName --version | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "eznit-server.exe --version exited $LASTEXITCODE" }
+          if (-not $serverVersion.Contains($env:VERSION)) {
+            throw "eznit-server.exe --version printed '$serverVersion', expected $env:VERSION"
+          }
+
           # --help exits before the toolkit starts, so this proves the loader
           # takes the window (subsystem, icon resources) without a GPU.
           $gui = Get-ChildItem smoke\extracted -Recurse -Filter 'eznit-gui.exe' | Select-Object -First 1
@@ -512,7 +523,7 @@ jobs:
           }
           if ($window.ExitCode -ne 0) { throw "eznit-gui.exe --help failed (exit $($window.ExitCode))" }
 
-          Write-Host "smoke ok: $reported; the window and the server are in the archive"
+          Write-Host "smoke ok: $reported, the server reports $serverVersion, the window opens; all four binaries are in the archive"
 
   smoke-linux:
     name: Linux window smoke test
