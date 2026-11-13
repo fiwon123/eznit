@@ -111,18 +111,31 @@ type serverView struct {
 	// that is still being built.
 	loading bool
 
-	password *widget.Entry
-	secret   *prose
-	note     *prose
-	create   *widget.Button
-	revert   *widget.Button
+	// The theme around each input and its caption: a field that differs from
+	// the file is tinted, so the mark is on the field, not only in the line.
+	fieldOverrides map[string]*container.ThemeOverride
+	fieldCaptions  map[string]*widget.Label
+	dirtyFields    map[string]bool
+
+	password         *widget.Entry
+	passwordOverride *container.ThemeOverride
+	passwordCaption  *widget.Label
+	passwordDirty    bool
+
+	secret *prose
+	note   *prose
+	create *widget.Button
+	revert *widget.Button
 }
 
 // newServerView returns the panel for the folder it is given.
 func newServerView(u *ui, dir string) *serverView {
 	view := &serverView{
-		ui:     u,
-		fields: map[string]*widget.Entry{},
+		ui:             u,
+		fields:         map[string]*widget.Entry{},
+		fieldOverrides: map[string]*container.ThemeOverride{},
+		fieldCaptions:  map[string]*widget.Label{},
+		dirtyFields:    map[string]bool{},
 	}
 
 	view.useDir(dir)
@@ -361,9 +374,10 @@ func (v *serverView) buildOutput() {
 
 	jump := widget.NewButton("Jump to end", v.scrollToEnd)
 	copyLog := widget.NewButtonWithIcon("Copy log", theme.ContentCopyIcon(), v.copyLog)
+	selectOutput := widget.NewButton("Select…", v.selectOutput)
 	clear := widget.NewButtonWithIcon("Clear", theme.DeleteIcon(), v.clearLog)
 
-	actions := container.NewBorder(nil, nil, v.follow, container.NewHBox(jump, copyLog, clear))
+	actions := container.NewBorder(nil, nil, v.follow, container.NewHBox(jump, copyLog, selectOutput, clear))
 	v.outputControls = container.NewPadded(actions)
 }
 
@@ -380,6 +394,9 @@ func (v *serverView) buildConfiguration() {
 	v.password.SetPlaceHolder("leave empty to keep the current password")
 	v.password.OnChanged = func(string) { v.refreshChanges() }
 
+	v.passwordCaption = formCaption("Password")
+	v.passwordOverride = container.NewThemeOverride(v.password, v.ui.app.Settings().Theme())
+
 	v.secret = newProse("")
 
 	serverForm := formRows(
@@ -393,7 +410,7 @@ func (v *serverView) buildConfiguration() {
 		v.field("DB_PORT", "Port"),
 		v.field("DB_USER", "User"),
 		v.field("DB_NAME", "Database"),
-		formRow{caption: "Password", input: v.password},
+		formRow{label: v.passwordCaption, input: v.passwordOverride},
 	)
 
 	v.save = widget.NewButtonWithIcon("Save configuration", theme.DocumentSaveIcon(), v.saveConfig)
@@ -424,31 +441,44 @@ func (v *serverView) configurationPane() fyne.CanvasObject {
 	return v.configScrollPane
 }
 
-// formRow is one caption and its value.
+// formRow is one caption and its value. The caption is either a string, which
+// the form makes into a label, or a label the caller keeps — the configuration
+// fields keep theirs so a pending change can colour it.
 type formRow struct {
 	caption string
+	label   *widget.Label
 	input   fyne.CanvasObject
 }
 
-// formRows lays captions and values out as a form, with every caption
-// selectable.
+// formCaption is one caption: right-aligned and selectable like every other
+// value on the tab.
+func formCaption(text string) *widget.Label {
+	label := widget.NewLabel(text)
+	label.Alignment = fyne.TextAlignTrailing
+	label.Selectable = true
+
+	return label
+}
+
+// formRows lays captions and values out as a form.
 func formRows(rows ...formRow) fyne.CanvasObject {
 	objects := make([]fyne.CanvasObject, 0, len(rows)*2)
 
 	for _, row := range rows {
-		caption := widget.NewLabel(row.caption)
-		caption.Alignment = fyne.TextAlignTrailing
-		caption.Selectable = true
+		label := row.label
+		if label == nil {
+			label = formCaption(row.caption)
+		}
 
-		objects = append(objects, caption, row.input)
+		objects = append(objects, label, row.input)
 	}
 
 	return container.New(layout.NewFormLayout(), objects...)
 }
 
-// field is one .env key in the form, remembered so a load and a save can walk
-// the same set. Enter in a field saves the form; a change updates the pending
-// changes line.
+// field is one configuration key in the form, remembered so a load and a save
+// can walk the same set. Enter in a field saves the form; a change updates the
+// pending changes line and the field's own tint.
 func (v *serverView) field(key, caption string) formRow {
 	entry := widget.NewEntry()
 	entry.OnSubmitted = func(string) { v.saveConfig() }
@@ -456,7 +486,13 @@ func (v *serverView) field(key, caption string) formRow {
 	v.fields[key] = entry
 	v.fieldOrder = append(v.fieldOrder, key)
 
-	return formRow{caption: caption, input: entry}
+	label := formCaption(caption)
+	v.fieldCaptions[key] = label
+
+	override := container.NewThemeOverride(entry, v.ui.app.Settings().Theme())
+	v.fieldOverrides[key] = override
+
+	return formRow{label: label, input: override}
 }
 
 // setNote shows a message under the header. An empty note hides itself, so the
@@ -506,7 +542,10 @@ func (v *serverView) refresh() {
 		kind = statusOK
 	case state.Exit != nil:
 		status = "Stopped after an error"
-		health = "Last exit: " + state.Exit.Error()
+		// The address must survive the error: it was the only place it showed,
+		// and a stop is exactly when a person needs to know which server said
+		// no.
+		health = "Stopped at " + v.localURL + " — last exit: " + state.Exit.Error()
 		kind = statusError
 	}
 
@@ -674,6 +713,34 @@ func (v *serverView) clearLog() {
 	v.consumed = v.server().Written()
 	v.log.SetText("")
 	v.setNote("Log cleared. The server's own log file still has the history.")
+}
+
+// outputSnapshot is the log as one selectable label. The grid cannot be
+// selected in Fyne, so the dialog this label goes into is how a person takes a
+// line or a range rather than the whole buffer.
+func (v *serverView) outputSnapshot() *widget.Label {
+	snapshot := widget.NewLabel(v.log.Text())
+	snapshot.TextStyle = fyne.TextStyle{Monospace: true}
+	snapshot.Wrapping = fyne.TextWrapOff
+	snapshot.Selectable = true
+
+	return snapshot
+}
+
+// selectOutput opens the snapshot in a dialog: it is frozen, so output arriving
+// while it is open cannot move or clear a selection.
+func (v *serverView) selectOutput() {
+	snapshot := v.outputSnapshot()
+
+	if strings.TrimSpace(snapshot.Text) == "" {
+		v.setNote("There is nothing to select yet — the server has not printed anything.")
+		return
+	}
+
+	scroll := container.NewScroll(snapshot)
+	scroll.SetMinSize(fyne.NewSize(640, 360))
+
+	dialog.ShowCustom("Select output", "Close", scroll, v.ui.window)
 }
 
 // pollHealth asks the API whether it answers, which the process state alone
@@ -942,11 +1009,14 @@ func emptyAs(value string) string {
 
 // refreshChanges keeps the action row in step with the form: the password state
 // when nothing has changed, the pending changes when something has. Revert is
-// offered exactly when there is something to discard.
+// offered exactly when there is something to discard, and each changed field is
+// tinted so the mark is on the field itself.
 func (v *serverView) refreshChanges() {
 	if v.loading || v.secret == nil {
 		return
 	}
+
+	v.markChanges()
 
 	changes := v.changes()
 
@@ -967,6 +1037,53 @@ func (v *serverView) refreshChanges() {
 	// A pending-changes line can wrap to more lines than the row was measured
 	// for.
 	relayout(v.configScrollPane)
+}
+
+// markChanges tints the fields that differ from the file and clears the ones
+// that do not. Only a field whose state changed is refreshed: a theme override
+// re-applies to its whole subtree.
+func (v *serverView) markChanges() {
+	for _, key := range v.fieldOrder {
+		v.markField(key, strings.TrimSpace(v.fields[key].Text) != v.loaded[key])
+	}
+
+	dirty := strings.TrimSpace(v.password.Text) != ""
+	if v.passwordDirty != dirty {
+		v.passwordDirty = dirty
+		v.tint(v.passwordOverride, v.passwordCaption, dirty)
+	}
+}
+
+func (v *serverView) markField(key string, dirty bool) {
+	if v.dirtyFields[key] == dirty {
+		return
+	}
+
+	v.dirtyFields[key] = dirty
+	v.tint(v.fieldOverrides[key], v.fieldCaptions[key], dirty)
+}
+
+// tint marks one input and its caption, or restores the app theme.
+func (v *serverView) tint(override *container.ThemeOverride, caption *widget.Label, dirty bool) {
+	if override != nil {
+		if dirty {
+			override.Theme = changedTheme{Theme: v.ui.app.Settings().Theme()}
+		} else {
+			override.Theme = v.ui.app.Settings().Theme()
+		}
+
+		override.Refresh()
+	}
+
+	if caption != nil {
+		if dirty {
+			caption.Importance = widget.WarningImportance
+		} else {
+			caption.Importance = widget.MediumImportance
+		}
+
+		caption.Refresh()
+	}
 }
 
 // revertChanges discards the form and reads the file again, including clearing
