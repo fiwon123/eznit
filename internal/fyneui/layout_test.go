@@ -394,3 +394,41 @@ func TestStatusDotsAreCentred(t *testing.T) {
 		assertDotCentredOn(t, view.built, view.dot, view.status)
 	})
 }
+
+// TestServerHeaderActionsShareOneEdge is the "organised and aligned" guard: the
+// two header rows group their buttons differently, but the buttons share one
+// height and each row ends at the same right edge.
+func TestServerHeaderActionsShareOneEdge(t *testing.T) {
+	view := newTestServerView(t, bundleDir(t, "API_PORT=\"4000\"\n"))
+	layOut(view.ui.window, fyne.NewSize(980, 640))
+
+	buttons := []*widget.Button{view.start, view.stop, view.open, view.use, view.choose, view.reset}
+
+	statusRow, ok := placeOf(view.built, view.open)
+	if !ok {
+		t.Fatal("the status row's actions are not laid out")
+	}
+
+	for _, button := range buttons {
+		box, ok := placeOf(view.built, button)
+		if !ok {
+			t.Fatalf("the %q button is not in the laid-out header", button.Text)
+		}
+
+		if delta := box.size.Height - statusRow.size.Height; delta > 1 || delta < -1 {
+			t.Errorf("%q is %.1f px taller or shorter than the row", button.Text, delta)
+		}
+	}
+
+	// Each row's last button is that row's right edge; the two must agree.
+	right := statusRow.pos.X + statusRow.size.Width
+
+	folderRow, ok := placeOf(view.built, view.reset)
+	if !ok {
+		t.Fatal("the folder row's actions are not laid out")
+	}
+
+	if gap := folderRow.pos.X + folderRow.size.Width - right; gap > 1 || gap < -1 {
+		t.Errorf("the folder row ends %.1f px from the status row's right edge", gap)
+	}
+}

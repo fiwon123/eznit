@@ -96,10 +96,26 @@ type serverView struct {
 	env    *serverctl.EnvFile
 	fields map[string]*widget.Entry
 
+	// fieldOrder is the order a change is reported in: the form's order, not
+	// a map's.
+	fieldOrder []string
+
+	// loaded and secretState are what the file said when it was read. The
+	// action row compares the form against them, so a person can see what a
+	// save would change before pressing it.
+	loaded      map[string]string
+	secretState string
+
+	// loading suppresses the change line while the form is being filled from
+	// the file: every SetText would otherwise report a change against a map
+	// that is still being built.
+	loading bool
+
 	password *widget.Entry
 	secret   *prose
 	note     *prose
 	create   *widget.Button
+	revert   *widget.Button
 }
 
 // newServerView returns the panel for the folder it is given.
@@ -362,6 +378,7 @@ func (v *serverView) outputPane() fyne.CanvasObject {
 func (v *serverView) buildConfiguration() {
 	v.password = widget.NewPasswordEntry()
 	v.password.SetPlaceHolder("leave empty to keep the current password")
+	v.password.OnChanged = func(string) { v.refreshChanges() }
 
 	v.secret = newProse("")
 
@@ -381,6 +398,7 @@ func (v *serverView) buildConfiguration() {
 
 	v.save = widget.NewButtonWithIcon("Save configuration", theme.DocumentSaveIcon(), v.saveConfig)
 	v.save.Importance = widget.HighImportance
+	v.revert = widget.NewButtonWithIcon("Revert", theme.ContentUndoIcon(), v.revertChanges)
 	v.create = widget.NewButtonWithIcon("Create .env from the example", theme.DocumentCreateIcon(), v.createEnv)
 	v.create.Hide()
 
@@ -393,7 +411,10 @@ func (v *serverView) buildConfiguration() {
 	// keeps a scroll of its own and eats the wheel over it.
 	v.configScroll.SetMinSize(fyne.NewSize(440, content.MinSize().Height))
 
-	actions := container.NewBorder(nil, nil, nil, container.NewHBox(v.create, v.save), v.secret)
+	// The left of the action row is the state line: the password state when the
+	// form matches the file, the pending changes when it does not. Revert sits
+	// beside Save so the two halves of an edit are in one place.
+	actions := container.NewBorder(nil, nil, nil, container.NewHBox(v.create, v.revert, v.save), v.secret)
 
 	v.configScrollPane = container.NewBorder(nil, container.NewPadded(actions), nil, nil, v.configScroll)
 }
@@ -426,11 +447,14 @@ func formRows(rows ...formRow) fyne.CanvasObject {
 }
 
 // field is one .env key in the form, remembered so a load and a save can walk
-// the same set. Enter in a field saves the form.
+// the same set. Enter in a field saves the form; a change updates the pending
+// changes line.
 func (v *serverView) field(key, caption string) formRow {
 	entry := widget.NewEntry()
 	entry.OnSubmitted = func(string) { v.saveConfig() }
+	entry.OnChanged = func(string) { v.refreshChanges() }
 	v.fields[key] = entry
+	v.fieldOrder = append(v.fieldOrder, key)
 
 	return formRow{caption: caption, input: entry}
 }
@@ -848,33 +872,108 @@ func (v *serverView) loadConfig() {
 		v.setNote(err.Error())
 	}
 
-	for key, entry := range v.fields {
+	// The form is filled with the change line quiet: every SetText would
+	// otherwise be reported as a change against a map still being built.
+	v.loading = true
+	v.loaded = make(map[string]string, len(v.fields))
+
+	for _, key := range v.fieldOrder {
+		entry := v.fields[key]
 		value := ""
 		if file != nil {
 			value = file.Value(key, "")
 		}
 		entry.SetText(value)
+		v.loaded[key] = value
 	}
+	v.loading = false
 
 	// The password is reported as a state, never shown: the file is the only
 	// place the value lives.
 	if exists, mode, err := serverctl.SecretState(dir); err != nil {
-		v.secret.SetText("Database password: " + err.Error())
+		v.secretState = "Database password: " + err.Error()
 	} else if exists {
-		v.secret.SetText(fmt.Sprintf("Database password: set in %s (mode %v)", serverctl.SecretPath, mode))
+		v.secretState = fmt.Sprintf("Database password: set in %s (mode %v)", serverctl.SecretPath, mode)
 	} else {
-		v.secret.SetText("Database password: not set yet")
+		v.secretState = "Database password: not set yet"
 	}
 
 	v.password.SetText("")
 
+	// The state line is the middle of the action row; a longer message wraps
+	// and the row has to be measured again.
+	v.refreshChanges()
+
 	// Reading the .env here keeps the address off the refresh path, which runs
 	// on every line the server prints.
 	v.localURL = v.server().LocalURL()
+}
 
-	// The password state is the middle of the action row; a longer message
-	// wraps and the row has to be measured again.
+// changes is what a save would write: the fields that differ from the file,
+// plus the password when one was typed. The order is the form's, so the line
+// reads the way the fields are laid out.
+func (v *serverView) changes() []string {
+	changes := make([]string, 0, len(v.fields)+1)
+
+	for _, key := range v.fieldOrder {
+		value := strings.TrimSpace(v.fields[key].Text)
+		if value == v.loaded[key] {
+			continue
+		}
+
+		changes = append(changes, fmt.Sprintf("%s %s → %s", key, emptyAs(v.loaded[key]), emptyAs(value)))
+	}
+
+	if strings.TrimSpace(v.password.Text) != "" {
+		changes = append(changes, "database password will be set")
+	}
+
+	return changes
+}
+
+// emptyAs names an empty value in the change line: "→ " alone reads as a bug.
+func emptyAs(value string) string {
+	if value == "" {
+		return "(empty)"
+	}
+
+	return value
+}
+
+// refreshChanges keeps the action row in step with the form: the password state
+// when nothing has changed, the pending changes when something has. Revert is
+// offered exactly when there is something to discard.
+func (v *serverView) refreshChanges() {
+	if v.loading || v.secret == nil {
+		return
+	}
+
+	changes := v.changes()
+
+	if len(changes) == 0 {
+		v.secret.SetText(v.secretState)
+
+		if v.revert != nil {
+			v.revert.Disable()
+		}
+	} else {
+		v.secret.SetText("Unsaved changes: " + strings.Join(changes, "; ") + ".")
+
+		if v.revert != nil {
+			v.revert.Enable()
+		}
+	}
+
+	// A pending-changes line can wrap to more lines than the row was measured
+	// for.
 	relayout(v.configScrollPane)
+}
+
+// revertChanges discards the form and reads the file again, including clearing
+// a typed password.
+func (v *serverView) revertChanges() {
+	v.loadConfig()
+	v.setNote("Changes discarded — the form shows the file again.")
 }
 
 // notBundleNote explains a folder the tab cannot drive: what it is missing,
@@ -912,6 +1011,13 @@ func (v *serverView) saveConfig() {
 				" here — this folder is not a server bundle, so there is nothing to save.")
 		}
 
+		return
+	}
+
+	// Saving an unchanged form would rewrite the file and say "Saved.", which
+	// teaches the wrong thing: the line already says nothing changed.
+	if len(v.changes()) == 0 {
+		v.setNote("There is nothing to save — no value has changed.")
 		return
 	}
 
