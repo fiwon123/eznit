@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net"
@@ -24,28 +25,84 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// Version is what `eznit-server --version` prints. It is set at build time:
+//
+//	go build -ldflags "-X main.Version=v1.2.3" ./cmd/api
+//
+// The Makefile passes it (INJECT_VERSION), so a released server names the tag it
+// was built from, the way `eznit -v` and `eznit-gui --version` do. Without it
+// the binary says "dev", which is honest: it was not built as a release.
+//
+// Declaring the variable is what makes the injection land. The linker accepts an
+// -X for a symbol that does not exist and says nothing about it, so a Makefile
+// that injects into a missing name looks like it works while doing nothing.
+var Version = "dev"
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
 }
 
+// options are the flags `eznit-server` accepts.
+type options struct {
+	debug   bool
+	version bool
+}
+
+// parseArgs reads the server's flags out of args.
+//
+// The arguments are handed in rather than read from os.Args so the flags can be
+// tested without a database, a log folder or a listener — and so --version is
+// answered before any of those start. The flag set reports errors instead of
+// exiting, which is what keeps -h testable: flag.ExitOnError would end the
+// process, and a test binary with it.
+func parseArgs(args []string, out io.Writer) (options, error) {
+	var opts options
+
+	flags := flag.NewFlagSet("eznit-server", flag.ContinueOnError)
+	flags.SetOutput(out)
+	flags.BoolVar(&opts.debug, "debug", false, "show debug logs")
+	flags.BoolVar(&opts.version, "version", false, "print the version and exit")
+
+	if err := flags.Parse(args); err != nil {
+		return options{}, err
+	}
+
+	return opts, nil
+}
+
 // run holds main's body so the defers it takes — the log flush, the database
 // connection — run on every exit path, a failed start included.
 func run() error {
+	// Flags come first. `--version` has to answer on a machine with no .env, no
+	// database and no log folder, and a mistyped flag should fail before
+	// anything starts rather than halfway through a start-up.
+	opts, err := parseArgs(os.Args[1:], os.Stderr)
+	if errors.Is(err, flag.ErrHelp) {
+		return nil // -h printed its own usage, and asking for help is not a failure
+	}
+	if err != nil {
+		// The flag set already named the problem and printed the usage; a
+		// second copy from log.Fatal would not help. Exit 2 is what the flag
+		// package exits with for a usage error, and nothing is open yet, so no
+		// deferred work is skipped.
+		os.Exit(2)
+	}
+
+	if opts.version {
+		fmt.Println(Version)
+		return nil
+	}
 
 	// .env.local overwrite .env for development
 	_ = godotenv.Load(".env.local", ".env")
-
-	var debugFlag bool
-	flag.BoolVar(&debugFlag, "debug", false, "show debug logs")
-	flag.Parse()
 
 	logsFolder, _ := os.LookupEnv("API_LOGS")
 	if logsFolder == "" {
 		logsFolder = "./logs/"
 	}
-	logger, err := logger.NewJson(logsFolder, debugFlag)
+	logger, err := logger.NewJson(logsFolder, opts.debug)
 	if err != nil {
 		return err
 	}

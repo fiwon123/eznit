@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"flag"
 	"io"
 	"io/fs"
 	"net"
@@ -360,5 +362,53 @@ func TestServeUntilReportsADrainThatTimedOut(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("serveUntil() did not return after the drain timed out")
+	}
+}
+
+// The server's flags: a plain start, the version, debug logs, and a mistake.
+func TestParseArgs(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		version bool
+		debug   bool
+		wantErr bool
+	}{
+		{"no flags is a plain start", nil, false, false, false},
+		{"-version asks for the version", []string{"-version"}, true, false, false},
+		{"--version is the same flag", []string{"--version"}, true, false, false},
+		{"-debug turns on debug logs", []string{"-debug"}, false, true, false},
+		{"both flags together", []string{"-debug", "--version"}, true, true, false},
+		{"an unknown flag is an error", []string{"-nope"}, false, false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseArgs(tt.args, io.Discard)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseArgs(%q) error = %v, wantErr %v", tt.args, err, tt.wantErr)
+			}
+			if err != nil {
+				return
+			}
+			if got.version != tt.version || got.debug != tt.debug {
+				t.Errorf("parseArgs(%q) = %+v, want version %v and debug %v",
+					tt.args, got, tt.version, tt.debug)
+			}
+		})
+	}
+}
+
+// -h is help, not a failure: the usage is printed and the error says so.
+func TestParseArgsHelp(t *testing.T) {
+	var usage strings.Builder
+
+	_, err := parseArgs([]string{"-h"}, &usage)
+
+	if !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("parseArgs(-h) error = %v, want flag.ErrHelp", err)
+	}
+	if printed := usage.String(); !strings.Contains(printed, "-version") {
+		t.Errorf("usage = %q, want it to name the version flag", printed)
 	}
 }
