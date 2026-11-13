@@ -75,13 +75,17 @@ it is pointed at is another bundle.
   logged, and never copied into `~/.eznit/config.json`.
 
 The window is also a client: the **Files** tab signs in to one eznit API and
-always shows which. Its header names the address and where it came from, a dot
-reports whether that server answered, and **Change…** offers two choices:
+always shows which. Its header holds the address in an editable field, with the
+source underneath it and a dot that reports whether that server answered:
 
-- **This machine** — the server the Server tab would run, on the port that
-  folder's configuration names, so the two tabs cannot disagree.
-- **Another server** — any `http://` or `https://` address, validated and
-  testable with **Test** (a `/v1/healthcheck` call) before it is saved.
+- **Connect** validates the typed address and switches to it, remembering it.
+- **Test** asks the typed address `/v1/healthcheck` without saving it.
+- **This machine** fills in the server the Server tab would run, on the port
+  that folder's configuration names, so the two tabs cannot disagree.
+
+The Server tab's folder is an editable field too: type a bundle folder and press
+**Use** (or Enter), or pick one with **Browse…**. **Reset** returns to the folder
+the window was installed in, after asking.
 
 The address is resolved as `-api`, then `GUI_API_URL`, then the address saved in
 `~/.eznit/config.json`, then `http://localhost:4000`. A session belongs to the

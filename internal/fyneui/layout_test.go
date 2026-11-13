@@ -269,7 +269,7 @@ func TestFilesTabTextDoesNotOverlap(t *testing.T) {
 			view.selected = 0
 			view.ready = true
 			view.updateActions()
-			view.setStatus("The server at http://a-very-long-server-name.example.com:4000 did not answer (the API could not be reached). Use Change… above to point the tab somewhere else, or Refresh to try again.", statusError)
+			view.setStatus("The server at http://a-very-long-server-name.example.com:4000 did not answer (the API could not be reached). Type another address above and Connect, or Refresh to try again.", statusError)
 
 			layOut(view.ui.window, size)
 			assertNoTextOverlap(t, view.ui.window.Content())
@@ -295,7 +295,7 @@ func TestTemplatesTabTextDoesNotOverlap(t *testing.T) {
 			view.table.Refresh()
 			view.showDetail(detail)
 			view.updateActions()
-			view.setStatus("The catalogue could not be loaded from http://a-very-long-server-name.example.com:4000 (the API could not be reached). Use Refresh to try again, or Change… on the Files tab to point the window somewhere else.", statusError)
+			view.setStatus("The catalogue could not be loaded from http://a-very-long-server-name.example.com:4000 (the API could not be reached). Use Refresh to try again, or change the address on the Files tab.", statusError)
 
 			layOut(view.ui.window, size)
 			assertNoTextOverlap(t, view.ui.window.Content())

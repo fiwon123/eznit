@@ -62,9 +62,9 @@ archive you already have and run `eznit-gui` from inside it (or point the tab at
 that folder with **Choose folder…**).
 
 The note under the header names what the folder is missing. If you only want to
-use a server that already runs, the Server tab is not needed — **Files →
-Change… → Another server**. The README's "From a download, in one minute" block
-has the same steps.
+use a server that already runs, the Server tab is not needed — type its address
+into the **Files** header and **Connect**. The README's "From a download, in one
+minute" block has the same steps.
 
 ## The Server tab says the port is in use
 

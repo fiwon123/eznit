@@ -34,11 +34,12 @@ type filesView struct {
 	// an empty library.
 	ready bool
 
-	address *widget.Label
+	address *widget.Entry
 	source  *widget.Label
 	dot     *canvas.Circle
 	test    *widget.Button
-	change  *widget.Button
+	connect *widget.Button
+	machine *widget.Button
 	signOut *widget.Button
 
 	upload   *widget.Button
@@ -145,15 +146,22 @@ func alignFileColumn(label *widget.Label, column int) {
 // put that address there. It is rebuilt with the content, so a change shows up
 // without a restart.
 //
-// The address is one line and ellipsizes: a URL is one unbreakable word, and a
-// wrapped label would draw it straight over the buttons beside it. The source
-// is its own row underneath, where it cannot compete for the same width.
+// The address is an editable field: it is the thing a person wants to change,
+// and it is already on screen. Connect validates and switches to it; Test asks
+// it without saving; This machine fills in the address the Server tab would
+// run. The source is its own row, where it cannot compete for the same width.
 func (v *filesView) header() fyne.CanvasObject {
-	v.address = oneLine(v.ui.address.url)
+	v.address = widget.NewEntry()
+	v.address.SetText(v.ui.address.url)
+	v.address.SetPlaceHolder("http://127.0.0.1:4000")
+	v.address.OnSubmitted = func(string) { v.connectTyped() }
+
 	v.source = muted("(" + v.ui.address.source + ")")
 
 	v.test = widget.NewButton("Test", v.testServer)
-	v.change = widget.NewButtonWithIcon("Change…", theme.SettingsIcon(), v.ui.changeServer)
+	v.connect = widget.NewButton("Connect", v.connectTyped)
+	v.machine = widget.NewButtonWithIcon("This machine", theme.ComputerIcon(), v.useLocalAddress)
+	v.machine.Importance = widget.LowImportance
 
 	// The session belongs here: this is the tab the login form replaces when
 	// there is no token, so it is where a person signs out of it.
@@ -162,11 +170,69 @@ func (v *filesView) header() fyne.CanvasObject {
 
 	line := container.NewBorder(nil, nil,
 		muted("Server"),
-		container.NewHBox(v.test, v.change, widget.NewSeparator(), v.signOut),
+		container.NewHBox(v.test, v.connect, widget.NewSeparator(), v.signOut),
 		v.address,
 	)
+	second := container.NewBorder(nil, nil, v.source, v.machine, nil)
 
-	return container.NewVBox(container.NewPadded(container.NewVBox(line, v.source)), widget.NewSeparator())
+	return container.NewVBox(container.NewPadded(container.NewVBox(line, second)), widget.NewSeparator())
+}
+
+// connectTyped switches the tab to the typed address. The rules are the ones
+// the old Change… dialog enforced: validate it, keep the session on the same
+// host, ask before signing out of a different one, and remember the choice.
+func (v *filesView) connectTyped() {
+	typed, err := apiclient.ValidateBaseURL(v.address.Text)
+	if err != nil {
+		v.setStatus(err.Error(), statusError)
+
+		return
+	}
+
+	address := apiChoice{url: typed, source: "the address you entered"}
+
+	if v.ui.client.Token != "" && !apiclient.SameHost(v.ui.client.BaseURL, typed) {
+		dialog.ShowConfirm("Sign out of the current server?",
+			"A session belongs to the server that issued it.\n\nChanging to "+typed+
+				" signs you out of "+v.ui.client.BaseURL+". Continue?",
+			func(confirmed bool) {
+				if confirmed {
+					v.useServerChoice(address)
+				}
+			}, v.ui.window)
+
+		return
+	}
+
+	v.useServerChoice(address)
+}
+
+// useServerChoice applies a validated address and follows the session rule:
+// a different host loses the token, so the login form comes back.
+func (v *filesView) useServerChoice(address apiChoice) {
+	signedOut, err := v.ui.useServer(address)
+	if err != nil {
+		v.setStatus(err.Error(), statusError)
+
+		return
+	}
+
+	if signedOut {
+		v.ui.showLogin("Pointing at " + address.url + ". Sign in — a session belongs to the server that issued it.")
+
+		return
+	}
+
+	// showMain reloads the library, which reports the new address itself.
+	v.ui.showMain()
+}
+
+// useLocalAddress fills the field with the server the Server tab would run, on
+// the port that folder's configuration names.
+func (v *filesView) useLocalAddress() {
+	v.address.SetText(v.ui.localAddress())
+	v.ui.window.Canvas().Focus(v.address)
+	v.setStatus("This machine: "+v.ui.localAddress()+". Test it, then Connect.", statusIdle)
 }
 
 func (v *filesView) content() fyne.CanvasObject {
@@ -370,14 +436,20 @@ func (v *filesView) takeOffline(address string, err error) {
 	v.updateActions()
 
 	v.setStatus(fmt.Sprintf(
-		"The server at %s did not answer (%s). Use Change… above to point the tab somewhere else, or Refresh to try again.",
+		"The server at %s did not answer (%s). Type another address above and Connect, or Refresh to try again.",
 		address, messageOf(err)), statusError)
 }
 
-// testServer asks the instance whether it answers, without listing anything:
-// it is the "is this address right" button.
+// testServer asks the typed instance whether it answers, without saving the
+// address: it is the "is this address right" button.
 func (v *filesView) testServer() {
-	address := v.ui.client.BaseURL
+	address, err := apiclient.ValidateBaseURL(v.address.Text)
+	if err != nil {
+		v.setStatus(err.Error(), statusError)
+
+		return
+	}
+
 	client := apiclient.New(address)
 
 	v.setStatus("Asking "+address+"…", statusPending)

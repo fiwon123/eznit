@@ -141,8 +141,8 @@ cd eznit_<tag>_linux_amd64
 ```
 
 Run the window **from inside the extracted folder**: the Server tab looks for
-`eznit-server` beside it. The window is a client first — **Files → Change…**
-points it at any eznit API — and a host second: the Server tab runs the server
+`eznit-server` beside it. The window is a client first — type any eznit API into the **Files**
+header and **Connect** — and a host second: the Server tab runs the server
 in that folder, with a database from `docker compose up -d db migrate`, then
 **Server → Configuration → Create .env → set the database password → Save →
 Start**. Without the window, `./eznit` is the CLI and `./eznit-server` is the

@@ -258,7 +258,7 @@ func TestServerViewSaysWhenTheFolderIsNotABundle(t *testing.T) {
 		t.Error("Create .env is offered although there is no example to copy")
 	}
 
-	for _, want := range []string{"not a server bundle", serverctl.BinaryName(), "release archive", "Change…"} {
+	for _, want := range []string{"not a server bundle", serverctl.BinaryName(), "release archive", "Files tab"} {
 		if !strings.Contains(view.note.Text, want) {
 			t.Errorf("note = %q, want it to mention %q", view.note.Text, want)
 		}
@@ -603,4 +603,80 @@ func startFakeServer(t *testing.T, view *serverView) {
 	t.Cleanup(func() { _ = view.server().Stop(5 * time.Second) })
 
 	view.refresh()
+}
+
+// The bundle folder is typed as well as picked: Use commits a path that
+// exists, stores it for the next start, and reloads the tab from there.
+func TestServerFolderIsTyped(t *testing.T) {
+	view := newTestServerView(t, bundleDir(t, "API_PORT=\"4000\"\n"))
+
+	target := bundleDir(t, "API_PORT=\"4100\"\n")
+
+	view.folder.SetText(target)
+	view.useTypedFolder()
+
+	if got := view.folderPath(); got != target {
+		t.Errorf("the panel drives %q, want the typed folder %q", got, target)
+	}
+
+	stored, err := config.Value("server_dir")
+	if err != nil || stored != target {
+		t.Errorf("stored server_dir = %q (%v), want %q", stored, err, target)
+	}
+
+	if got := view.fields["API_PORT"].Text; got != "4100" {
+		t.Errorf("API_PORT = %q, want the value from the new folder", got)
+	}
+
+	if !strings.Contains(view.note.Text, "Using the folder") {
+		t.Errorf("note = %q, want it to confirm the folder", view.note.Text)
+	}
+}
+
+// A typed path is checked before anything is changed: a file and a missing
+// folder are refused with the reason, and the tab keeps the folder it had.
+func TestServerFolderTypedPathIsValidated(t *testing.T) {
+	dir := bundleDir(t, "API_PORT=\"4000\"\n")
+	view := newTestServerView(t, dir)
+
+	view.folder.SetText(filepath.Join(dir, serverctl.EnvFileName))
+	view.useTypedFolder()
+
+	if got := view.folderPath(); got != dir {
+		t.Errorf("the panel drives %q, want the folder unchanged", got)
+	}
+
+	if !strings.Contains(view.note.Text, "not a folder") {
+		t.Errorf("note = %q, want it to say the path is a file", view.note.Text)
+	}
+
+	view.folder.SetText(filepath.Join(t.TempDir(), "missing"))
+	view.useTypedFolder()
+
+	if got := view.folderPath(); got != dir {
+		t.Errorf("the panel drives %q, want the folder unchanged", got)
+	}
+
+	if !strings.Contains(view.note.Text, "could not be opened") {
+		t.Errorf("note = %q, want it to say the folder is missing", view.note.Text)
+	}
+}
+
+// A running server owns its folder: a typed path is refused like a picked one.
+func TestServerFolderTypedChangeIsRefusedWhileRunning(t *testing.T) {
+	dir := bundleDir(t, "API_PORT=\"4321\"\n")
+	view := newTestServerViewIn(t, dir, filepath.Join(t.TempDir(), "config.json"))
+
+	startFakeServer(t, view)
+
+	view.folder.SetText(t.TempDir())
+	view.useTypedFolder()
+
+	if got := view.folderPath(); got != dir {
+		t.Errorf("the panel drives %q, want the folder the server runs from", got)
+	}
+
+	if !strings.Contains(view.note.Text, "Stop the server first") {
+		t.Errorf("note = %q, want it to say the server has to stop first", view.note.Text)
+	}
 }

@@ -114,12 +114,12 @@ the Server tab looks for `eznit-server` beside the window. The first run is:
 1. start a database in that folder: `docker compose up -d db migrate`;
 2. **Server → Configuration → Create .env**, set the database password, **Save**;
 3. **Server → Start**: the Output tab shows the log and the status dot turns green;
-4. **Files → Change… → This machine → Test → Use this server**, then create the
+4. **Files**: **This machine**, then **Test**, then **Connect**, and create the
    first account — it is the instance's admin.
 
 The window is also a client of a server somewhere else, and that needs no bundle:
-**Files → Change… → Another server**, paste the address, **Test**, **Use this
-server**. The Server tab is not involved.
+type the address into the **Files** header, **Test** it, **Connect**. The Server
+tab is not involved.
 
 `RUNNING.md` in the bundle says the same, and what it does not prove.
 
