@@ -78,10 +78,15 @@ type Updater struct {
 	// Member is the executable installed from the archive.
 	Member string
 
-	BaseURL    string
-	LatestURL  string
-	GOOS       string
-	GOARCH     string
+	BaseURL   string
+	LatestURL string
+	GOOS      string
+	GOARCH    string
+
+	// Executable is the path an install replaces, recorded when the Updater is
+	// built. It must be read before an install and kept: after the swap the
+	// running image's own path follows its inode into the backup, so a caller
+	// that restarts itself has to use this path and not os.Executable().
 	Executable string
 
 	HTTP *http.Client

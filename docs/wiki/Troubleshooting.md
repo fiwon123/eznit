@@ -110,6 +110,14 @@ The running process keeps the binary it started from. Restart `eznit` (or the
 window) to run the new one. `eznit update --revert` puts back the version saved
 by the last install.
 
+A window on **v0.30.0 or earlier** can also come back as the old version after
+**Restart now**: the install renames the running binary to `<binary>.old`, and
+the old code then read its own path — which follows the running file into that
+backup — so the button started the backup. The install itself is fine; the new
+binary is at the original path. Close the window and start the application
+normally once. Fixed in **v0.30.1**, where Restart uses the path recorded before
+the swap.
+
 ## The API starts and immediately exits
 
 Check the log for the connection error. The API reads `DB_PASSWORD_FILE` first and

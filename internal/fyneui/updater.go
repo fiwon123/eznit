@@ -38,10 +38,26 @@ func (a *appUpdater) Install(version string) error {
 
 func (a *appUpdater) Restore() error { return a.updater.Restore() }
 
+// restartPath is the binary to start after an install. It must be the path
+// recorded before the swap, not a fresh os.Executable(): the kernel resolves the
+// running image through its inode, and the install renames that inode to
+// "<binary>.old" before putting the new file at the path. A fresh
+// os.Executable() therefore names the backup — the version being replaced —
+// which is how Restart came to reopen the old window.
+func (a *appUpdater) restartPath() (string, error) {
+	if path := a.updater.Executable; path != "" {
+		if _, err := os.Stat(path); err == nil {
+			return path, nil
+		}
+	}
+
+	return os.Executable()
+}
+
 // Restart starts the binary on disk and lets the caller quit this process, so
 // the new version runs with the old window closed.
 func (a *appUpdater) Restart() error {
-	executable, err := os.Executable()
+	executable, err := a.restartPath()
 	if err != nil {
 		return err
 	}
