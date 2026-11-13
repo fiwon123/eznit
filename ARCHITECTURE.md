@@ -340,6 +340,19 @@ the only place that touches the filesystem. The CLI keeps its prompts and its
 wording; the window collects the same answers in a form. That is why the window
 and `template apply` cannot drift about safe paths or a silent overwrite.
 
+The window does not trust a label's minimum size. A Fyne label that wraps
+reports a minimum width of zero, so a `Border` can hand its middle less than a
+word and the text is painted over its neighbours — and the window's own minimum
+comes from the same number, so it can be resized into a state a tab cannot
+draw. `internal/fyneui/text.go` has the two shapes every tab uses: `prose`, a
+wrapped label whose minimum is the longest word and the height the text needs
+at its current width, and `oneLine` for identifiers — an address, a folder, a
+health line — which ellipsizes instead of wrapping, because a path has no
+spaces to break at. `relayout` runs a tab's layout twice after text that can
+change height changes, which is what gives a note or a status message the row
+it needs. The coloured status dot sits beside the message it colours, not on a
+header line of its own, and is centred on the text rather than on the row.
+
 The tab's Output is a log viewer over the child's own console output, which the
 API writes as JSON (`pkg/logger.NewJson`). `serverctl.ParseLine` reads one line
 into time, level, message and fields, `Format` lays it out in fixed columns, and

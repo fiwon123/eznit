@@ -103,7 +103,7 @@ func TestTemplatesDetailShowsEveryPart(t *testing.T) {
 		t.Errorf("commands = %q, want the target path", view.commands.Text)
 	}
 
-	parts := map[string]*widget.Label{
+	parts := map[string]*prose{
 		"summary":   view.summary,
 		"files":     view.files,
 		"variables": view.variables,
