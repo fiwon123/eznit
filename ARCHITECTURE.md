@@ -297,16 +297,21 @@ the token in a file git owns, and it is stated rather than hidden.
 
 The GUI reads `GUI_API_URL` (the default server address), `-api` and
 `-server-dir` (flags, which win), and stores its choices in
-`~/.eznit/config.json` beside the CLI's: `api_url`, `token` and `server_dir`.
-The address is resolved as `-api`, then `GUI_API_URL`, then the saved address,
-then `http://localhost:4000`; the Files tab's header holds the address in an
-editable field, shows which of those produced it, and offers **Test** (a
-`/v1/healthcheck` call that saves nothing), **Connect** (validate, then switch)
-and **This machine** (fill in the Server tab's address). `apiclient.ValidateBaseURL`
-and `SameHost` decide whether a typed address is usable and whether a session
-token still belongs to it: a different host means a different instance, so the
-token is forgotten — after a confirmation — and the login form follows, while a
-port change on one host keeps the session. The tab's actions stay disabled until
+`~/.eznit/config.json` beside the CLI's: `api_url`, `api_local`, `token` and
+`server_dir`. The address is resolved as `-api`, then `GUI_API_URL`, then the
+saved address, then this machine, and the last one is a **mode**: a window that
+has never chosen is local, so both tabs start on the server the Server tab would
+run. The Files and Templates headers carry the same bar — a **Use this machine**
+checkbox, the address field, **Test** (a `/v1/healthcheck` call that saves
+nothing), **Connect** (validate, then switch) and the source line; Files adds
+**Sign out**. Checked, the field follows the Server tab's folder and is shut;
+unchecked, the saved or typed address is used. The choice is stored as
+`api_local`, and a flag or environment address arrives unchecked because an
+explicit override is not "this machine". `apiclient.ValidateBaseURL` and
+`SameHost` decide whether a typed address is usable and whether a session token
+still belongs to it: a different host means a different instance, so the token
+is forgotten — after a confirmation — and the login form follows, while a port
+change on one host keeps the session. The tab's actions stay disabled until
 `/v1/healthcheck` has answered through a listing, so a wrong address cannot look
 like an empty library.
 
@@ -365,7 +370,9 @@ it needs. The coloured status dot sits beside the message it colours, not on a
 header line of its own, and is centred on the text rather than on the row.
 
 The tab's Output is a log viewer over the child's own console output, which the
-API writes as JSON (`pkg/logger.NewJson`). `serverctl.ParseLine` reads one line
+API writes as JSON (`pkg/logger.NewJson`). The grid cannot be selected in Fyne,
+so `Select…` opens a frozen snapshot in a selectable label: the dialog is how a
+line or a range is copied, while `Copy log` takes the whole buffer. `serverctl.ParseLine` reads one line
 into time, level, message and fields, `Format` lays it out in fixed columns, and
 the window colours it by level — so a line that is not a record (a panic) is
 kept as text rather than dropped. The supervisor keeps the newest 500 lines and

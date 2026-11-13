@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -40,6 +41,10 @@ type ui struct {
 	// address is the instance the Files tab talks to, and where that address
 	// came from — shown in the tab's header rather than picked silently.
 	address apiChoice
+
+	// local is the "Use this machine" choice. While it is on, the address bars
+	// fill themselves from the Server tab's folder; the choice is remembered.
+	local bool
 
 	client    *apiclient.Client
 	files     *filesView
@@ -70,14 +75,27 @@ func Run(version string, apiURL string, serverDir string) error {
 		window:  window,
 		version: version,
 		clip:    a.Clipboard(),
+		local:   localMode(apiURL),
 		address: apiFrom(apiURL),
 		updater: newAppUpdater(version),
+	}
+
+	// The default mode is this machine, and its address is the Server tab's
+	// folder. That folder is not known until the view exists, so the default
+	// stand-in is replaced below.
+	if u.local {
+		u.address = apiChoice{url: apiclient.NormalizeBaseURL(""), source: localSource}
 	}
 
 	u.client = apiclient.New(u.address.url)
 	u.files = newFilesView(u)
 	u.templates = newTemplatesView(u)
 	u.server = newServerView(u, serverFrom(serverDir))
+
+	if u.local {
+		u.address = apiChoice{url: u.localAddress(), source: localSource}
+		u.client = apiclient.New(u.address.url)
+	}
 
 	// The tabs exist before a session does. The Server tab has to be usable on
 	// a machine whose server has never run — running it and pointing it at a
@@ -200,6 +218,48 @@ func (u *ui) localAddress() string {
 	}
 
 	return serverctl.LocalAddress(u.server.folderPath())
+}
+
+// setLocal remembers whether the window talks to this machine. It does not
+// switch the client: Connect does that, so a wrong folder cannot take a session
+// by surprise.
+func (u *ui) setLocal(local bool) error {
+	u.local = local
+
+	return config.Set(localModeKey, strconv.FormatBool(local))
+}
+
+// connect switches every tab to a validated address and applies the session
+// rule: a different host loses the token and brings the login form back.
+func (u *ui) connect(choice apiChoice) (bool, error) {
+	signedOut, err := u.useServer(choice)
+	if err != nil {
+		return false, err
+	}
+
+	u.syncAddressBars()
+
+	if signedOut {
+		u.showLogin("Pointing at " + choice.url + ". Sign in — a session belongs to the server that issued it.")
+
+		return true, nil
+	}
+
+	u.showMain()
+
+	return false, nil
+}
+
+// syncAddressBars keeps every bar on the current mode and address. A tab
+// rebuilds its bar with its content, so this reads the two views' current ones.
+func (u *ui) syncAddressBars() {
+	if u.files != nil && u.files.bar != nil {
+		u.files.bar.sync()
+	}
+
+	if u.templates != nil && u.templates.bar != nil {
+		u.templates.bar.sync()
+	}
 }
 
 // setAPI points the client at an instance and keeps the stored session: the
