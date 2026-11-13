@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/fiwon123/eznit/internal/apiclient"
@@ -44,10 +45,16 @@ func walkTree(object fyne.CanvasObject, offset fyne.Position, visit func(fyne.Ca
 	pos := fyne.NewPos(offset.X+object.Position().X, offset.Y+object.Position().Y)
 	visit(object, pos)
 
-	if container, ok := object.(*fyne.Container); ok {
-		for _, child := range container.Objects {
+	switch typed := object.(type) {
+	case *fyne.Container:
+		for _, child := range typed.Objects {
 			walkTree(child, pos, visit)
 		}
+	case *container.Split:
+		// A split is a widget, not a container, but its two halves are this
+		// window's own objects and are laid out inside it.
+		walkTree(typed.Leading, pos, visit)
+		walkTree(typed.Trailing, pos, visit)
 	}
 }
 
@@ -269,7 +276,7 @@ func TestFilesTabTextDoesNotOverlap(t *testing.T) {
 			view.selected = 0
 			view.ready = true
 			view.updateActions()
-			view.setStatus("The server at http://a-very-long-server-name.example.com:4000 did not answer (the API could not be reached). Use Change… above to point the tab somewhere else, or Refresh to try again.", statusError)
+			view.setStatus("The server at http://a-very-long-server-name.example.com:4000 did not answer (the API could not be reached). Type another address above and Connect, or Refresh to try again.", statusError)
 
 			layOut(view.ui.window, size)
 			assertNoTextOverlap(t, view.ui.window.Content())
@@ -295,7 +302,7 @@ func TestTemplatesTabTextDoesNotOverlap(t *testing.T) {
 			view.table.Refresh()
 			view.showDetail(detail)
 			view.updateActions()
-			view.setStatus("The catalogue could not be loaded from http://a-very-long-server-name.example.com:4000 (the API could not be reached). Use Refresh to try again, or Change… on the Files tab to point the window somewhere else.", statusError)
+			view.setStatus("The catalogue could not be loaded from http://a-very-long-server-name.example.com:4000 (the API could not be reached). Use Refresh to try again, or change the address on the Files tab.", statusError)
 
 			layOut(view.ui.window, size)
 			assertNoTextOverlap(t, view.ui.window.Content())
@@ -393,4 +400,42 @@ func TestStatusDotsAreCentred(t *testing.T) {
 
 		assertDotCentredOn(t, view.built, view.dot, view.status)
 	})
+}
+
+// TestServerHeaderActionsShareOneEdge is the "organised and aligned" guard: the
+// two header rows group their buttons differently, but the buttons share one
+// height and each row ends at the same right edge.
+func TestServerHeaderActionsShareOneEdge(t *testing.T) {
+	view := newTestServerView(t, bundleDir(t, "API_PORT=\"4000\"\n"))
+	layOut(view.ui.window, fyne.NewSize(980, 640))
+
+	buttons := []*widget.Button{view.start, view.stop, view.open, view.use, view.choose, view.reset}
+
+	statusRow, ok := placeOf(view.built, view.open)
+	if !ok {
+		t.Fatal("the status row's actions are not laid out")
+	}
+
+	for _, button := range buttons {
+		box, ok := placeOf(view.built, button)
+		if !ok {
+			t.Fatalf("the %q button is not in the laid-out header", button.Text)
+		}
+
+		if delta := box.size.Height - statusRow.size.Height; delta > 1 || delta < -1 {
+			t.Errorf("%q is %.1f px taller or shorter than the row", button.Text, delta)
+		}
+	}
+
+	// Each row's last button is that row's right edge; the two must agree.
+	right := statusRow.pos.X + statusRow.size.Width
+
+	folderRow, ok := placeOf(view.built, view.reset)
+	if !ok {
+		t.Fatal("the folder row's actions are not laid out")
+	}
+
+	if gap := folderRow.pos.X + folderRow.size.Width - right; gap > 1 || gap < -1 {
+		t.Errorf("the folder row ends %.1f px from the status row's right edge", gap)
+	}
 }

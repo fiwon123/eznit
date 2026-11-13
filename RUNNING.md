@@ -72,16 +72,24 @@ it is pointed at is another bundle.
 - **Open in browser** goes to `http://127.0.0.1:<API_PORT>`.
 - The configuration panel writes `.env` (mode `0600`) and
   `secrets/db_password.txt` (mode `0600`). The password is never displayed, never
-  logged, and never copied into `~/.eznit/config.json`.
+  logged, and never copied into `~/.eznit/config.json`. Its action row is the
+  state of an edit: the password state when the form matches the file, and
+  **`Unsaved changes: API_PORT 4000 → 5000; database password will be set.`**
+  when it does not. **Revert** reads the file again and discards the edit;
+  **Save configuration** answers "nothing to save" when nothing changed.
 
 The window is also a client: the **Files** tab signs in to one eznit API and
-always shows which. Its header names the address and where it came from, a dot
-reports whether that server answered, and **Change…** offers two choices:
+always shows which. Its header holds the address in an editable field, with the
+source underneath it and a dot that reports whether that server answered:
 
-- **This machine** — the server the Server tab would run, on the port that
-  folder's configuration names, so the two tabs cannot disagree.
-- **Another server** — any `http://` or `https://` address, validated and
-  testable with **Test** (a `/v1/healthcheck` call) before it is saved.
+- **Connect** validates the typed address and switches to it, remembering it.
+- **Test** asks the typed address `/v1/healthcheck` without saving it.
+- **This machine** fills in the server the Server tab would run, on the port
+  that folder's configuration names, so the two tabs cannot disagree.
+
+The Server tab's folder is an editable field too: type a bundle folder and press
+**Use** (or Enter), or pick one with **Browse…**. **Reset** returns to the folder
+the window was installed in, after asking.
 
 The address is resolved as `-api`, then `GUI_API_URL`, then the address saved in
 `~/.eznit/config.json`, then `http://localhost:4000`. A session belongs to the
@@ -89,8 +97,11 @@ server that issued it: changing to a different host asks first, then signs you
 out; a port change on one host keeps the session.
 
 The **Templates** tab reads that server's catalogue: filter by kind or down to
-your own templates, then select one to see its files, the variables it asks for
-and the commands it pulls in — every line selectable. Two actions follow:
+your own templates, then select a row. The table is Name, Kind, Version and
+Files; the selected template's summary adds its visibility, owner and
+description, and three tabs — **Files**, **Variables**, **Commands**, each
+labelled with its count — hold the contents, every line selectable. Two actions
+sit beside the summary:
 
 - **Save as bundle…** writes the `.eznit` file that `eznit template apply
   --from-file` reads; it is the same file `template export` produces, from the

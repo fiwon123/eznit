@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -51,7 +50,7 @@ func TestNumericColumnsAreRightAligned(t *testing.T) {
 		{"a file version", alignFileColumn, 1, fyne.TextAlignTrailing},
 		{"a file name", alignFileColumn, 0, fyne.TextAlignLeading},
 		{"a template version", alignTemplateColumn, 2, fyne.TextAlignTrailing},
-		{"a template file count", alignTemplateColumn, 4, fyne.TextAlignTrailing},
+		{"a template file count", alignTemplateColumn, 3, fyne.TextAlignTrailing},
 		{"a template kind", alignTemplateColumn, 1, fyne.TextAlignLeading},
 	}
 
@@ -63,26 +62,5 @@ func TestNumericColumnsAreRightAligned(t *testing.T) {
 				t.Errorf("alignment = %v, want %v", label.Alignment, tt.want)
 			}
 		})
-	}
-}
-
-// A section caption is a sub-heading, not body text that happens to be bold.
-func TestSectionCaptionsAreSubHeadings(t *testing.T) {
-	built, ok := section("Variables", newProse("")).(*fyne.Container)
-	if !ok {
-		t.Fatal("a section is not a container")
-	}
-
-	title, ok := built.Objects[0].(*widget.Label)
-	if !ok {
-		t.Fatal("a section does not begin with its caption")
-	}
-
-	if title.SizeName != theme.SizeNameSubHeadingText {
-		t.Errorf("caption size = %q, want the sub-heading size", title.SizeName)
-	}
-
-	if !title.TextStyle.Bold {
-		t.Error("the caption is not bold")
 	}
 }
