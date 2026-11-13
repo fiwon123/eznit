@@ -72,7 +72,11 @@ it is pointed at is another bundle.
 - **Open in browser** goes to `http://127.0.0.1:<API_PORT>`.
 - The configuration panel writes `.env` (mode `0600`) and
   `secrets/db_password.txt` (mode `0600`). The password is never displayed, never
-  logged, and never copied into `~/.eznit/config.json`.
+  logged, and never copied into `~/.eznit/config.json`. Its action row is the
+  state of an edit: the password state when the form matches the file, and
+  **`Unsaved changes: API_PORT 4000 → 5000; database password will be set.`**
+  when it does not. **Revert** reads the file again and discards the edit;
+  **Save configuration** answers "nothing to save" when nothing changed.
 
 The window is also a client: the **Files** tab signs in to one eznit API and
 always shows which. Its header holds the address in an editable field, with the

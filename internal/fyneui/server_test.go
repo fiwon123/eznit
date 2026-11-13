@@ -680,3 +680,90 @@ func TestServerFolderTypedChangeIsRefusedWhileRunning(t *testing.T) {
 		t.Errorf("note = %q, want it to say the server has to stop first", view.note.Text)
 	}
 }
+
+// The configuration pane shows what a save would change, field by field, in the
+// form's order, and says when the database password would be set.
+func TestConfigurationShowsPendingChanges(t *testing.T) {
+	dir := bundleDir(t, "API_PORT=\"4000\"\nDB_HOST=\"127.0.0.1\"\n")
+	view := newTestServerView(t, dir)
+
+	if strings.Contains(view.secret.Text, "Unsaved") {
+		t.Fatalf("the clean form reports changes: %q", view.secret.Text)
+	}
+
+	view.fields["API_PORT"].SetText("5000")
+	view.fields["DB_HOST"].SetText("")
+	view.password.SetText("hunter2")
+
+	for _, want := range []string{
+		"Unsaved changes",
+		"API_PORT 4000 → 5000",
+		"DB_HOST 127.0.0.1 → (empty)",
+		"database password will be set",
+	} {
+		if !strings.Contains(view.secret.Text, want) {
+			t.Errorf("line = %q, want %q", view.secret.Text, want)
+		}
+	}
+
+	if view.revert.Disabled() {
+		t.Error("Revert is disabled with pending changes")
+	}
+}
+
+// Revert puts the form back to the file: the fields, the password and the line.
+func TestConfigurationRevertDiscardsChanges(t *testing.T) {
+	dir := bundleDir(t, "API_PORT=\"4000\"\n")
+	view := newTestServerView(t, dir)
+
+	view.fields["API_PORT"].SetText("5000")
+	view.password.SetText("hunter2")
+	view.revertChanges()
+
+	if got := view.fields["API_PORT"].Text; got != "4000" {
+		t.Errorf("API_PORT = %q, want the file's value", got)
+	}
+
+	if view.password.Text != "" {
+		t.Error("the password field still holds a value")
+	}
+
+	if strings.Contains(view.secret.Text, "Unsaved") {
+		t.Errorf("line = %q, want the clean state", view.secret.Text)
+	}
+
+	if !view.revert.Disabled() {
+		t.Error("Revert is enabled with nothing to discard")
+	}
+
+	if !strings.Contains(view.note.Text, "Changes discarded") {
+		t.Errorf("note = %q, want it to confirm the discard", view.note.Text)
+	}
+}
+
+// Saving an unchanged form writes nothing and says so: the line already says
+// there is nothing to change.
+func TestConfigurationSavesNothingWhenUnchanged(t *testing.T) {
+	dir := bundleDir(t, "API_PORT=\"4000\"\n")
+	view := newTestServerView(t, dir)
+
+	before, err := os.ReadFile(filepath.Join(dir, serverctl.EnvFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	view.saveConfig()
+
+	after, err := os.ReadFile(filepath.Join(dir, serverctl.EnvFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(before) != string(after) {
+		t.Error("the file was rewritten although nothing changed")
+	}
+
+	if !strings.Contains(view.note.Text, "nothing to save") {
+		t.Errorf("note = %q, want it to say there is nothing to save", view.note.Text)
+	}
+}
