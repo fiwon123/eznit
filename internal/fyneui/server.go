@@ -69,8 +69,14 @@ type serverView struct {
 	reset  *widget.Button
 
 	log    *widget.TextGrid
+	grid   *logGrid
 	scroll *container.Scroll
 	follow *widget.Check
+
+	// sel is the range a drag covers in the grid, or nil. It is painted on the
+	// grid's own cells rather than in a layer above them (see loggrid.go).
+	sel           *selection
+	copySelection *widget.Button
 
 	outputControls *fyne.Container
 
@@ -158,6 +164,7 @@ func (v *serverView) useDir(dir string) {
 	v.mu.Unlock()
 
 	// The grid held the old server's output; a new folder is a new log.
+	v.forgetSelection()
 	v.rendered = 0
 	v.parsed = nil
 	v.consumed = 0
@@ -360,8 +367,10 @@ func (v *serverView) content() fyne.CanvasObject {
 // makes the wheel work over the log itself.
 func (v *serverView) buildOutput() {
 	v.log = widget.NewTextGrid()
+	v.grid = newLogGrid(v.log)
+	v.grid.onSelect = v.selectCells
 
-	v.scroll = container.NewScroll(v.log)
+	v.scroll = container.NewScroll(v.grid)
 	v.scroll.SetMinSize(fyne.NewSize(440, 80))
 	v.scroll.OnScrolled = v.followOutput
 
@@ -377,7 +386,13 @@ func (v *serverView) buildOutput() {
 	selectOutput := widget.NewButton("Select…", v.selectOutput)
 	clear := widget.NewButtonWithIcon("Clear", theme.DeleteIcon(), v.clearLog)
 
-	actions := container.NewBorder(nil, nil, v.follow, container.NewHBox(jump, copyLog, selectOutput, clear))
+	// The button is there from the start, disabled: a control that appears
+	// with a selection is a feature nobody discovers (Select… already was one).
+	v.copySelection = widget.NewButton("Copy selection", v.copySelected)
+	v.copySelection.Disable()
+
+	actions := container.NewBorder(nil, nil, v.follow,
+		container.NewHBox(jump, copyLog, v.copySelection, selectOutput, clear))
 	v.outputControls = container.NewPadded(actions)
 }
 
@@ -590,6 +605,7 @@ func (v *serverView) drawLog() {
 	if start < v.consumed-v.rendered || len(lines) < v.rendered {
 		// Cleared, or a buffer that shrank more than trimming can explain: draw
 		// it from scratch.
+		v.forgetSelection()
 		v.rendered = 0
 		v.parsed = nil
 		v.consumed = start
@@ -649,6 +665,14 @@ func (v *serverView) dropRows(count int) {
 	v.log.Rows = append([]widget.TextGridRow(nil), v.log.Rows[count:]...)
 	v.parsed = append([]serverctl.LogLine(nil), v.parsed[count:]...)
 	v.rendered -= count
+
+	// The selection keeps pointing at the same text: the lines left the top, so
+	// its rows move up with them, and the styles moved with the rows. It is
+	// gone only when the text it covered has left the buffer too.
+	if v.sel != nil {
+		v.sel = v.sel.shifted(-count).clamped(len(v.log.Rows))
+		v.refreshCopySelection()
+	}
 }
 
 // scrollEnd is the offset that shows the last line.
@@ -686,8 +710,9 @@ func (v *serverView) followOutput(offset fyne.Position) {
 	}
 }
 
-// copyLog puts the whole log on the clipboard. The grid has no selection of its
-// own, so this is how a person gets the output out of the window.
+// copyLog puts the whole buffer on the clipboard, whether or not a selection
+// exists: it is the fallback when the drag missed, and the whole log is what a
+// person wants when they have not marked anything.
 func (v *serverView) copyLog() {
 	text := v.log.Text()
 
@@ -704,6 +729,172 @@ func (v *serverView) copyLog() {
 	v.setNote(fmt.Sprintf("Copied %d line(s) of output to the clipboard.", len(strings.Split(text, "\n"))))
 }
 
+// selectCells takes the range a drag covers. Every selection change goes
+// through here, so the repaint and the copy button are decided in one place.
+func (v *serverView) selectCells(sel *selection) {
+	before := v.sel
+	v.sel = sel.clamped(len(v.log.Rows))
+
+	v.paintSelection(before, v.sel)
+	v.refreshCopySelection()
+
+	// A person selecting is reading, not following: output that arrives now
+	// must not pull the view away from the lines being marked.
+	if v.sel != nil && v.follow != nil && v.follow.Checked {
+		v.follow.SetChecked(false)
+	}
+}
+
+// forgetSelection drops the selection, for a grid whose rows are going away.
+func (v *serverView) forgetSelection() {
+	before := v.sel
+	v.sel = nil
+
+	v.paintSelection(before, nil)
+	v.refreshCopySelection()
+}
+
+// paintSelection repaints the rows a selection change touched: rows it left go
+// back to their level's style, rows it now covers gain the selection behind
+// them. Rows whose coverage did not change are skipped, which is what makes a
+// drag over a full buffer cheap.
+//
+// It ends with a Refresh of the grid because Fyne 2.8's SetStyle does not
+// repaint the cell it styles (textGridRow.refreshCell indexes past the row's
+// own renderer objects), so a style set on a visible cell stays invisible until
+// the grid renders again.
+func (v *serverView) paintSelection(before, after *selection) {
+	if v.log == nil {
+		return
+	}
+
+	first, last := unionRows(before, after)
+	if first > last {
+		return
+	}
+
+	settings := v.ui.app.Settings()
+	variant, th := settings.ThemeVariant(), settings.Theme()
+	painted := false
+
+	for row := first; row <= last; row++ {
+		if row < 0 || row >= len(v.log.Rows) {
+			continue
+		}
+
+		was, now := before.span(row), after.span(row)
+		if was == now {
+			continue
+		}
+
+		// A cell style sits on top of its row's, so a selection is painted on
+		// the cells and cleared from them: repainting the row alone would leave
+		// the old background behind.
+		line := v.logLineAt(row)
+		v.log.SetRowStyle(row, logStyle(variant, line))
+		painted = true
+
+		for col, cells := 0, len(v.log.Rows[row].Cells); col < cells; col++ {
+			v.log.SetStyle(row, col, nil)
+		}
+
+		if !now.ok {
+			continue
+		}
+
+		cells := len(v.log.Rows[row].Cells)
+		from, to := now.from, now.to
+		if to < 0 || to > cells {
+			to = cells
+		}
+		if from > to {
+			from = to
+		}
+		if from == to {
+			continue
+		}
+
+		v.log.SetStyleRange(row, from, row, to-1, selectedLogStyle(th, variant, line))
+	}
+
+	if painted {
+		v.log.Refresh()
+	}
+}
+
+// refreshCopySelection keeps the button honest: it copies only what is
+// selected, so it is dead until something is.
+func (v *serverView) refreshCopySelection() {
+	if v.copySelection == nil {
+		return
+	}
+
+	if v.sel == nil {
+		v.copySelection.Disable()
+		return
+	}
+
+	v.copySelection.Enable()
+}
+
+// selectionText is exactly what the drag covers, lines joined with a newline. A
+// column past the end of a line counts as the end of that line, which is what
+// a drag that leaves the text should mean.
+func (v *serverView) selectionText() string {
+	if v.sel == nil {
+		return ""
+	}
+
+	lines := make([]string, 0, v.sel.end.row-v.sel.start.row+1)
+
+	for row := v.sel.start.row; row <= v.sel.end.row && row < len(v.log.Rows); row++ {
+		if row < 0 {
+			continue
+		}
+
+		span := v.sel.span(row)
+		runes := []rune(v.log.RowText(row))
+
+		from, to := span.from, span.to
+		if to < 0 || to > len(runes) {
+			to = len(runes)
+		}
+		if from > to {
+			from = to
+		}
+
+		lines = append(lines, string(runes[from:to]))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// copySelected puts just the selected text on the clipboard.
+func (v *serverView) copySelected() {
+	text := v.selectionText()
+
+	if strings.TrimSpace(text) == "" {
+		v.setNote("There is nothing selected to copy — drag over the lines you want.")
+		return
+	}
+
+	if !v.ui.copyToClipboard(text) {
+		v.setNote("This window has no clipboard available — the selection could not be copied.")
+		return
+	}
+
+	v.setNote(fmt.Sprintf("Copied %d line(s) of the selection to the clipboard.", strings.Count(text, "\n")+1))
+}
+
+// logLineAt is the parsed line a row shows, for that line's level colour.
+func (v *serverView) logLineAt(row int) serverctl.LogLine {
+	if row < 0 || row >= len(v.parsed) {
+		return serverctl.LogLine{}
+	}
+
+	return v.parsed[row]
+}
+
 // clearLog forgets the output and the grid that shows it.
 func (v *serverView) clearLog() {
 	v.server().ClearOutput()
@@ -711,6 +902,7 @@ func (v *serverView) clearLog() {
 	v.rendered = 0
 	v.parsed = nil
 	v.consumed = v.server().Written()
+	v.forgetSelection()
 	v.log.SetText("")
 	v.setNote("Log cleared. The server's own log file still has the history.")
 }

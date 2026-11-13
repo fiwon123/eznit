@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/fiwon123/eznit/internal/config"
@@ -876,5 +878,282 @@ func TestOutputSnapshotIsSelectable(t *testing.T) {
 
 	if len(view.log.Rows) != rows {
 		t.Error("making the snapshot changed the live grid")
+	}
+}
+
+// newLogView is a Server tab that has printed the given lines and been laid
+// out: a grid that was never laid out has no cell size, so every pointer
+// position would map to cell (0,0).
+func newLogView(t *testing.T, messages ...string) *serverView {
+	t.Helper()
+
+	view := newTestServerView(t, bundleDir(t, "API_PORT=\"4321\"\n"))
+
+	for _, message := range messages {
+		if _, err := view.server().Write([]byte("INFO\t" + message + "\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	view.refresh()
+
+	size := fyne.NewSize(980, 640)
+	view.ui.window.Resize(size)
+	view.ui.window.Content().Resize(size)
+
+	return view
+}
+
+// cellPoint is the middle of a cell, which is where a pointer has to be for
+// its position to map back to that cell and not to the edge before it.
+func cellPoint(view *serverView, at cell) fyne.Position {
+	topLeft := view.log.PositionForCursorLocation(at.row, at.col)
+	width := view.log.PositionForCursorLocation(0, 1).X
+	height := view.log.PositionForCursorLocation(1, 0).Y
+
+	return fyne.NewPos(topLeft.X+width/2, topLeft.Y+height/2)
+}
+
+// dragOver presses at one cell and drags to another, in the order the driver
+// sends the events.
+func dragOver(view *serverView, from, to cell) {
+	view.grid.MouseDown(&desktop.MouseEvent{
+		PointEvent: fyne.PointEvent{Position: cellPoint(view, from)},
+		Button:     desktop.MouseButtonPrimary,
+	})
+	view.grid.Dragged(&fyne.DragEvent{
+		PointEvent: fyne.PointEvent{Position: cellPoint(view, to)},
+	})
+	view.grid.MouseUp(&desktop.MouseEvent{})
+}
+
+// A press and a drag mark the cells under the pointer, and what they mark is
+// exactly what gets copied (#308).
+func TestServerViewSelectsWithADrag(t *testing.T) {
+	view := newLogView(t, "first", "second", "third")
+
+	// Row 1 whole, and the first five characters of row 2.
+	dragOver(view, cell{1, 0}, cell{2, 4})
+
+	if view.sel == nil {
+		t.Fatal("the drag selected nothing")
+	}
+	if view.sel.start != (cell{row: 1, col: 0}) || view.sel.end != (cell{row: 2, col: 4}) {
+		t.Errorf("selection = %+v, want rows 1..2 from column 0 to 4", *view.sel)
+	}
+
+	want := view.log.RowText(1) + "\n" + string([]rune(view.log.RowText(2))[:5])
+	if got := view.selectionText(); got != want {
+		t.Errorf("selected text = %q, want %q", got, want)
+	}
+	if !strings.Contains(view.selectionText(), "second") {
+		t.Errorf("selected text = %q, want the second line in it", view.selectionText())
+	}
+	if view.copySelection.Disabled() {
+		t.Error("Copy selection is disabled with a selection")
+	}
+}
+
+// The button copies the selection, and the whole-buffer button stays whole.
+func TestServerViewCopiesJustTheSelection(t *testing.T) {
+	view := newLogView(t, "first", "second", "third")
+	view.ui.clip = test.NewClipboard()
+
+	line := view.log.RowText(0)
+	dragOver(view, cell{0, 0}, cell{0, len([]rune(line)) - 1})
+	view.copySelected()
+
+	if got := view.ui.clip.Content(); got != line {
+		t.Errorf("clipboard = %q, want the selected line %q", got, line)
+	}
+	if !strings.Contains(view.note.Text, "1 line(s)") {
+		t.Errorf("note = %q, want the copy confirmed with its line count", view.note.Text)
+	}
+
+	view.copyLog()
+
+	if got := view.ui.clip.Content(); !strings.Contains(got, "first") || !strings.Contains(got, "third") {
+		t.Errorf("clipboard after Copy log = %q, want the whole buffer", got)
+	}
+}
+
+// Selected cells keep their level's colour and gain the theme's selection
+// behind them; cells outside the selection keep no background at all.
+func TestServerViewPaintsTheSelection(t *testing.T) {
+	for name, th := range map[string]fyne.Theme{"light": theme.LightTheme(), "dark": theme.DarkTheme()} {
+		t.Run(name, func(t *testing.T) {
+			view := newLogView(t, "first", "second", "third")
+			view.ui.app.Settings().SetTheme(th)
+
+			dragOver(view, cell{1, 0}, cell{1, 2})
+
+			selected := view.log.Rows[1].Cells[0].Style
+			if selected == nil || selected.BackgroundColor() == nil {
+				t.Fatal("the selected cell has no background")
+			}
+			if got, want := selected.BackgroundColor(), th.Color(theme.ColorNameSelection, view.ui.app.Settings().ThemeVariant()); got != want {
+				t.Errorf("selection background = %v, want the theme's %v", got, want)
+			}
+
+			level := logStyle(view.ui.app.Settings().ThemeVariant(), view.parsed[1])
+			if got, want := selected.TextColor(), level.FGColor; got != want {
+				t.Errorf("selected text colour = %v, want the level's %v", got, want)
+			}
+			if got, want := selected.Style().Bold, level.TextStyle.Bold; got != want {
+				t.Errorf("selected bold = %v, want the level's %v", got, want)
+			}
+
+			if outside := view.log.Rows[0].Cells[0].Style; outside != nil && outside.BackgroundColor() != nil {
+				t.Errorf("an unselected cell has a background: %v", outside.BackgroundColor())
+			}
+			if after := view.log.Rows[1].Cells[3].Style; after != nil && after.BackgroundColor() != nil {
+				t.Errorf("a cell past the selection has a background: %v", after.BackgroundColor())
+			}
+		})
+	}
+}
+
+// A click on its own clears: a drag is what makes a range, and a stale
+// selection would be copied by the next press of the button.
+func TestServerViewClickClearsTheSelection(t *testing.T) {
+	view := newLogView(t, "first", "second", "third")
+
+	dragOver(view, cell{0, 0}, cell{2, 4})
+	if view.sel == nil {
+		t.Fatal("the drag selected nothing")
+	}
+
+	view.grid.MouseDown(&desktop.MouseEvent{
+		PointEvent: fyne.PointEvent{Position: cellPoint(view, cell{1, 1})},
+		Button:     desktop.MouseButtonPrimary,
+	})
+	view.grid.MouseUp(&desktop.MouseEvent{})
+
+	if view.sel != nil {
+		t.Errorf("a click left the selection %+v", *view.sel)
+	}
+	if !view.copySelection.Disabled() {
+		t.Error("Copy selection is enabled with nothing selected")
+	}
+	if style := view.log.Rows[0].Cells[0].Style; style != nil && style.BackgroundColor() != nil {
+		t.Error("the cleared selection is still painted")
+	}
+}
+
+// The buffer drops its oldest lines as the server prints: the selection has to
+// stay on the same text, and go when that text does.
+func TestServerViewSelectionKeepsUpWithATrimmedLog(t *testing.T) {
+	view := newLogView(t)
+
+	// One write carries many lines: the supervisor notifies once, so the test
+	// does not pay for a window refresh per line.
+	writeLines := func(prefix string, count int) {
+		t.Helper()
+
+		var bulk strings.Builder
+		for line := 1; line <= count; line++ {
+			bulk.WriteString("INFO\t" + prefix + " " + strconv.Itoa(line) + "\n")
+		}
+
+		if _, err := view.server().Write([]byte(bulk.String())); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Far more than the buffer keeps, so it is certainly full and has certainly
+	// trimmed: the cap is the supervisor's business, not this test's.
+	writeLines("line", 1000)
+	view.refresh()
+
+	held := len(view.server().Output())
+	if held >= 1000 {
+		t.Fatalf("the supervisor kept all 1000 lines — nothing was trimmed")
+	}
+	if held < 20 {
+		t.Fatalf("the supervisor kept only %d lines — too few to select inside", held)
+	}
+	if rows := len(view.log.Rows); rows != held {
+		t.Fatalf("the grid holds %d rows, want the %d the supervisor keeps", rows, held)
+	}
+
+	dragOver(view, cell{10, 0}, cell{10, 70})
+	if view.sel == nil || view.sel.start.row != 10 {
+		t.Fatalf("the drag selected %+v, want row 10", view.sel)
+	}
+	marked := view.selectionText()
+
+	writeLines("newer", 3)
+	view.refresh()
+
+	if view.sel == nil {
+		t.Fatal("trimming three lines dropped the selection")
+	}
+	if got := view.sel.start.row; got != 7 {
+		t.Errorf("the selection starts at row %d, want 7 after three lines left the top", got)
+	}
+	if got := view.selectionText(); got != marked {
+		t.Errorf("the selection now reads %q, want the same text %q", got, marked)
+	}
+
+	// Enough new lines to evict the marked ones: there is nothing left to copy,
+	// and copying the rows that took their place would be a lie.
+	writeLines("later", held)
+	view.refresh()
+
+	if view.sel != nil {
+		t.Errorf("the selection survived the lines it covered: %+v", *view.sel)
+	}
+	if !view.copySelection.Disabled() {
+		t.Error("Copy selection is enabled after its text left the buffer")
+	}
+}
+
+// Marking lines turns following off: output that arrives must not pull the
+// view away from what is being selected.
+func TestServerViewSelectingStopsFollowing(t *testing.T) {
+	view := newLogView(t, "first", "second")
+
+	if !view.follow.Checked {
+		t.Fatal("following is off before anything was selected")
+	}
+
+	dragOver(view, cell{0, 0}, cell{0, 3})
+
+	if view.follow.Checked {
+		t.Error("following is still on with a selection")
+	}
+}
+
+// The grid implements no mouse interface, so the driver has to find the
+// wrapper around it. This is the assumption the whole feature rests on.
+func TestLogGridTakesTheDragFromTheDriver(t *testing.T) {
+	view := newLogView(t, "first", "second", "third")
+
+	view.grid.MouseDown(&desktop.MouseEvent{
+		PointEvent: fyne.PointEvent{Position: cellPoint(view, cell{0, 0})},
+		Button:     desktop.MouseButtonPrimary,
+	})
+
+	at := fyne.CurrentApp().Driver().AbsolutePositionForObject(view.grid)
+	test.Drag(view.ui.window.Canvas(), at.Add(cellPoint(view, cell{2, 2})), 0, 0)
+
+	if view.sel == nil {
+		t.Fatal("the drag did not reach the log grid")
+	}
+	if got := view.sel.end.row; got != 2 {
+		t.Errorf("the drag ended on row %d, want 2", got)
+	}
+}
+
+// A drag that no press started must not select from a stale anchor: the
+// wrapper only marks from the cell the press landed on.
+func TestLogGridIgnoresADragWithoutAPress(t *testing.T) {
+	view := newLogView(t, "first", "second")
+
+	view.grid.Dragged(&fyne.DragEvent{
+		PointEvent: fyne.PointEvent{Position: cellPoint(view, cell{1, 3})},
+	})
+
+	if view.sel != nil {
+		t.Errorf("a drag with no press selected %+v", *view.sel)
 	}
 }
