@@ -91,8 +91,8 @@ type serverView struct {
 	fields map[string]*widget.Entry
 
 	password *widget.Entry
-	secret   *widget.Label
-	note     *widget.Label
+	secret   *prose
+	note     *prose
 	create   *widget.Button
 }
 
@@ -254,17 +254,8 @@ func (v *serverView) content() fyne.CanvasObject {
 	v.status.TextStyle = fyne.TextStyle{Bold: true}
 	v.status.Selectable = true
 
-	v.health = widget.NewLabel("")
-	v.health.Selectable = true
-	// Wrapped rather than truncated: a label's minimum size is its whole text,
-	// so a long error would otherwise raise the window's minimum width.
-	v.health.Wrapping = fyne.TextWrapWord
-
+	v.health = oneLine("")
 	v.dot = canvas.NewCircle(statusColour(v.ui.app.Settings().ThemeVariant(), statusIdle))
-
-	// A shape in an HBox has no minimum of its own; a grid-wrap cell gives the
-	// dot its 10 px.
-	dotBox := container.NewGridWrap(fyne.NewSize(10, 10), v.dot)
 
 	v.start = widget.NewButtonWithIcon("Start", theme.MediaPlayIcon(), v.startServer)
 	v.start.Importance = widget.HighImportance
@@ -272,9 +263,9 @@ func (v *serverView) content() fyne.CanvasObject {
 	v.stop.Importance = widget.DangerImportance
 	v.open = widget.NewButtonWithIcon("Open in browser", theme.ComputerIcon(), v.openBrowser)
 
-	v.folder = widget.NewLabel(v.folderPath())
-	v.folder.Wrapping = fyne.TextWrapWord
-	v.folder.Selectable = true
+	// The folder is an identifier, not prose: one line, ellipsized when the
+	// window is narrow, so it cannot paint over the buttons beside it.
+	v.folder = oneLine(v.folderPath())
 
 	v.choose = widget.NewButtonWithIcon("Choose folder…", theme.FolderOpenIcon(), v.chooseFolder)
 	v.reset = widget.NewButtonWithIcon("Reset to default", theme.ViewRefreshIcon(), v.resetDir)
@@ -282,17 +273,20 @@ func (v *serverView) content() fyne.CanvasObject {
 	// One compact header rather than a card: the card left the panes 121 px
 	// tall at 980x640 (#235), which is why the log could not be read and the
 	// form had to scroll.
+	//
+	// The health line is the middle of the row, and it is one line that
+	// ellipsizes: a wrapped label there would draw over the buttons to its
+	// right. The dot and the status share a block so the dot centres on the
+	// text rather than on the taller buttons.
 	stateRow := container.NewBorder(nil, nil,
-		container.NewHBox(dotBox, v.status),
+		dotWithLabel(v.dot, v.status),
 		container.NewHBox(v.start, v.stop, v.open),
 		v.health,
 	)
 	folderRow := container.NewBorder(nil, nil, widget.NewLabel("Folder"),
 		container.NewHBox(v.choose, v.reset), v.folder)
 
-	v.note = widget.NewLabel("")
-	v.note.Wrapping = fyne.TextWrapWord
-	v.note.Selectable = true
+	v.note = newProse("")
 	v.note.Hide()
 
 	header := container.NewPadded(container.NewVBox(stateRow, folderRow, v.note))
@@ -355,9 +349,7 @@ func (v *serverView) buildConfiguration() {
 	v.password = widget.NewPasswordEntry()
 	v.password.SetPlaceHolder("leave empty to keep the current password")
 
-	v.secret = widget.NewLabel("")
-	v.secret.Wrapping = fyne.TextWrapWord
-	v.secret.Selectable = true
+	v.secret = newProse("")
 
 	serverForm := formRows(
 		v.field("API_PORT", "API port"),
@@ -440,11 +432,13 @@ func (v *serverView) setNote(text string) {
 
 	if strings.TrimSpace(text) == "" {
 		v.note.Hide()
-
-		return
+	} else {
+		v.note.Show()
 	}
 
-	v.note.Show()
+	// The note is prose: a longer one is a taller header, and the header's rows
+	// were measured before the text arrived.
+	relayout(v.built)
 }
 
 // refresh redraws the status, the dot, the buttons and the log from the
@@ -792,6 +786,10 @@ func (v *serverView) loadConfig() {
 	// Reading the .env here keeps the address off the refresh path, which runs
 	// on every line the server prints.
 	v.localURL = v.server().LocalURL()
+
+	// The password state is the middle of the action row; a longer message
+	// wraps and the row has to be measured again.
+	relayout(v.configScrollPane)
 }
 
 func (v *serverView) createEnv() {

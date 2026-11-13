@@ -23,7 +23,11 @@ type filesView struct {
 	table    *widget.Table
 	files    []apiclient.File
 	selected int
-	status   *widget.Label
+	status   *prose
+
+	// built is the tab's outer container, so a status or a selection that
+	// changes the height of a wrapped line can lay the tab out again.
+	built fyne.CanvasObject
 
 	// ready is set by the first successful listing. Actions that need the
 	// server stay off until then, so a stale or wrong address cannot look like
@@ -44,7 +48,7 @@ type filesView struct {
 	// The table's cells cannot be selectable — a selectable cell would take the
 	// tap that selects the row — so the selected file is described under the
 	// table, in a line that can be selected and copied.
-	detail      *widget.Label
+	detail      *prose
 	copyName    *widget.Button
 	copyDetails *widget.Button
 }
@@ -53,10 +57,8 @@ func newFilesView(u *ui) *filesView {
 	view := &filesView{
 		ui:       u,
 		selected: -1,
-		status:   widget.NewLabel(""),
+		status:   newProse(""),
 	}
-	view.status.Selectable = true
-	view.status.Wrapping = fyne.TextWrapWord
 
 	view.table = widget.NewTable(
 		func() (int, int) { return len(view.files) + 1, 3 },
@@ -126,28 +128,24 @@ func newFilesView(u *ui) *filesView {
 // header is the line that says which server this tab is talking to, and what
 // put that address there. It is rebuilt with the content, so a change shows up
 // without a restart.
+//
+// The address is one line and ellipsizes: a URL is one unbreakable word, and a
+// wrapped label would draw it straight over the buttons beside it. The source
+// is its own row underneath, where it cannot compete for the same width.
 func (v *filesView) header() fyne.CanvasObject {
-	v.address = widget.NewLabel(v.ui.address.url)
-	v.address.Wrapping = fyne.TextWrapWord
-	v.address.Selectable = true
-
-	v.source = widget.NewLabel("(" + v.ui.address.source + ")")
-	v.source.Wrapping = fyne.TextWrapWord
-	v.source.Selectable = true
-
-	v.dot = canvas.NewCircle(statusColour(v.ui.app.Settings().ThemeVariant(), statusIdle))
-	dotBox := container.NewGridWrap(fyne.NewSize(10, 10), v.dot)
+	v.address = oneLine(v.ui.address.url)
+	v.source = muted("(" + v.ui.address.source + ")")
 
 	v.test = widget.NewButton("Test", v.testServer)
 	v.change = widget.NewButtonWithIcon("Change…", theme.SettingsIcon(), v.ui.changeServer)
 
 	line := container.NewBorder(nil, nil,
-		container.NewHBox(dotBox, widget.NewLabel("Server")),
+		widget.NewLabel("Server"),
 		container.NewHBox(v.test, v.change),
-		container.NewHBox(v.address, v.source),
+		v.address,
 	)
 
-	return container.NewVBox(container.NewPadded(line), widget.NewSeparator())
+	return container.NewVBox(container.NewPadded(container.NewVBox(line, v.source)), widget.NewSeparator())
 }
 
 func (v *filesView) content() fyne.CanvasObject {
@@ -155,24 +153,27 @@ func (v *filesView) content() fyne.CanvasObject {
 
 	toolbar := container.NewHBox(refresh, v.upload, widget.NewSeparator(), v.download, v.remove, v.share)
 
-	v.detail = widget.NewLabel("")
-	v.detail.Wrapping = fyne.TextWrapWord
-	v.detail.Selectable = true
-
+	v.detail = newProse("")
 	v.copyName = widget.NewButton("Copy name", v.copySelectedName)
 	v.copyDetails = widget.NewButton("Copy details", v.copySelectedDetails)
 
 	detailRow := container.NewBorder(nil, nil, nil,
 		container.NewHBox(v.copyName, v.copyDetails), v.detail)
 
-	footer := container.NewVBox(container.NewPadded(detailRow), v.status)
+	// The dot lives in the status bar, beside the message it colours, so it is
+	// created before the bar that holds it.
+	v.dot = canvas.NewCircle(statusColour(v.ui.app.Settings().ThemeVariant(), statusIdle))
+
+	footer := container.NewVBox(container.NewPadded(detailRow), statusBar(v.dot, v.status))
 	body := container.NewBorder(toolbar, footer, nil, nil, v.table)
 
 	// A rebuilt view has not listed anything yet.
 	v.ready = false
 	v.updateActions()
 
-	return container.NewBorder(v.header(), nil, nil, nil, body)
+	v.built = container.NewBorder(v.header(), nil, nil, nil, body)
+
+	return v.built
 }
 
 // setStatus writes the one line under the table and colours the dot with it.
@@ -187,6 +188,10 @@ func (v *filesView) setStatus(text string, kind statusKind) {
 		v.dot.FillColor = statusColour(v.ui.app.Settings().ThemeVariant(), kind)
 		v.dot.Refresh()
 	}
+
+	// A longer message is a taller bar, and the row it sits in was measured
+	// before the text arrived.
+	relayout(v.built)
 }
 
 func (v *filesView) selectedFile() (apiclient.File, bool) {
@@ -231,6 +236,8 @@ func (v *filesView) updateActions() {
 		v.remove.Disable()
 		v.share.Disable()
 		v.share.SetText("Share")
+		relayout(v.built)
+
 		return
 	}
 
@@ -243,6 +250,10 @@ func (v *filesView) updateActions() {
 	} else {
 		v.share.SetText("Share")
 	}
+
+	// The description can wrap to a second line, which is taller than the row
+	// the footer was measured for.
+	relayout(v.built)
 }
 
 // fileDescription is the line under the table: what the row is, in words a

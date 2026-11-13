@@ -53,21 +53,23 @@ type templatesView struct {
 	source  *widget.Label
 	dot     *canvas.Circle
 
-	summary   *widget.Label
-	files     *widget.Label
-	variables *widget.Label
-	commands  *widget.Label
-	status    *widget.Label
+	// built is the tab's outer container, so a status message that changes
+	// height can lay the tab out again.
+	built fyne.CanvasObject
+
+	summary   *prose
+	files     *prose
+	variables *prose
+	commands  *prose
+	status    *prose
 }
 
 func newTemplatesView(u *ui) *templatesView {
 	view := &templatesView{
 		ui:       u,
 		selected: -1,
-		status:   widget.NewLabel(""),
+		status:   newProse(""),
 	}
-	view.status.Selectable = true
-	view.status.Wrapping = fyne.TextWrapWord
 
 	view.table = widget.NewTable(
 		func() (int, int) { return len(view.items) + 1, 6 },
@@ -154,22 +156,18 @@ func newTemplatesView(u *ui) *templatesView {
 // content is the tab: which server, the filters, the catalogue, the selected
 // template and the message line.
 func (v *templatesView) content() fyne.CanvasObject {
-	v.address = widget.NewLabel(v.ui.address.url)
-	v.address.Wrapping = fyne.TextWrapWord
-	v.address.Selectable = true
-
-	v.source = widget.NewLabel("(" + v.ui.address.source + ")")
-	v.source.Wrapping = fyne.TextWrapWord
-	v.source.Selectable = true
-
-	v.dot = canvas.NewCircle(statusColour(v.ui.app.Settings().ThemeVariant(), statusIdle))
-	dotBox := container.NewGridWrap(fyne.NewSize(10, 10), v.dot)
+	v.address = oneLine(v.ui.address.url)
+	v.source = muted("(" + v.ui.address.source + ")")
 
 	header := container.NewBorder(nil, nil,
-		container.NewHBox(dotBox, widget.NewLabel("Server")),
+		widget.NewLabel("Server"),
 		container.NewHBox(v.refresh, v.export, v.apply),
-		container.NewHBox(v.address, v.source),
+		v.address,
 	)
+
+	// The dot colours the message at the bottom of the tab, so it is made
+	// before the bar that holds it.
+	v.dot = canvas.NewCircle(statusColour(v.ui.app.Settings().ThemeVariant(), statusIdle))
 
 	filters := container.NewHBox(v.kind, v.mine)
 
@@ -177,9 +175,15 @@ func (v *templatesView) content() fyne.CanvasObject {
 	split := container.NewVSplit(v.table, container.NewVScroll(v.detailPane()))
 	split.Offset = 0.5
 
-	top := container.NewVBox(container.NewPadded(header), widget.NewSeparator(), container.NewPadded(filters))
+	top := container.NewVBox(
+		container.NewPadded(container.NewVBox(header, v.source)),
+		widget.NewSeparator(),
+		container.NewPadded(filters),
+	)
 
-	return container.NewBorder(top, v.status, nil, nil, split)
+	v.built = container.NewBorder(top, statusBar(v.dot, v.status), nil, nil, split)
+
+	return v.built
 }
 
 // buildDetail creates the four selectable sections under the table.
@@ -203,7 +207,7 @@ func (v *templatesView) detailPane() fyne.CanvasObject {
 }
 
 // section is a bold, selectable caption above its body.
-func section(caption string, body *widget.Label) fyne.CanvasObject {
+func section(caption string, body *prose) fyne.CanvasObject {
 	title := widget.NewLabel(caption)
 	title.TextStyle = fyne.TextStyle{Bold: true}
 	title.Selectable = true
@@ -212,13 +216,10 @@ func section(caption string, body *widget.Label) fyne.CanvasObject {
 }
 
 // selectableWrap is the one shape every value on this tab takes: wrapped, so a
-// long path cannot widen the window, and selectable, so it can be copied.
-func selectableWrap() *widget.Label {
-	label := widget.NewLabel("")
-	label.Wrapping = fyne.TextWrapWord
-	label.Selectable = true
-
-	return label
+// long path can neither widen the window nor paint over its neighbour, and
+// selectable, so it can be copied.
+func selectableWrap() *prose {
+	return newProse("")
 }
 
 // reload fetches the catalogue again with the current filters.
@@ -366,6 +367,7 @@ func (v *templatesView) showDetail(detail *templates.TemplateDetail) {
 		v.files.SetText("")
 		v.variables.SetText("")
 		v.commands.SetText("")
+		relayout(v.built)
 
 		return
 	}
@@ -384,6 +386,10 @@ func (v *templatesView) showDetail(detail *templates.TemplateDetail) {
 	v.files.SetText(lines(detail.Files, fileLine))
 	v.variables.SetText(lines(detail.Variables, variableLine))
 	v.commands.SetText(lines(detail.Commands, commandLine))
+
+	// A description is prose: it can wrap to more lines than the pane was
+	// measured for.
+	relayout(v.built)
 }
 
 // lines renders a slice one per line, or a dash when the slice is empty, so a
@@ -560,6 +566,10 @@ func (v *templatesView) setStatus(text string, kind statusKind) {
 		v.dot.FillColor = statusColour(v.ui.app.Settings().ThemeVariant(), kind)
 		v.dot.Refresh()
 	}
+
+	// A longer message is a taller bar, and the row it sits in was measured
+	// before the text arrived.
+	relayout(v.built)
 }
 
 // applySelected writes the selected template into a folder the person picks:
