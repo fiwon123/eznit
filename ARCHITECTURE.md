@@ -309,6 +309,12 @@ the session. The tab's actions stay disabled until `/v1/healthcheck` has
 answered through a listing, so a wrong address cannot look like an empty
 library.
 
+The session belongs to the Files tab: it is the tab that shows the login form
+when there is no token, and its header carries **Sign out**. Signing out removes
+only `token` — the address, the server folder and the git-host tokens stay — and
+drops the catalogue, which is per account. The About tab is the window's
+identity and its update controls; it holds nothing about a session.
+
 The Server tab reads the env file of `server_dir` — the folder the window was
 installed into unless another is chosen — and starts `eznit-server` from it as a
 child process, with that file as its environment. A stop is an interrupt, so the
@@ -339,6 +345,19 @@ refusing paths outside the folder and two entries at one path, and `Write` is
 the only place that touches the filesystem. The CLI keeps its prompts and its
 wording; the window collects the same answers in a form. That is why the window
 and `template apply` cannot drift about safe paths or a silent overwrite.
+
+The window does not trust a label's minimum size. A Fyne label that wraps
+reports a minimum width of zero, so a `Border` can hand its middle less than a
+word and the text is painted over its neighbours — and the window's own minimum
+comes from the same number, so it can be resized into a state a tab cannot
+draw. `internal/fyneui/text.go` has the two shapes every tab uses: `prose`, a
+wrapped label whose minimum is the longest word and the height the text needs
+at its current width, and `oneLine` for identifiers — an address, a folder, a
+health line — which ellipsizes instead of wrapping, because a path has no
+spaces to break at. `relayout` runs a tab's layout twice after text that can
+change height changes, which is what gives a note or a status message the row
+it needs. The coloured status dot sits beside the message it colours, not on a
+header line of its own, and is centred on the text rather than on the row.
 
 The tab's Output is a log viewer over the child's own console output, which the
 API writes as JSON (`pkg/logger.NewJson`). `serverctl.ParseLine` reads one line
