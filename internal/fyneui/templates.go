@@ -63,6 +63,13 @@ type templatesView struct {
 	variables *prose
 	commands  *prose
 	status    *prose
+
+	// parts is the selected template in three tabs; each tab's label carries
+	// its count, so the detail is one pane instead of a long scroll.
+	parts        *container.AppTabs
+	filesTab     *container.TabItem
+	variablesTab *container.TabItem
+	commandsTab  *container.TabItem
 }
 
 func newTemplatesView(u *ui) *templatesView {
@@ -73,7 +80,7 @@ func newTemplatesView(u *ui) *templatesView {
 	}
 
 	view.table = widget.NewTable(
-		func() (int, int) { return len(view.items) + 1, 6 },
+		func() (int, int) { return len(view.items) + 1, 4 },
 		func() fyne.CanvasObject { return widget.NewLabel("") },
 		func(id widget.TableCellID, cell fyne.CanvasObject) {
 			label, ok := cell.(*widget.Label)
@@ -83,7 +90,7 @@ func newTemplatesView(u *ui) *templatesView {
 
 			if id.Row == 0 {
 				label.TextStyle = fyne.TextStyle{Bold: true}
-				label.SetText([]string{"Name", "Kind", "Version", "Owner", "Files", "Visibility"}[id.Col])
+				label.SetText([]string{"Name", "Kind", "Version", "Files"}[id.Col])
 				alignTemplateColumn(label, id.Col)
 
 				return
@@ -107,25 +114,18 @@ func newTemplatesView(u *ui) *templatesView {
 			case 2:
 				label.SetText(fmt.Sprintf("%d", item.Version))
 			case 3:
-				label.SetText(item.OwnerEmail)
-			case 4:
 				label.SetText(fmt.Sprintf("%d", item.FileCount))
-			case 5:
-				if item.IsPublic {
-					label.SetText("shared")
-				} else {
-					label.SetText("private")
-				}
 			}
 		},
 	)
 
-	view.table.SetColumnWidth(0, 260)
-	view.table.SetColumnWidth(1, 110)
-	view.table.SetColumnWidth(2, 70)
-	view.table.SetColumnWidth(3, 180)
-	view.table.SetColumnWidth(4, 60)
-	view.table.SetColumnWidth(5, 90)
+	// Four columns fit the smallest window without a squeeze; the owner and the
+	// visibility are in the summary of the selected template, where a person
+	// reads them once rather than on every row.
+	view.table.SetColumnWidth(0, 320)
+	view.table.SetColumnWidth(1, 120)
+	view.table.SetColumnWidth(2, 80)
+	view.table.SetColumnWidth(3, 70)
 
 	view.table.OnSelected = func(id widget.TableCellID) {
 		if id.Row == 0 {
@@ -166,7 +166,7 @@ func (v *templatesView) content() fyne.CanvasObject {
 
 	header := container.NewBorder(nil, nil,
 		muted("Server"),
-		container.NewHBox(v.refresh, v.export, v.apply),
+		container.NewHBox(v.refresh),
 		v.address,
 	)
 
@@ -177,8 +177,10 @@ func (v *templatesView) content() fyne.CanvasObject {
 	filters := container.NewHBox(muted("Kind"), v.kind, v.mine)
 
 	v.buildDetail()
-	split := container.NewVSplit(v.table, container.NewVScroll(v.detailPane()))
-	split.Offset = 0.5
+	split := container.NewVSplit(v.table, v.detailPane())
+	// The catalogue gets the larger share: the detail is one pane with tabs now,
+	// so it needs less room than four stacked sections did.
+	split.Offset = 0.55
 
 	top := container.NewVBox(
 		container.NewPadded(container.NewVBox(header, v.source)),
@@ -191,34 +193,39 @@ func (v *templatesView) content() fyne.CanvasObject {
 	return v.built
 }
 
-// buildDetail creates the four selectable sections under the table.
+// buildDetail creates the summary, the three bodies and the sub-tabs that hold
+// them. With nothing selected the tabs are hidden and the summary says what to
+// do.
 func (v *templatesView) buildDetail() {
 	v.summary = selectableWrap()
 	v.files = selectableWrap()
 	v.variables = selectableWrap()
 	v.commands = selectableWrap()
 
+	v.filesTab = container.NewTabItem("Files (0)", part(v.files))
+	v.variablesTab = container.NewTabItem("Variables (0)", part(v.variables))
+	v.commandsTab = container.NewTabItem("Commands (0)", part(v.commands))
+
+	v.parts = container.NewAppTabs(v.filesTab, v.variablesTab, v.commandsTab)
+	v.parts.Hide()
+
 	v.showDetail(nil)
 }
 
-// detailPane is the selected template, in four parts.
-func (v *templatesView) detailPane() fyne.CanvasObject {
-	return container.NewPadded(container.NewVBox(
-		v.summary,
-		section("Files", v.files),
-		section("Variables", v.variables),
-		section("Commands", v.commands),
-	))
+// part wraps one detail body in its own scroll: a template with forty files
+// scrolls inside Files without moving Variables.
+func part(body *prose) fyne.CanvasObject {
+	return container.NewVScroll(container.NewPadded(body))
 }
 
-// section is a bold, selectable caption above its body.
-func section(caption string, body *prose) fyne.CanvasObject {
-	title := widget.NewLabel(caption)
-	title.TextStyle = fyne.TextStyle{Bold: true}
-	title.SizeName = theme.SizeNameSubHeadingText
-	title.Selectable = true
+// detailPane is the selected template: its summary and the two actions that
+// work on it, above the three tabs.
+func (v *templatesView) detailPane() fyne.CanvasObject {
+	summary := container.NewPadded(v.summary)
+	actions := container.NewPadded(container.NewBorder(nil, nil, nil,
+		container.NewHBox(v.export, v.apply), nil))
 
-	return container.NewVBox(title, body)
+	return container.NewBorder(summary, actions, nil, nil, v.parts)
 }
 
 // alignTemplateColumn right-aligns the two numeric columns — version and file
@@ -226,7 +233,7 @@ func section(caption string, body *prose) fyne.CanvasObject {
 func alignTemplateColumn(label *widget.Label, column int) {
 	label.Alignment = fyne.TextAlignLeading
 
-	if column == 2 || column == 4 {
+	if column == 2 || column == 3 {
 		label.Alignment = fyne.TextAlignTrailing
 	}
 }
@@ -370,7 +377,7 @@ func (v *templatesView) loadSelected() {
 	}()
 }
 
-// showDetail fills the four sections, or says how to fill them.
+// showDetail fills the summary and the three tabs, or says how to fill them.
 func (v *templatesView) showDetail(detail *templates.TemplateDetail) {
 	v.detail = detail
 
@@ -384,6 +391,11 @@ func (v *templatesView) showDetail(detail *templates.TemplateDetail) {
 		v.files.SetText("")
 		v.variables.SetText("")
 		v.commands.SetText("")
+
+		if v.parts != nil {
+			v.parts.Hide()
+		}
+
 		relayout(v.built)
 
 		return
@@ -403,6 +415,16 @@ func (v *templatesView) showDetail(detail *templates.TemplateDetail) {
 	v.files.SetText(linesOr(detail.Files, fileLine, "No files."))
 	v.variables.SetText(linesOr(detail.Variables, variableLine, "None — this template asks nothing."))
 	v.commands.SetText(linesOr(detail.Commands, commandLine, "No commands."))
+
+	// The counts are in the tab labels, so a person can see that a template has
+	// variables without opening the tab.
+	if v.parts != nil {
+		v.filesTab.Text = fmt.Sprintf("Files (%d)", len(detail.Files))
+		v.variablesTab.Text = fmt.Sprintf("Variables (%d)", len(detail.Variables))
+		v.commandsTab.Text = fmt.Sprintf("Commands (%d)", len(detail.Commands))
+		v.parts.Show()
+		v.parts.Refresh()
+	}
 
 	// A description is prose: it can wrap to more lines than the pane was
 	// measured for.

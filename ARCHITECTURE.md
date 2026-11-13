@@ -333,7 +333,10 @@ it was started from.
 The Templates tab reads the catalogue (`GET /v1/templates`, `/mine` and `/{id}`,
 the first two with an optional session so a caller's own private templates are
 in the answer) and writes an offline bundle with `templates.NewBundle` and
-`templates.WriteBundle`. That pair comes from `internal/domain/templates` rather
+`templates.WriteBundle`. The table keeps four columns — name, kind, version,
+files — because owner and visibility are read once, in the selected template's
+summary; the summary is followed by three tabs carrying their counts, so a
+template's contents are one pane rather than a long scroll. That pair comes from `internal/domain/templates` rather
 than being copied into the client: the bundle format has one definition, shared
 with `template export`, so the window cannot write a file the CLI refuses to
 read. It is a data dependency — DTOs and the bundle — and `apiclient` returns

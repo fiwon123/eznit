@@ -43,8 +43,9 @@ machine next to it is solving the wrong problem.
   v0.25.0; editable since v0.29.0). A different host signs you out, because a
   session belongs to the server that issued it.
 - **Templates, from the window** — a Templates tab lists the catalogue (filtered
-  by kind or to your own), shows one template's files, variables and commands,
-  writes the offline `.eznit` bundle the CLI reads ([#260](https://github.com/fiwon123/eznit/issues/260)),
+  by kind or to your own) in four columns, shows the selected template's
+  summary and its files, variables and commands in counted tabs, writes the
+  offline `.eznit` bundle the CLI reads ([#260](https://github.com/fiwon123/eznit/issues/260)),
   and applies a template into a folder with the same rules `template apply`
   uses — safe paths, no silent overwrite, the check before the questions
   ([#259](https://github.com/fiwon123/eznit/issues/259), v0.26.0).

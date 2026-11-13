@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/fiwon123/eznit/internal/apiclient"
@@ -44,10 +45,16 @@ func walkTree(object fyne.CanvasObject, offset fyne.Position, visit func(fyne.Ca
 	pos := fyne.NewPos(offset.X+object.Position().X, offset.Y+object.Position().Y)
 	visit(object, pos)
 
-	if container, ok := object.(*fyne.Container); ok {
-		for _, child := range container.Objects {
+	switch typed := object.(type) {
+	case *fyne.Container:
+		for _, child := range typed.Objects {
 			walkTree(child, pos, visit)
 		}
+	case *container.Split:
+		// A split is a widget, not a container, but its two halves are this
+		// window's own objects and are laid out inside it.
+		walkTree(typed.Leading, pos, visit)
+		walkTree(typed.Trailing, pos, visit)
 	}
 }
 

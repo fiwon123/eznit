@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
@@ -412,5 +413,49 @@ func TestTemplatesFiltersExplainThemselves(t *testing.T) {
 		if !strings.Contains(view.summary.Text, want) {
 			t.Errorf("the placeholder = %q, want it to mention %q", view.summary.Text, want)
 		}
+	}
+}
+
+// Four columns fit the smallest window: Name, Kind, Version, Files. The owner
+// and the visibility live in the summary of the selected template.
+func TestTemplatesTableHasFourColumns(t *testing.T) {
+	view := newTestTemplatesView(t, apiChoice{url: "http://127.0.0.1:4321", source: "the default"})
+
+	rows, columns := view.table.Length()
+
+	if columns != 4 {
+		t.Errorf("the table has %d columns, want 4", columns)
+	}
+
+	if rows != len(view.items)+1 {
+		t.Errorf("the table has %d rows, want the header plus %d templates", rows, len(view.items))
+	}
+}
+
+// The detail is one pane with a count per tab, and the tabs are hidden until
+// there is something to show.
+func TestTemplatesDetailTabsCarryCounts(t *testing.T) {
+	view := newTestTemplatesView(t, apiChoice{url: "http://127.0.0.1:4321", source: "the default"})
+
+	view.showDetail(sampleDetail(t))
+
+	for tab, want := range map[*container.TabItem]string{
+		view.filesTab:     "Files (2)",
+		view.variablesTab: "Variables (1)",
+		view.commandsTab:  "Commands (1)",
+	} {
+		if tab.Text != want {
+			t.Errorf("tab = %q, want %q", tab.Text, want)
+		}
+	}
+
+	if !view.parts.Visible() {
+		t.Error("the tabs are hidden although a template is selected")
+	}
+
+	view.showDetail(nil)
+
+	if view.parts.Visible() {
+		t.Error("the tabs are visible with nothing selected")
 	}
 }
