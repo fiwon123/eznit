@@ -169,9 +169,11 @@ in transit; it is not a signature, so it trusts GitHub's release storage.
 ## 🧾 The config file
 
 `~/.eznit/config.json` (mode `0600`) holds the session token (`token`) and, per
-git host, `github_token`, `gitlab_token` or `bitbucket_token`. Each key is
-written on its own and none erases another. `EZNIT_CONFIG` points the file
-elsewhere (a test or a profile).
+git host, `github_token`, `gitlab_token` or `bitbucket_token`. The CLI and the
+window share it: `api_url` is the instance the window talks to, `api_local`
+remembers whether that is this machine, and `server_dir` is the bundle folder
+the Server tab drives. Each key is written on its own and none erases another.
+`EZNIT_CONFIG` points the file elsewhere (a test or a profile).
 
 ## 🌱 CLI environment variables
 

@@ -50,9 +50,10 @@ type templatesView struct {
 	export  *widget.Button
 	apply   *widget.Button
 
-	address *widget.Label
-	source  *widget.Label
-	dot     *canvas.Circle
+	// bar is the API address: the same component the Files tab has, without a
+	// session to end.
+	bar *addressBar
+	dot *canvas.Circle
 
 	// built is the tab's outer container, so a status message that changes
 	// height can lay the tab out again.
@@ -158,17 +159,14 @@ func newTemplatesView(u *ui) *templatesView {
 	return view
 }
 
-// content is the tab: which server, the filters, the catalogue, the selected
+// content is the tab: the server bar, the filters, the catalogue, the selected
 // template and the message line.
 func (v *templatesView) content() fyne.CanvasObject {
-	v.address = oneLine(v.ui.address.url)
-	v.source = muted("(" + v.ui.address.source + ")")
-
-	header := container.NewBorder(nil, nil,
-		muted("Server"),
-		container.NewHBox(v.refresh),
-		v.address,
-	)
+	// The bar is the same one the Files tab has: the address is one choice for
+	// both tabs, so it is editable here too. A connect from here reloads the
+	// catalogue from the new server.
+	v.bar = newAddressBar(v.ui, v.setStatus, false)
+	v.bar.afterConnect = v.reload
 
 	// The dot colours the message at the bottom of the tab, so it is made
 	// before the bar that holds it.
@@ -183,7 +181,7 @@ func (v *templatesView) content() fyne.CanvasObject {
 	split.Offset = 0.55
 
 	top := container.NewVBox(
-		container.NewPadded(container.NewVBox(header, v.source)),
+		v.bar.content(),
 		widget.NewSeparator(),
 		container.NewPadded(filters),
 	)
