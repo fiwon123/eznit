@@ -97,8 +97,11 @@ server that issued it: changing to a different host asks first, then signs you
 out; a port change on one host keeps the session.
 
 The **Templates** tab reads that server's catalogue: filter by kind or down to
-your own templates, then select one to see its files, the variables it asks for
-and the commands it pulls in — every line selectable. Two actions follow:
+your own templates, then select a row. The table is Name, Kind, Version and
+Files; the selected template's summary adds its visibility, owner and
+description, and three tabs — **Files**, **Variables**, **Commands**, each
+labelled with its count — hold the contents, every line selectable. Two actions
+sit beside the summary:
 
 - **Save as bundle…** writes the `.eznit` file that `eznit template apply
   --from-file` reads; it is the same file `template export` produces, from the
