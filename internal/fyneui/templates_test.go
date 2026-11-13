@@ -393,3 +393,24 @@ func TestVariableLine(t *testing.T) {
 		})
 	}
 }
+
+// The filters say what they filter: a caption for the kind, a checkbox that
+// names whose templates, and a placeholder that explains what a template is
+// before anything is selected.
+func TestTemplatesFiltersExplainThemselves(t *testing.T) {
+	view := newTestTemplatesView(t, apiChoice{url: "http://127.0.0.1:4321", source: "the default"})
+
+	if got := view.mine.Text; got != "Only my templates" {
+		t.Errorf("checkbox = %q, want it to say whose templates are shown", got)
+	}
+
+	if findLabel(view.ui.window.Content(), "Kind") == nil {
+		t.Error("the kind filter has no caption")
+	}
+
+	for _, want := range []string{"Select a template", "files", "paths", "variables", "commands", "writes"} {
+		if !strings.Contains(view.summary.Text, want) {
+			t.Errorf("the placeholder = %q, want it to mention %q", view.summary.Text, want)
+		}
+	}
+}

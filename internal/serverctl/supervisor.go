@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -282,11 +281,7 @@ func LocalAddress(dir string) string {
 
 // ServerBinary is the server executable in dir.
 func ServerBinary(dir string) (string, error) {
-	name := ServerBinaryName
-	if runtime.GOOS == "windows" {
-		name += ".exe"
-	}
-
+	name := BinaryName()
 	path := filepath.Join(dir, name)
 
 	info, err := os.Stat(path)
