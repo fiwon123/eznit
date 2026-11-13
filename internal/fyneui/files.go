@@ -39,6 +39,7 @@ type filesView struct {
 	dot     *canvas.Circle
 	test    *widget.Button
 	change  *widget.Button
+	signOut *widget.Button
 
 	upload   *widget.Button
 	download *widget.Button
@@ -72,10 +73,13 @@ func newFilesView(u *ui) *filesView {
 			if id.Row == 0 {
 				label.TextStyle = fyne.TextStyle{Bold: true}
 				label.SetText([]string{"Name", "Version", "Visibility"}[id.Col])
+				alignFileColumn(label, id.Col)
+
 				return
 			}
 
 			label.TextStyle = fyne.TextStyle{}
+			alignFileColumn(label, id.Col)
 
 			index := id.Row - 1
 			if index < 0 || index >= len(view.files) {
@@ -116,13 +120,25 @@ func newFilesView(u *ui) *filesView {
 	}
 
 	view.upload = widget.NewButtonWithIcon("Upload", theme.ContentAddIcon(), view.uploadFile)
+	view.upload.Importance = widget.HighImportance
 	view.download = widget.NewButtonWithIcon("Download", theme.DownloadIcon(), view.downloadSelected)
 	view.remove = widget.NewButtonWithIcon("Delete", theme.DeleteIcon(), view.deleteSelected)
+	view.remove.Importance = widget.DangerImportance
 	view.share = widget.NewButton("Share", view.toggleShare)
 
 	view.updateActions()
 
 	return view
+}
+
+// alignFileColumn keeps a numeric column at its right edge: a version is a
+// number, and a column of numbers reads as one when the digits line up.
+func alignFileColumn(label *widget.Label, column int) {
+	label.Alignment = fyne.TextAlignLeading
+
+	if column == 1 {
+		label.Alignment = fyne.TextAlignTrailing
+	}
 }
 
 // header is the line that says which server this tab is talking to, and what
@@ -139,9 +155,14 @@ func (v *filesView) header() fyne.CanvasObject {
 	v.test = widget.NewButton("Test", v.testServer)
 	v.change = widget.NewButtonWithIcon("Change…", theme.SettingsIcon(), v.ui.changeServer)
 
+	// The session belongs here: this is the tab the login form replaces when
+	// there is no token, so it is where a person signs out of it.
+	v.signOut = widget.NewButtonWithIcon("Sign out", theme.LogoutIcon(), v.ui.signOut)
+	v.signOut.Importance = widget.LowImportance
+
 	line := container.NewBorder(nil, nil,
-		widget.NewLabel("Server"),
-		container.NewHBox(v.test, v.change),
+		muted("Server"),
+		container.NewHBox(v.test, v.change, widget.NewSeparator(), v.signOut),
 		v.address,
 	)
 
@@ -152,6 +173,7 @@ func (v *filesView) content() fyne.CanvasObject {
 	refresh := widget.NewButtonWithIcon("Refresh", theme.ViewRefreshIcon(), v.refresh)
 
 	toolbar := container.NewHBox(refresh, v.upload, widget.NewSeparator(), v.download, v.remove, v.share)
+	top := container.NewVBox(toolbar, widget.NewSeparator())
 
 	v.detail = newProse("")
 	v.copyName = widget.NewButton("Copy name", v.copySelectedName)
@@ -165,7 +187,7 @@ func (v *filesView) content() fyne.CanvasObject {
 	v.dot = canvas.NewCircle(statusColour(v.ui.app.Settings().ThemeVariant(), statusIdle))
 
 	footer := container.NewVBox(container.NewPadded(detailRow), statusBar(v.dot, v.status))
-	body := container.NewBorder(toolbar, footer, nil, nil, v.table)
+	body := container.NewBorder(top, footer, nil, nil, v.table)
 
 	// A rebuilt view has not listed anything yet.
 	v.ready = false

@@ -309,6 +309,12 @@ the session. The tab's actions stay disabled until `/v1/healthcheck` has
 answered through a listing, so a wrong address cannot look like an empty
 library.
 
+The session belongs to the Files tab: it is the tab that shows the login form
+when there is no token, and its header carries **Sign out**. Signing out removes
+only `token` — the address, the server folder and the git-host tokens stay — and
+drops the catalogue, which is per account. The About tab is the window's
+identity and its update controls; it holds nothing about a session.
+
 The Server tab reads the env file of `server_dir` — the folder the window was
 installed into unless another is chosen — and starts `eznit-server` from it as a
 child process, with that file as its environment. A stop is an interrupt, so the

@@ -7,8 +7,13 @@ import (
 	"strings"
 	"testing"
 
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/test"
+
 	"github.com/fiwon123/eznit/internal/apiclient"
 	"github.com/fiwon123/eznit/internal/config"
+	"github.com/fiwon123/eznit/internal/domain/templates"
+	"github.com/fiwon123/eznit/internal/update"
 )
 
 // The address is resolved in one order, and the source is reported with it:
@@ -112,5 +117,88 @@ func TestLocalAddressFollowsTheServerTabsPort(t *testing.T) {
 
 	if got := view.ui.localAddress(); got != "http://127.0.0.1:4321" {
 		t.Errorf("localAddress = %q, want the Server tab's port", got)
+	}
+}
+
+// newTestUI is the window's tabs without the window: enough of it to sign in
+// and out, and to look at what a tab says.
+func newTestUI(t *testing.T) *ui {
+	t.Helper()
+
+	t.Setenv(config.Env, filepath.Join(t.TempDir(), "config.json"))
+
+	app := test.NewApp()
+	t.Cleanup(app.Quit)
+
+	u := &ui{
+		app:     app,
+		window:  app.NewWindow("test"),
+		version: "test",
+		clip:    test.NewClipboard(),
+		address: apiChoice{url: "http://127.0.0.1:4321", source: "the default"},
+		updater: &appUpdater{version: "test", updater: update.New(update.CLIFamily, update.MemberGUI)},
+	}
+	u.client = apiclient.New(u.address.url)
+	u.files = newFilesView(u)
+	u.templates = newTemplatesView(u)
+
+	u.tabs = container.NewAppTabs(
+		container.NewTabItem("Files", u.files.content()),
+		container.NewTabItem("Templates", u.templates.content()),
+		container.NewTabItem("About", u.aboutContent()),
+	)
+	u.window.SetContent(u.tabs)
+
+	return u
+}
+
+// A session belongs to the Files tab: that is the tab the login form replaces,
+// so that is where signing out belongs. It forgets the token and the catalogue,
+// and keeps the address and the host tokens.
+func TestSignOutLivesOnTheFilesTab(t *testing.T) {
+	u := newTestUI(t)
+
+	if err := config.Set("token", "the-token"); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.Set("api_url", "http://127.0.0.1:4321"); err != nil {
+		t.Fatal(err)
+	}
+
+	u.client.Token = "the-token"
+	u.templates.items = []templates.TemplateData{{Name: "a private starter"}}
+	u.templates.loaded = true
+	library := u.files.built
+
+	signOut := findButton(u.tabs.Items[0].Content, "Sign out")
+	if signOut == nil {
+		t.Fatal("the Files tab has no Sign out button")
+	}
+
+	test.Tap(signOut)
+
+	if _, err := config.Value("token"); err == nil {
+		t.Error("the session token is still in the config file")
+	}
+
+	stored, err := config.Value("api_url")
+	if err != nil || stored != "http://127.0.0.1:4321" {
+		t.Errorf("api_url = %q (%v), want the address kept", stored, err)
+	}
+
+	if u.client.Token != "" {
+		t.Errorf("client token = %q, want it cleared", u.client.Token)
+	}
+
+	if u.templates.loaded || u.templates.items != nil {
+		t.Error("the catalogue is still loaded after signing out")
+	}
+
+	if u.tabs.Items[0].Content == library {
+		t.Error("the Files tab still shows the library")
+	}
+
+	if findButton(u.aboutContent(), "Sign out") != nil {
+		t.Error("the About tab still offers Sign out")
 	}
 }

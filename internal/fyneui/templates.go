@@ -12,6 +12,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -83,10 +84,13 @@ func newTemplatesView(u *ui) *templatesView {
 			if id.Row == 0 {
 				label.TextStyle = fyne.TextStyle{Bold: true}
 				label.SetText([]string{"Name", "Kind", "Version", "Owner", "Files", "Visibility"}[id.Col])
+				alignTemplateColumn(label, id.Col)
+
 				return
 			}
 
 			label.TextStyle = fyne.TextStyle{}
+			alignTemplateColumn(label, id.Col)
 
 			index := id.Row - 1
 			if index < 0 || index >= len(view.items) {
@@ -139,6 +143,7 @@ func newTemplatesView(u *ui) *templatesView {
 	view.refresh = widget.NewButtonWithIcon("Refresh", theme.ViewRefreshIcon(), view.reload)
 	view.export = widget.NewButtonWithIcon("Save as bundle…", theme.DownloadIcon(), view.exportSelected)
 	view.apply = widget.NewButtonWithIcon("Apply…", theme.ConfirmIcon(), view.applySelected)
+	view.apply.Importance = widget.HighImportance
 
 	// The handler goes on after the first selection: SetSelected calls it, and
 	// a fetch during construction would race the tab that owns the status line.
@@ -160,7 +165,7 @@ func (v *templatesView) content() fyne.CanvasObject {
 	v.source = muted("(" + v.ui.address.source + ")")
 
 	header := container.NewBorder(nil, nil,
-		widget.NewLabel("Server"),
+		muted("Server"),
 		container.NewHBox(v.refresh, v.export, v.apply),
 		v.address,
 	)
@@ -210,9 +215,20 @@ func (v *templatesView) detailPane() fyne.CanvasObject {
 func section(caption string, body *prose) fyne.CanvasObject {
 	title := widget.NewLabel(caption)
 	title.TextStyle = fyne.TextStyle{Bold: true}
+	title.SizeName = theme.SizeNameSubHeadingText
 	title.Selectable = true
 
 	return container.NewVBox(title, body)
+}
+
+// alignTemplateColumn right-aligns the two numeric columns — version and file
+// count — so their digits line up. The rest are words and stay leading.
+func alignTemplateColumn(label *widget.Label, column int) {
+	label.Alignment = fyne.TextAlignLeading
+
+	if column == 2 || column == 4 {
+		label.Alignment = fyne.TextAlignTrailing
+	}
 }
 
 // selectableWrap is the one shape every value on this tab takes: wrapped, so a
@@ -383,20 +399,21 @@ func (v *templatesView) showDetail(detail *templates.TemplateDetail) {
 	}
 
 	v.summary.SetText(summary)
-	v.files.SetText(lines(detail.Files, fileLine))
-	v.variables.SetText(lines(detail.Variables, variableLine))
-	v.commands.SetText(lines(detail.Commands, commandLine))
+	v.files.SetText(linesOr(detail.Files, fileLine, "No files."))
+	v.variables.SetText(linesOr(detail.Variables, variableLine, "None — this template asks nothing."))
+	v.commands.SetText(linesOr(detail.Commands, commandLine, "No commands."))
 
 	// A description is prose: it can wrap to more lines than the pane was
 	// measured for.
 	relayout(v.built)
 }
 
-// lines renders a slice one per line, or a dash when the slice is empty, so a
-// section that has nothing still says so.
-func lines[T any](items []T, line func(T) string) string {
+// linesOr renders a slice one per line, or the empty state when it has
+// nothing, so a section that is empty says what that means instead of holding a
+// dash nobody can read.
+func linesOr[T any](items []T, line func(T) string, empty string) string {
 	if len(items) == 0 {
-		return "—"
+		return empty
 	}
 
 	out := make([]string, 0, len(items))
@@ -416,25 +433,48 @@ func fileLine(file templates.TemplateFileData) string {
 	return line
 }
 
+// variableLine is one variable in the detail pane: the key, the question the
+// template asks, the default and whether an answer is required. The braces
+// belong to the files a template writes; a person reads a key here.
 func variableLine(variable templates.TemplateVariableData) string {
-	line := fmt.Sprintf("{{%s}} — %s", variable.Key, promptOf(variable))
+	parts := []string{variable.Key}
 
-	if variable.DefaultValue != "" {
-		line += ", default " + variable.DefaultValue
+	if prompt := strings.TrimSpace(variable.Prompt); prompt != "" {
+		parts = append(parts, prompt)
+	}
+	if strings.TrimSpace(variable.DefaultValue) != "" {
+		parts = append(parts, "default "+variable.DefaultValue)
 	}
 	if variable.Required {
-		line += ", required"
+		parts = append(parts, "required")
 	}
 
-	return line
+	return strings.Join(parts, " — ")
 }
 
+// promptOf is the question a variable asks, or its key when it has no prompt.
 func promptOf(variable templates.TemplateVariableData) string {
 	if strings.TrimSpace(variable.Prompt) == "" {
-		return "no prompt"
+		return variable.Key
 	}
 
 	return variable.Prompt
+}
+
+// variableCaption is the line above one answer box: the prompt, the key it
+// fills in when the prompt does not already say it, and the marker for a
+// required answer. No braces: the key is a name here.
+func variableCaption(variable templates.TemplateVariableData) string {
+	caption := variable.Key
+	if prompt := strings.TrimSpace(variable.Prompt); prompt != "" && prompt != variable.Key {
+		caption = prompt + " (" + variable.Key + ")"
+	}
+
+	if variable.Required {
+		caption += " *"
+	}
+
+	return caption
 }
 
 func commandLine(command templates.TemplateCommandData) string {
@@ -636,56 +676,70 @@ func (v *templatesView) askForValues(detail *templates.TemplateDetail, files []t
 
 	rows := make([]formRow, 0, len(detail.Variables)+len(undeclared))
 	entries := make(map[string]*widget.Entry, len(detail.Variables)+len(undeclared))
+	required := false
 
 	for _, variable := range detail.Variables {
 		entry := widget.NewEntry()
 		entry.SetText(variable.DefaultValue)
 
-		caption := promptOf(variable) + " (" + variable.Key + ")"
-		if variable.Required {
-			caption += " *"
-		}
-
-		rows = append(rows, formRow{caption: caption, input: entry})
+		rows = append(rows, formRow{caption: variableCaption(variable), input: entry})
 		entries[variable.Key] = entry
+		required = required || variable.Required
 	}
 
 	for _, key := range undeclared {
 		entry := widget.NewEntry()
 
-		rows = append(rows, formRow{caption: key + " (not declared by the template)", input: entry})
+		rows = append(rows, formRow{caption: key + " — not declared by the template", input: entry})
 		entries[key] = entry
 	}
 
-	status := selectableWrap()
-	status.SetText("The files are written into " + target + ".")
+	// The folder the files land in belongs above the questions: it is the thing
+	// a person is agreeing to. The asterisk is explained once.
+	hint := "The files are written into " + target + "."
+	if required {
+		hint += " Required fields are marked *."
+	}
 
-	form := formRows(rows...)
-	body := container.NewVBox(form, status)
+	input := formRows(rows...)
 
 	// A template may ask many questions: the dialog keeps its height and the
 	// form scrolls inside it.
 	if len(rows) > 4 {
-		scroll := container.NewVScroll(form)
+		scroll := container.NewVScroll(input)
 		scroll.SetMinSize(fyne.NewSize(420, 220))
-		body = container.NewVBox(scroll, status)
+		input = scroll
 	}
+
+	title := widget.NewLabelWithStyle("Values for "+detail.Name,
+		fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	status := selectableWrap()
 
 	var popup *dialog.CustomDialog
 
-	write := func() {
+	var content fyne.CanvasObject
+
+	// showStatus resizes the dialog as well: a dialog takes its size from its
+	// content once, so an error that arrives afterwards would be cut off.
+	showStatus := func(message string) {
+		status.SetText(message)
+		relayout(content)
+		popup.Resize(popup.MinSize())
+	}
+
+	write := widget.NewButton("Write", func() {
 		values := make(map[string]string, len(entries))
 		for key, entry := range entries {
 			values[key] = strings.TrimSpace(entry.Text)
 		}
 
 		if key := missingAnswer(detail.Variables, values); key != "" {
-			status.SetText("The template asks for {{" + key + "}} and it has no answer yet.")
+			showStatus("The template asks for " + key + " and it has no answer yet.")
 			return
 		}
 
 		if err := applyTemplate(target, files, values, true); err != nil {
-			status.SetText("The template was not written: " + err.Error())
+			showStatus("The template was not written: " + err.Error())
 			return
 		}
 
@@ -694,13 +748,12 @@ func (v *templatesView) askForValues(detail *templates.TemplateDetail, files []t
 		}
 
 		v.showWritten(target, files)
-	}
+	})
+	write.Importance = widget.HighImportance
 
-	content := container.NewVBox(
-		widget.NewLabel("Answers for "+detail.Name+":"),
-		body,
-		container.NewHBox(widget.NewButton("Write", write)),
-	)
+	actions := container.NewHBox(layout.NewSpacer(), write)
+
+	content = container.NewVBox(title, newProse(hint), input, status, actions)
 
 	popup = dialog.NewCustom("Apply "+detail.Name, "Cancel", content, v.ui.window)
 	popup.Show()

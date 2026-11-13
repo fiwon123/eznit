@@ -147,6 +147,55 @@ func assertTextFits(t *testing.T, root fyne.CanvasObject) {
 	})
 }
 
+// allButtons is every button this window builds itself, laid out or not.
+func allButtons(root fyne.CanvasObject) []*widget.Button {
+	var buttons []*widget.Button
+
+	walkTree(root, fyne.NewPos(0, 0), func(object fyne.CanvasObject, _ fyne.Position) {
+		if button, ok := object.(*widget.Button); ok {
+			buttons = append(buttons, button)
+		}
+	})
+
+	return buttons
+}
+
+// sharesParent reports whether two objects sit directly in the same container.
+func sharesParent(root, first, second fyne.CanvasObject) bool {
+	shared := false
+
+	walkTree(root, fyne.NewPos(0, 0), func(object fyne.CanvasObject, _ fyne.Position) {
+		container, ok := object.(*fyne.Container)
+		if !ok {
+			return
+		}
+
+		hasFirst, hasSecond := false, false
+		for _, child := range container.Objects {
+			hasFirst = hasFirst || child == first
+			hasSecond = hasSecond || child == second
+		}
+
+		shared = shared || (hasFirst && hasSecond)
+	})
+
+	return shared
+}
+
+// findButton returns the first button in the tree with the given label.
+func findButton(root fyne.CanvasObject, text string) *widget.Button {
+	var found *widget.Button
+
+	walkTree(root, fyne.NewPos(0, 0), func(object fyne.CanvasObject, _ fyne.Position) {
+		button, ok := object.(*widget.Button)
+		if ok && button.Text == text && found == nil {
+			found = button
+		}
+	})
+
+	return found
+}
+
 // placeOf finds one object's laid-out box by identity.
 func placeOf(root, target fyne.CanvasObject) (placed, bool) {
 	var found placed

@@ -82,7 +82,7 @@ func Run(version string, apiURL string, serverDir string) error {
 	// The tabs exist before a session does. The Server tab has to be usable on
 	// a machine whose server has never run — running it and pointing it at a
 	// database is how a first install gets something to log in to.
-	templatesTab := container.NewTabItemWithIcon("Templates", theme.ListIcon(), u.templates.content())
+	templatesTab := container.NewTabItemWithIcon("Templates", theme.DocumentIcon(), u.templates.content())
 
 	u.tabs = container.NewAppTabs(
 		container.NewTabItemWithIcon("Files", theme.FolderIcon(), u.files.content()),
@@ -266,7 +266,8 @@ func (u *ui) setFilesTab(content fyne.CanvasObject) {
 }
 
 // signOut forgets the session token and only the token: the API address and
-// the git-host tokens stay.
+// the git-host tokens stay. The catalogue is per account, so it is dropped too:
+// a signed-out window should not keep showing a private template.
 func (u *ui) signOut() {
 	if err := config.Remove("token"); err != nil {
 		u.showLogin("The session could not be forgotten: " + err.Error())
@@ -274,6 +275,11 @@ func (u *ui) signOut() {
 	}
 
 	u.client.Token = ""
+
+	if u.templates != nil {
+		u.templates.forget()
+	}
+
 	u.showLogin("You are signed out.")
 }
 
