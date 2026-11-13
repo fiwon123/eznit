@@ -3,10 +3,17 @@
 package fyneui
 
 import (
+	"math"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
+	"github.com/mattn/go-runewidth"
 )
+
+// defaultTabWidth mirrors Fyne's painter.DefaultTabWidth, which lives in an
+// internal package. A grid's own TabWidth wins when one is set.
+const defaultTabWidth = 4
 
 // cell is one character position in the log grid: a row, and a column within
 // it. A column past the end of a row means "the end of that line", which is
@@ -14,6 +21,47 @@ import (
 type cell struct {
 	row int
 	col int
+}
+
+// endOfLine is a column no line reaches: what a drag past the last line selects
+// up to, and what "to the end of the line" means to a selection.
+const endOfLine = 1 << 20
+
+// cellRune is one rune of a row and the cell column it begins at. Fyne pads a
+// tab and a wide rune with further (space) cells, so a rune's index in the row
+// and its column are not the same number.
+type cellRune struct {
+	r   rune
+	col int
+}
+
+// rowCellRunes is a row's text as the grid holds it, with the column of each
+// rune. Fyne's parseRows pads a tab and a wide rune out to their next stop by
+// inserting space cells; this walks the same rule, so a selection given in
+// columns can be read back as text without counting the padding.
+func rowCellRunes(row widget.TextGridRow, tabWidth int) []cellRune {
+	if tabWidth <= 0 {
+		tabWidth = defaultTabWidth
+	}
+
+	runes := make([]cellRune, 0, len(row.Cells))
+	next := 0
+
+	for col, cell := range row.Cells {
+		if col < next {
+			continue
+		}
+
+		runes = append(runes, cellRune{r: cell.Rune, col: col})
+
+		if cell.Rune == '\t' {
+			next = nextTabStop(col, tabWidth)
+		} else {
+			next = col + runewidth.StringWidth(string(cell.Rune))
+		}
+	}
+
+	return runes
 }
 
 // selection is a drag's range. start is never after end, so a drag that went
@@ -74,11 +122,18 @@ func (s *selection) clamped(rows int) *selection {
 
 	fixed := &selection{start: s.start, end: s.end}
 
+	// The lines above the buffer are gone, so the selection now begins at the
+	// top of what is left. Those rows were in the middle of the selection, so
+	// they are painted from their first cell: starting at column 0 is what the
+	// paint already says.
 	if fixed.start.row < 0 {
 		fixed.start = cell{row: 0, col: 0}
 	}
+
+	// A drag past the last line takes the rest of it, the way a terminal does
+	// when the pointer leaves the text.
 	if fixed.end.row >= rows {
-		fixed.end = cell{row: rows - 1, col: 0}
+		fixed.end = cell{row: rows - 1, col: endOfLine}
 	}
 
 	return fixed
@@ -228,3 +283,11 @@ func (r *logGridRenderer) Objects() []fyne.CanvasObject {
 }
 
 func (r *logGridRenderer) Destroy() {}
+
+// nextTabStop is the column after the tab at column, following Fyne's own rule
+// so the padding this file expects is the padding parseRows inserted.
+func nextTabStop(column, width int) int {
+	stops, _ := math.Modf(float64(column+width) / float64(width))
+
+	return width * int(stops)
+}

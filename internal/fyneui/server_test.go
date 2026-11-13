@@ -1034,8 +1034,8 @@ func TestServerViewClickClearsTheSelection(t *testing.T) {
 	if !view.copySelection.Disabled() {
 		t.Error("Copy selection is enabled with nothing selected")
 	}
-	if style := view.log.Rows[0].Cells[0].Style; style != nil && style.BackgroundColor() != nil {
-		t.Error("the cleared selection is still painted")
+	if style := view.log.Rows[0].Cells[0].Style; style != nil {
+		t.Errorf("the cleared selection is still painted: %+v", style)
 	}
 }
 
@@ -1155,5 +1155,188 @@ func TestLogGridIgnoresADragWithoutAPress(t *testing.T) {
 
 	if view.sel != nil {
 		t.Errorf("a drag with no press selected %+v", *view.sel)
+	}
+}
+
+// The span of one row a selection covers: rows outside it are not covered, and
+// the start and end rows are partial.
+func TestSelectionSpan(t *testing.T) {
+	tests := []struct {
+		name string
+		sel  *selection
+		row  int
+		want rowRange
+	}{
+		{"no selection", nil, 0, rowRange{}},
+		{"a row above", &selection{start: cell{1, 2}, end: cell{3, 4}}, 0, rowRange{}},
+		{"a row below", &selection{start: cell{1, 2}, end: cell{3, 4}}, 4, rowRange{}},
+		{"one row", &selection{start: cell{1, 2}, end: cell{1, 4}}, 1, rowRange{from: 2, to: 5, ok: true}},
+		{"the first of several", &selection{start: cell{1, 2}, end: cell{3, 4}}, 1, rowRange{from: 2, to: -1, ok: true}},
+		{"one in the middle", &selection{start: cell{1, 2}, end: cell{3, 4}}, 2, rowRange{from: 0, to: -1, ok: true}},
+		{"the last of several", &selection{start: cell{1, 2}, end: cell{3, 4}}, 3, rowRange{from: 0, to: 5, ok: true}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.sel.span(tt.row); got != tt.want {
+				t.Errorf("span(%d) = %+v, want %+v", tt.row, got, tt.want)
+			}
+		})
+	}
+}
+
+// Clamping keeps a selection inside the buffer: the lines above it are gone, so
+// it starts at the top of what is left, and a drag below the last line takes
+// that line's end.
+func TestSelectionClampedToTheBuffer(t *testing.T) {
+	tests := []struct {
+		name string
+		sel  *selection
+		rows int
+		want *selection
+	}{
+		{"no selection", nil, 5, nil},
+		{"an empty grid", &selection{start: cell{0, 0}, end: cell{0, 3}}, 0, nil},
+		{"inside the buffer", &selection{start: cell{1, 2}, end: cell{3, 4}}, 5, &selection{start: cell{1, 2}, end: cell{3, 4}}},
+		{"the first line left", &selection{start: cell{-2, 5}, end: cell{3, 4}}, 5, &selection{start: cell{0, 0}, end: cell{3, 4}}},
+		{"every line left", &selection{start: cell{-4, 1}, end: cell{-1, 4}}, 5, nil},
+		{"past the last line", &selection{start: cell{1, 2}, end: cell{9, 4}}, 5, &selection{start: cell{1, 2}, end: cell{4, endOfLine}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.sel.clamped(tt.rows)
+
+			if (got == nil) != (tt.want == nil) {
+				t.Fatalf("clamped(%d) = %+v, want %+v", tt.rows, got, tt.want)
+			}
+			if got != nil && *got != *tt.want {
+				t.Errorf("clamped(%d) = %+v, want %+v", tt.rows, *got, *tt.want)
+			}
+		})
+	}
+}
+
+// A rune's column and its index in a row are not the same number once a tab or
+// a wide rune is padded: rowCellRunes has to read the row exactly as Fyne does.
+func TestRowCellRunesMatchTheRowsOwnText(t *testing.T) {
+	for _, text := range []string{"no tabs at all", "\tindented", "a\tb\tc", "wide 世界 text", "tab\tand 世界"} {
+		t.Run(text, func(t *testing.T) {
+			grid := widget.NewTextGrid()
+			grid.SetText(text)
+
+			row := grid.Rows[0]
+			runes := rowCellRunes(row, grid.TabWidth)
+
+			var joined strings.Builder
+			for _, at := range runes {
+				joined.WriteRune(at.r)
+			}
+
+			if got, want := joined.String(), grid.RowText(0); got != want {
+				t.Errorf("rowCellRunes read %q, want the row's own text %q", got, want)
+			}
+
+			if len(runes) == len(row.Cells) && strings.ContainsAny(text, "\t") {
+				t.Errorf("row %q has %d cells and %d runes — the padding was not skipped", text, len(row.Cells), len(runes))
+			}
+		})
+	}
+}
+
+// Copying reads through that padding: a selection that covers a tab's cells and
+// the text after them copies the text, not the padding spaces.
+func TestSelectionTextReadsThroughTabPadding(t *testing.T) {
+	grid := widget.NewTextGrid()
+	grid.SetText("a\tb")
+
+	view := &serverView{log: grid, parsed: make([]serverctl.LogLine, len(grid.Rows))}
+
+	// The whole row: the text the grid shows, padding and all.
+	view.sel = &selection{start: cell{0, 0}, end: cell{0, len(grid.Rows[0].Cells) - 1}}
+	if got, want := view.selectionText(), grid.RowText(0); got != want {
+		t.Errorf("whole row copied %q, want %q", got, want)
+	}
+
+	// From the tab's cell to the end: the tab and the character after it.
+	view.sel = &selection{start: cell{0, 1}, end: cell{0, len(grid.Rows[0].Cells) - 1}}
+	if got, want := view.selectionText(), "\tb"; got != want {
+		t.Errorf("selection copied %q, want %q", got, want)
+	}
+
+	// A single cell after the padding: the rune it holds, not the padding.
+	view.sel = &selection{start: cell{0, len(grid.Rows[0].Cells) - 1}, end: cell{0, len(grid.Rows[0].Cells) - 1}}
+	if got, want := view.selectionText(), "b"; got != want {
+		t.Errorf("the last cell copied %q, want %q", got, want)
+	}
+
+	// A column past the end of the row still copies the row's tail rather than
+	// slicing past it.
+	view.sel = &selection{start: cell{0, 1}, end: cell{0, endOfLine}}
+	if got, want := view.selectionText(), "\tb"; got != want {
+		t.Errorf("selection past the end copied %q, want %q", got, want)
+	}
+}
+
+// A pointer that leaves the grid still means what a person meant: below the last
+// line takes the rest of the log, left of the first column takes the line from
+// its start, and neither panics.
+func TestSelectionHandlesAPointerOutsideTheGrid(t *testing.T) {
+	view := newLogView(t, "first", "second")
+
+	press := func(at cell) {
+		view.grid.MouseDown(&desktop.MouseEvent{
+			PointEvent: fyne.PointEvent{Position: cellPoint(view, at)},
+			Button:     desktop.MouseButtonPrimary,
+		})
+	}
+	dragTo := func(point fyne.Position) {
+		view.grid.Dragged(&fyne.DragEvent{PointEvent: fyne.PointEvent{Position: point}})
+		view.grid.MouseUp(&desktop.MouseEvent{})
+	}
+
+	// Below the last line: everything down to the end of the log.
+	press(cell{0, 0})
+	below := cellPoint(view, cell{1, 0})
+	height := view.log.PositionForCursorLocation(1, 0).Y
+	dragTo(fyne.NewPos(below.X, below.Y+3*height))
+
+	want := view.log.RowText(0) + "\n" + view.log.RowText(1)
+	if got := view.selectionText(); got != want {
+		t.Errorf("dragging below the log copied %q, want %q", got, want)
+	}
+
+	// Left of the first column: the line from its first character.
+	press(cell{1, 10})
+	dragTo(fyne.NewPos(-40, cellPoint(view, cell{1, 0}).Y))
+
+	got := view.selectionText()
+	if got == "" || !strings.HasPrefix(view.log.RowText(1), got) {
+		t.Errorf("dragging past the left edge copied %q, want a prefix of %q", got, view.log.RowText(1))
+	}
+}
+
+// A burst of output larger than the buffer, arriving after a clear, must not
+// panic in the trim path: the grid can hold a row the parsed log does not.
+func TestServerViewTakesABurstAfterAClear(t *testing.T) {
+	view := newLogView(t, "first")
+	view.clearLog()
+
+	var burst strings.Builder
+	for line := 1; line <= 600; line++ {
+		burst.WriteString("INFO\tline " + strconv.Itoa(line) + "\n")
+	}
+	if _, err := view.server().Write([]byte(burst.String())); err != nil {
+		t.Fatal(err)
+	}
+
+	view.refresh()
+
+	rows := len(view.log.Rows)
+	if rows == 0 {
+		t.Fatal("the grid is empty after a burst")
+	}
+	if got := view.log.RowText(rows - 1); !strings.Contains(got, "line 600") {
+		t.Errorf("the last row = %q, want the newest line", got)
 	}
 }

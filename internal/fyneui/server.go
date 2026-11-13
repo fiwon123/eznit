@@ -661,6 +661,14 @@ func (v *serverView) dropRows(count int) {
 	if count > len(v.log.Rows) {
 		count = len(v.log.Rows)
 	}
+	// parsed can lag the grid by one row — SetText("") leaves one empty row and
+	// no parsed line behind it — and trimming past it would panic.
+	if count > len(v.parsed) {
+		count = len(v.parsed)
+	}
+	if count <= 0 {
+		return
+	}
 
 	v.log.Rows = append([]widget.TextGridRow(nil), v.log.Rows[count:]...)
 	v.parsed = append([]serverctl.LogLine(nil), v.parsed[count:]...)
@@ -756,13 +764,15 @@ func (v *serverView) forgetSelection() {
 
 // paintSelection repaints the rows a selection change touched: rows it left go
 // back to their level's style, rows it now covers gain the selection behind
-// them. Rows whose coverage did not change are skipped, which is what makes a
-// drag over a full buffer cheap.
+// them. Rows whose coverage did not change are skipped, so a drag only restyles
+// what it moves over.
 //
 // It ends with a Refresh of the grid because Fyne 2.8's SetStyle does not
 // repaint the cell it styles (textGridRow.refreshCell indexes past the row's
 // own renderer objects), so a style set on a visible cell stays invisible until
-// the grid renders again.
+// the grid renders again. That refresh costs what appending a line costs —
+// which drawLog already pays per line — because a grid with ScrollNone keeps
+// every row it holds.
 func (v *serverView) paintSelection(before, after *selection) {
 	if v.log == nil {
 		return
@@ -837,9 +847,10 @@ func (v *serverView) refreshCopySelection() {
 	v.copySelection.Enable()
 }
 
-// selectionText is exactly what the drag covers, lines joined with a newline. A
-// column past the end of a line counts as the end of that line, which is what
-// a drag that leaves the text should mean.
+// selectionText is exactly what the drag covers, lines joined with a newline.
+// It reads the row's cells rather than its text, because a column is a cell and
+// a tab or a wide rune is padded with cells that are not runes: slicing the
+// text by column would copy the wrong characters.
 func (v *serverView) selectionText() string {
 	if v.sel == nil {
 		return ""
@@ -853,17 +864,23 @@ func (v *serverView) selectionText() string {
 		}
 
 		span := v.sel.span(row)
-		runes := []rune(v.log.RowText(row))
-
-		from, to := span.from, span.to
-		if to < 0 || to > len(runes) {
-			to = len(runes)
-		}
-		if from > to {
-			from = to
+		if !span.ok {
+			continue
 		}
 
-		lines = append(lines, string(runes[from:to]))
+		var line strings.Builder
+		for _, at := range rowCellRunes(v.log.Rows[row], v.log.TabWidth) {
+			if at.col < span.from {
+				continue
+			}
+			if span.to >= 0 && at.col >= span.to {
+				break
+			}
+
+			line.WriteRune(at.r)
+		}
+
+		lines = append(lines, line.String())
 	}
 
 	return strings.Join(lines, "\n")
