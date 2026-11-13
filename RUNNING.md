@@ -24,6 +24,10 @@ DB_HOST=localhost DB_PORT=5432 ./eznit-server
 
 `eznit-server` embeds the web UI, so <http://localhost:4000> serves it.
 
+`./eznit-server --version` prints the release this bundle carries, and needs no
+database, no `.env` and no log folder — it is the quickest way to tell whether
+the folder you extracted is the tag it claims.
+
 ## What does not work from here
 
 `docker compose up` (the whole file) builds the `api` and `web` services from
@@ -62,12 +66,12 @@ it is pointed at is another bundle.
 - The log is one row per line of output: time, level, message, then any
   structured fields, with the level coloured (warnings and errors bold). A line
   that is not a log record — a panic, a plain message from a tool the server
-  started — keeps its own text. The grid itself cannot be selected, so **Copy
-  log** puts the whole buffer on the clipboard and **Select…** opens a frozen
-  snapshot in a dialog where a line or a range can be dragged and copied.
-  **Follow output** stays on until you scroll away from the end; **Jump to
-  end** goes back. The line next to the status always names the address,
-  including after an exit (`Stopped at http://… — last exit: …`).
+  started — keeps its own text. Drag over the output to mark lines and use
+  **Copy selection** for just those, or **Copy log** for the whole buffer;
+  **Select…** opens a frozen snapshot in a dialog when output keeps arriving.
+  **Follow output** stays on until you scroll away from the end or start a
+  selection; **Jump to end** goes back. The line next to the status always names
+  the address, including after an exit (`Stopped at http://… — last exit: …`).
 - **Stop** asks the server to shut down, which drains in-flight requests for up
   to 10 seconds. On Windows a stop is a kill: Windows cannot deliver an
   interrupt to another process.

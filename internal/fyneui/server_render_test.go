@@ -192,3 +192,79 @@ func colourCount(img image.Image) int {
 
 	return len(seen)
 }
+
+// The selection has to reach the screen, not only the grid's data: Fyne 2.8's
+// SetStyle does not repaint the cell it styles, so a selection that is painted
+// in the model alone is invisible until something re-renders the grid (#308).
+func TestTheSelectionIsDrawn(t *testing.T) {
+	for name, th := range map[string]fyne.Theme{"light": theme.LightTheme(), "dark": theme.DarkTheme()} {
+		t.Run(name, func(t *testing.T) {
+			// INFO lines are not bold, and the software driver's test theme has
+			// no bold monospace face.
+			view := newLogView(t, "first line of output", "second line of output")
+			view.ui.app.Settings().SetTheme(th)
+
+			size := fyne.NewSize(980, 640)
+			view.ui.window.Resize(size)
+			view.ui.window.Content().Resize(size)
+
+			plain := view.ui.window.Canvas().Capture()
+			if plain == nil {
+				t.Fatal("the canvas captured nothing before the drag")
+			}
+
+			dragOver(view, cell{0, 0}, cell{0, 60})
+
+			selected := view.ui.window.Canvas().Capture()
+			if selected == nil {
+				t.Fatal("the canvas captured nothing after the drag")
+			}
+
+			// A space inside the selection: its cell's centre is the pane's
+			// background unless the selection is painted over it.
+			inside := cell{row: 0, col: firstSpace(t, view.log.RowText(0))}
+			if inside.col < 0 || inside.col > 60 {
+				t.Fatalf("row 0 has no space to sample inside the selection")
+			}
+			if samePixel(plain, selected, cellPixel(view, inside)) {
+				t.Errorf("cell %+v looks the same before and after selecting it — the selection is not drawn", inside)
+			}
+
+			// The same column one row below the selection: unchanged, so the
+			// difference above is the tint and not a re-laid-out pane.
+			outside := cell{row: 1, col: inside.col}
+			if !samePixel(plain, selected, cellPixel(view, outside)) {
+				t.Errorf("cell %+v changed, but the drag never covered it", outside)
+			}
+		})
+	}
+}
+
+// firstSpace is the column of the first space after the leading columns of a
+// formatted log line, so a test samples a cell with no glyph in it.
+func firstSpace(t *testing.T, text string) int {
+	t.Helper()
+
+	for col, r := range []rune(text) {
+		if r == ' ' && col > 5 {
+			return col
+		}
+	}
+
+	return -1
+}
+
+// cellPixel is the middle of a log cell in window coordinates.
+func cellPixel(view *serverView, at cell) image.Point {
+	point := fyne.CurrentApp().Driver().AbsolutePositionForObject(view.grid).Add(cellPoint(view, at))
+
+	return image.Pt(int(point.X), int(point.Y))
+}
+
+// samePixel reports whether two captures agree at one point.
+func samePixel(a, b image.Image, at image.Point) bool {
+	ar, ag, ab, _ := a.At(at.X, at.Y).RGBA()
+	br, bg, bb, _ := b.At(at.X, at.Y).RGBA()
+
+	return ar == br && ag == bg && ab == bb
+}

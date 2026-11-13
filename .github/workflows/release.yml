@@ -23,9 +23,10 @@ name: Release
 #           cross toolchain, never as a plain `go build`
 #   pack    add the window and its licences to each CLI archive, verify every
 #           archive (PE, Mach-O, provenance), and regenerate checksums.txt
-#   smoke   the Windows CLI and window are started on windows-latest
+#   smoke   the Windows CLI, server and window are started on windows-latest
 #   smoke-linux  the linux/amd64 window unpacked from its archive is started on
-#           Xvfb, so the copy Debian 12 has to run is the copy that is tested
+#           Xvfb, so the copy Debian 12 has to run is the copy that is tested,
+#           and the server beside it is asked for its version
 #
 # `publish` needs all of them and runs only on a tag push. `workflow_dispatch`
 # runs guard/build/gui/pack/smoke/smoke-linux, keeps the archives on the run,
@@ -481,6 +482,10 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
+          # An empty version would make every comparison below pass without
+          # comparing anything.
+          if (-not $env:VERSION) { throw 'the version is empty — nothing to compare the binaries against' }
+
           $zip = Get-ChildItem smoke -Recurse -Filter 'eznit_*_windows_amd64.zip' | Select-Object -First 1
           if (-not $zip) { throw 'the windows/amd64 archive is missing from the artifact' }
 
@@ -501,6 +506,17 @@ jobs:
           & $alias.FullName -v | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "ez.exe -v exited $LASTEXITCODE" }
 
+          # The server names the tag it was built from. The Makefile injects it
+          # with -X main.Version, and the linker ignores an -X for a symbol that
+          # does not exist without a word — so this run, on the published
+          # artifact, is what proves the injection landed. It answers before the
+          # env file, the log folder and the database, so it needs none of them.
+          $serverVersion = (& $server.FullName --version | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "eznit-server.exe --version exited $LASTEXITCODE" }
+          if ($serverVersion -ne $env:VERSION) {
+            throw "eznit-server.exe --version printed '$serverVersion', expected $env:VERSION"
+          }
+
           # --help exits before the toolkit starts, so this proves the loader
           # takes the window (subsystem, icon resources) without a GPU.
           $gui = Get-ChildItem smoke\extracted -Recurse -Filter 'eznit-gui.exe' | Select-Object -First 1
@@ -512,7 +528,7 @@ jobs:
           }
           if ($window.ExitCode -ne 0) { throw "eznit-gui.exe --help failed (exit $($window.ExitCode))" }
 
-          Write-Host "smoke ok: $reported; the window and the server are in the archive"
+          Write-Host "smoke ok: $reported, the server reports $serverVersion, the window opens; all four binaries are in the archive"
 
   smoke-linux:
     name: Linux window smoke test
@@ -571,6 +587,15 @@ jobs:
             exit 1
           fi
 
+          # The server names the tag as well, and answers before it opens
+          # anything — no database and no display needed. This is the Linux
+          # half of the check the Windows job makes on the same injection.
+          server_reported="$(unpacked/eznit-server --version)"
+          if [ "$server_reported" != "$VERSION" ]; then
+            echo "::error::eznit-server reports '$server_reported', expected '$VERSION'"
+            exit 1
+          fi
+
           xvfb-run -a --server-args='-screen 0 1024x768x24' "$window" >"$RUNNER_TEMP/window.log" 2>&1 &
           runner_pid=$!
 
@@ -589,7 +614,7 @@ jobs:
           echo "the window stayed up for 10 s; stopping it"
           kill "$runner_pid" 2>/dev/null || true
           wait "$runner_pid" 2>/dev/null || true
-          echo "smoke ok: the packed window reports $reported and starts"
+          echo "smoke ok: the packed window reports $reported, the server reports $server_reported, and the window starts"
 
   publish:
     name: Publish the release
@@ -674,8 +699,9 @@ jobs:
           - The macOS archives are cross-compiled on Linux, and none of the
             ARM64 binaries is executed on ARM hardware. What this workflow
             starts is the Windows amd64 CLI and window and the Linux amd64
-            window (on a virtual display); the API is never run against a
-            database here.
+            window (on a virtual display); it asks the amd64 server binaries
+            for the version they report, and it never starts the API itself —
+            nothing here runs against a database.
 
           <details>
           <summary>🧾 Merged pull requests</summary>

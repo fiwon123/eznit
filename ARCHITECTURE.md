@@ -370,9 +370,12 @@ it needs. The coloured status dot sits beside the message it colours, not on a
 header line of its own, and is centred on the text rather than on the row.
 
 The tab's Output is a log viewer over the child's own console output, which the
-API writes as JSON (`pkg/logger.NewJson`). The grid cannot be selected in Fyne,
-so `Select…` opens a frozen snapshot in a selectable label: the dialog is how a
-line or a range is copied, while `Copy log` takes the whole buffer. `serverctl.ParseLine` reads one line
+API writes as JSON (`pkg/logger.NewJson`). A drag over the grid marks the cells
+it covers: `loggrid.go` maps a pointer position to a cell because Fyne 2.8's
+`TextGrid` has no selection of its own, and the selection is painted as a cell
+style over the row's level style, so the colours survive. `Copy selection` takes
+what the drag covers, `Copy log` the whole buffer, and `Select…` still opens a
+frozen snapshot when output must not move under a selection. `serverctl.ParseLine` reads one line
 into time, level, message and fields, `Format` lays it out in fixed columns, and
 the window colours it by level — so a line that is not a record (a panic) is
 kept as text rather than dropped. The supervisor keeps the newest 500 lines and

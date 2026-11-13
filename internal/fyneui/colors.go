@@ -87,3 +87,16 @@ func logStyle(variant fyne.ThemeVariant, line serverctl.LogLine) *widget.CustomT
 		TextStyle: fyne.TextStyle{Bold: bold},
 	}
 }
+
+// selectedLogStyle is a line's style with the theme's selection behind it, for
+// the cells a drag covers. The level's own colour stays: a selected warning is
+// still a warning, and the selection is what the background says.
+func selectedLogStyle(th fyne.Theme, variant fyne.ThemeVariant, line serverctl.LogLine) *widget.CustomTextGridStyle {
+	style := logStyle(variant, line)
+
+	if th != nil {
+		style.BGColor = th.Color(theme.ColorNameSelection, variant)
+	}
+
+	return style
+}
