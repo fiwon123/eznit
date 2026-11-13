@@ -43,6 +43,11 @@ its log, and edits the `.env` and the database password the server reads:
 ./eznit-gui        # then: Server tab → Start
 ```
 
+Run it from **this** folder: the Server tab looks for `eznit-server` beside the
+window, so a window copied somewhere else (or started from another folder) has
+no server to run and will say so. **Choose folder…** helps only when the folder
+it is pointed at is another bundle.
+
 - **Start** checks the API port and reads the `.env` before it runs anything. A
   folder with no `.env` gets one created from `.env.example`, pointed at
   `127.0.0.1` and at this bundle's secret file.

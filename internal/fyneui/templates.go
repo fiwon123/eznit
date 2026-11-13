@@ -151,7 +151,7 @@ func newTemplatesView(u *ui) *templatesView {
 	view.kind.SetSelected(allKinds)
 	view.kind.OnChanged = func(string) { view.reload() }
 
-	view.mine = widget.NewCheck("Only mine", func(bool) { view.reload() })
+	view.mine = widget.NewCheck("Only my templates", func(bool) { view.reload() })
 
 	view.updateActions()
 
@@ -174,7 +174,7 @@ func (v *templatesView) content() fyne.CanvasObject {
 	// before the bar that holds it.
 	v.dot = canvas.NewCircle(statusColour(v.ui.app.Settings().ThemeVariant(), statusIdle))
 
-	filters := container.NewHBox(v.kind, v.mine)
+	filters := container.NewHBox(muted("Kind"), v.kind, v.mine)
 
 	v.buildDetail()
 	split := container.NewVSplit(v.table, container.NewVScroll(v.detailPane()))
@@ -379,7 +379,8 @@ func (v *templatesView) showDetail(detail *templates.TemplateDetail) {
 	}
 
 	if detail == nil {
-		v.summary.SetText("Select a template to see what is inside it.")
+		v.summary.SetText("Select a template to see what is inside it: a tree of files with their paths, " +
+			"the variables it asks for and the commands it pulls in. Applying it writes those files into a folder you pick.")
 		v.files.SetText("")
 		v.variables.SetText("")
 		v.commands.SetText("")

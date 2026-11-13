@@ -182,6 +182,20 @@ func sharesParent(root, first, second fyne.CanvasObject) bool {
 	return shared
 }
 
+// findLabel returns the first label in the tree with the given text.
+func findLabel(root fyne.CanvasObject, text string) *widget.Label {
+	var found *widget.Label
+
+	walkTree(root, fyne.NewPos(0, 0), func(object fyne.CanvasObject, _ fyne.Position) {
+		label, ok := object.(*widget.Label)
+		if ok && label.Text == text && found == nil {
+			found = label
+		}
+	})
+
+	return found
+}
+
 // findButton returns the first button in the tree with the given label.
 func findButton(root fyne.CanvasObject, text string) *widget.Button {
 	var found *widget.Button

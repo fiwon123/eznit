@@ -108,10 +108,20 @@ bundle says the same, and what it does not prove. Plain `docker compose up` is
 the source-checkout path — in a bundle it would try to build an image the
 archive does not contain.
 
-The bundle also carries `eznit-gui`, whose **Server** tab does that whole step
-for you: start the database with Compose once, open the window, and use **Start**
-after setting the database password in the configuration panel. It writes the
-same `.env` and `secrets/db_password.txt` shown above.
+The bundle also carries `eznit-gui`. Run it **from inside the extracted folder** —
+the Server tab looks for `eznit-server` beside the window. The first run is:
+
+1. start a database in that folder: `docker compose up -d db migrate`;
+2. **Server → Configuration → Create .env**, set the database password, **Save**;
+3. **Server → Start**: the Output tab shows the log and the status dot turns green;
+4. **Files → Change… → This machine → Test → Use this server**, then create the
+   first account — it is the instance's admin.
+
+The window is also a client of a server somewhere else, and that needs no bundle:
+**Files → Change… → Another server**, paste the address, **Test**, **Use this
+server**. The Server tab is not involved.
+
+`RUNNING.md` in the bundle says the same, and what it does not prove.
 
 ## 👉 Next
 

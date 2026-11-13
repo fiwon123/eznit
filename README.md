@@ -131,6 +131,23 @@ clients of an API, **Server** runs one beside it), the migrations,
 `RUNNING.md` says what runs from it and what does not. Verify a download against
 `checksums.txt` from the release page.
 
+### 🪟 From a download, in one minute
+
+```sh
+sha256sum -c checksums.txt --ignore-missing   # the archive you downloaded
+tar -xzf eznit_<tag>_linux_amd64.tar.gz       # or unzip on Windows
+cd eznit_<tag>_linux_amd64
+./eznit-gui                                    # the window, from inside the bundle
+```
+
+Run the window **from inside the extracted folder**: the Server tab looks for
+`eznit-server` beside it. The window is a client first — **Files → Change…**
+points it at any eznit API — and a host second: the Server tab runs the server
+in that folder, with a database from `docker compose up -d db migrate`, then
+**Server → Configuration → Create .env → set the database password → Save →
+Start**. Without the window, `./eznit` is the CLI and `./eznit-server` is the
+API; `RUNNING.md` in the folder has the rest.
+
 ## 🔒 Security status
 
 This is a self-hosted tool, and it is not hardened. What is true today:
