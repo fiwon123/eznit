@@ -54,10 +54,17 @@ only glibc **2.34**; use the CLI (`eznit`, `ez`) in the meantime, which is
 
 ## The Server tab says "not a server bundle"
 
-The panel runs the `eznit-server` in the folder it points at, and your CLI
-archive has no server binary in it. Download the **server** bundle for your
-platform, put the window in that folder (or choose it with **Choose folder…**),
-and start it from there.
+The panel runs the `eznit-server` **beside the window**, and the folder it is
+pointed at does not have one. Since v0.24.0 the release publishes **one archive
+per platform** that carries the window, the server, the migrations and the
+Compose file together, so there is no separate server download: extract the
+archive you already have and run `eznit-gui` from inside it (or point the tab at
+that folder with **Choose folder…**).
+
+The note under the header names what the folder is missing. If you only want to
+use a server that already runs, the Server tab is not needed — **Files →
+Change… → Another server**. The README's "From a download, in one minute" block
+has the same steps.
 
 ## The Server tab says the port is in use
 
