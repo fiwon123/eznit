@@ -20,8 +20,11 @@ func (u *ui) aboutContent() fyne.CanvasObject {
 	logo.SetMinSize(fyne.NewSize(96, 96))
 
 	name := widget.NewLabelWithStyle("eznit", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	name.SizeName = theme.SizeNameHeadingText
+
 	version := widget.NewLabelWithStyle("Version "+u.updater.Current(), fyne.TextAlignCenter, fyne.TextStyle{})
 	version.Selectable = true
+	version.Importance = widget.LowImportance
 
 	summary := widget.NewLabel("Your project's setup, in one place you host. " +
 		"Templates, scripts and files you can pull onto any machine.")
@@ -89,9 +92,6 @@ func (u *ui) aboutContent() fyne.CanvasObject {
 		"Checks GitHub for the newest release. Nothing is replaced without confirmation.",
 		container.NewVBox(append([]fyne.CanvasObject{status}, actions...)...))
 
-	signOut := widget.NewButtonWithIcon("Sign out", theme.CancelIcon(), u.signOut)
-	signOut.Importance = widget.LowImportance
-
 	body := container.NewVBox(
 		container.NewCenter(logo),
 		name,
@@ -100,8 +100,6 @@ func (u *ui) aboutContent() fyne.CanvasObject {
 		container.NewCenter(homepage),
 		widget.NewSeparator(),
 		updates,
-		widget.NewSeparator(),
-		container.NewCenter(signOut),
 	)
 
 	// The panel is a page: it scrolls, and it fills the width so the summary

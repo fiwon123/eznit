@@ -93,10 +93,14 @@ func TestTemplatesDetailShowsEveryPart(t *testing.T) {
 		}
 	}
 
-	for _, want := range []string{"{{PROJECT}}", "Project name", "default demo", "required"} {
+	for _, want := range []string{"PROJECT", "Project name", "default demo", "required"} {
 		if !strings.Contains(view.variables.Text, want) {
 			t.Errorf("variables = %q, want it to mention %q", view.variables.Text, want)
 		}
+	}
+
+	if braces := "{{"; strings.Contains(view.variables.Text, braces) {
+		t.Errorf("variables = %q, want the keys without template braces", view.variables.Text)
 	}
 
 	if !strings.Contains(view.commands.Text, "scripts/run.sh") {
@@ -311,5 +315,81 @@ func TestApplyNeedsASelection(t *testing.T) {
 
 	if !strings.Contains(view.status.Text, "Select a template") {
 		t.Errorf("status = %q, want it to ask for a selection", view.status.Text)
+	}
+}
+
+// A template that asks nothing says so in words: a bare dash in the Variables
+// section is not an answer anyone can act on.
+func TestTemplatesEmptySectionsSaySo(t *testing.T) {
+	view := newTestTemplatesView(t, apiChoice{url: "http://127.0.0.1:4321", source: "the default"})
+
+	detail := sampleDetail(t)
+	detail.Files = nil
+	detail.Variables = nil
+	detail.Commands = nil
+
+	view.showDetail(detail)
+
+	for name, section := range map[string]*prose{
+		"files":     view.files,
+		"variables": view.variables,
+		"commands":  view.commands,
+	} {
+		if section.Text == "—" || section.Text == "" {
+			t.Errorf("the %s section is %q, want a sentence that says it is empty", name, section.Text)
+		}
+	}
+
+	if want := "asks nothing"; !strings.Contains(view.variables.Text, want) {
+		t.Errorf("variables = %q, want %q", view.variables.Text, want)
+	}
+}
+
+// The caption above an answer box names the question and the key, marks a
+// required answer with the asterisk the hint explains, and never shows the
+// template's braces.
+func TestVariableCaption(t *testing.T) {
+	tests := []struct {
+		name     string
+		variable templates.TemplateVariableData
+		want     string
+	}{
+		{"prompt and key", templates.TemplateVariableData{Key: "PROJECT", Prompt: "Project name"}, "Project name (PROJECT)"},
+		{"no prompt", templates.TemplateVariableData{Key: "PROJECT"}, "PROJECT"},
+		{"prompt is the key", templates.TemplateVariableData{Key: "PROJECT", Prompt: "PROJECT"}, "PROJECT"},
+		{"required", templates.TemplateVariableData{Key: "PROJECT", Prompt: "Project name", Required: true}, "Project name (PROJECT) *"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := variableCaption(tt.variable); got != tt.want {
+				t.Errorf("variableCaption(%+v) = %q, want %q", tt.variable, got, tt.want)
+			}
+			if strings.Contains(variableCaption(tt.variable), "{{") {
+				t.Errorf("the caption shows template braces")
+			}
+		})
+	}
+}
+
+// One variable line, in the order a person reads it: key, question, default,
+// and whether it must be answered.
+func TestVariableLine(t *testing.T) {
+	tests := []struct {
+		name     string
+		variable templates.TemplateVariableData
+		want     string
+	}{
+		{"everything", templates.TemplateVariableData{Key: "PROJECT", Prompt: "Project name", DefaultValue: "demo", Required: true}, "PROJECT — Project name — default demo — required"},
+		{"key only", templates.TemplateVariableData{Key: "PROJECT"}, "PROJECT"},
+		{"no default", templates.TemplateVariableData{Key: "PROJECT", Prompt: "Project name", Required: true}, "PROJECT — Project name — required"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := variableLine(tt.variable); got != tt.want {
+				t.Errorf("variableLine(%+v) = %q, want %q", tt.variable, got, tt.want)
+			}
+		})
 	}
 }
