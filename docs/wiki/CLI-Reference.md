@@ -147,9 +147,10 @@ place; `eznit repo auth --remove` removes that one.
 ## 🔄 Updates
 
 `eznit update` installs the newest CLI release, or a named one, from the same
-GitHub releases the archives are published to. The download is checked against
-the release's `checksums.txt` **before** anything is replaced, and the binary it
-replaces is kept beside it.
+GitHub releases the archives are published to. It fetches the platform's
+archive — `eznit_<tag>_<os>_<arch>`, one per platform since v0.24.0 — and checks
+it against the release's `checksums.txt` **before** anything is replaced. The
+binary it replaces is kept beside it.
 
 | Command | Flags | What it does |
 | --- | --- | --- |

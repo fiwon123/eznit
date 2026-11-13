@@ -23,7 +23,7 @@ type UpdateCmd struct {
 
 // Run updates the CLI. The desktop app has the same controls in About.
 func (cmd *UpdateCmd) Run(g *Globals) error {
-	updater := update.New(update.CLIFamily, update.MemberCLI)
+	updater := update.New(update.MemberCLI)
 
 	switch {
 	case cmd.Revert:
