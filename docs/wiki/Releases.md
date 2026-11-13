@@ -77,11 +77,12 @@ from `assets/logo.png` before the build and removed afterwards.
 
 The macOS archives are **cross-compiled and never executed**, and no ARM64
 binary is started on ARM hardware; the only released binaries any gate starts
-are the Windows amd64 CLI and window. The window is built on a runner matching
-each platform: Linux amd64 and arm64 natively (the arm64 one on an arm64
-runner), Windows amd64 with mingw, Windows arm64 with llvm-mingw, and both
-macOS targets natively — Fyne needs cgo, so a plain cross-compile is not an
-option.
+are the Windows amd64 CLI and window, plus the server on Windows and Linux
+amd64, which is only asked to print the version it was built with. The window
+is built on a runner matching each platform: Linux amd64 and arm64 natively (the
+arm64 one on an arm64 runner), Windows amd64 with mingw, Windows arm64 with
+llvm-mingw, and both macOS targets natively — Fyne needs cgo, so a plain
+cross-compile is not an option.
 
 ## ✅ Verify a download
 

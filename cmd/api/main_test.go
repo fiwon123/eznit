@@ -412,3 +412,56 @@ func TestParseArgsHelp(t *testing.T) {
 		t.Errorf("usage = %q, want it to name the version flag", printed)
 	}
 }
+
+// --version answers before the environment file, the logger and the database.
+// The environment points the database at a port nothing listens on, so a
+// start-up that got that far would fail here instead of printing a version.
+func TestRunWithAnswersTheVersion(t *testing.T) {
+	t.Setenv("DB_HOST", "127.0.0.1")
+	t.Setenv("DB_PORT", "1")
+
+	var stdout, stderr strings.Builder
+
+	err := runWith([]string{"--version"}, &stdout, &stderr)
+
+	if err != nil {
+		t.Fatalf("runWith(--version) error = %v, want nil", err)
+	}
+	if got, want := stdout.String(), Version+"\n"; got != want {
+		t.Errorf("runWith(--version) printed %q, want %q", got, want)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("runWith(--version) wrote %q to stderr, want nothing", stderr.String())
+	}
+}
+
+// Asking for help is not a failure.
+func TestRunWithHelpSucceeds(t *testing.T) {
+	var stdout, stderr strings.Builder
+
+	if err := runWith([]string{"-h"}, &stdout, &stderr); err != nil {
+		t.Fatalf("runWith(-h) error = %v, want nil", err)
+	}
+	if printed := stderr.String(); !strings.Contains(printed, "-version") {
+		t.Errorf("usage = %q, want it to name the version flag", printed)
+	}
+}
+
+// A flag the server does not know is a usage error: the flag set prints the
+// message and the usage, run says which kind of failure it hit, and main turns
+// that into exit 2 without a second copy of the message.
+func TestRunWithReportsAUsageError(t *testing.T) {
+	var stdout, stderr strings.Builder
+
+	err := runWith([]string{"-nope"}, &stdout, &stderr)
+
+	if !errors.Is(err, errUsage) {
+		t.Fatalf("runWith(-nope) error = %v, want errUsage", err)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("runWith(-nope) wrote %q to stdout, want nothing", stdout.String())
+	}
+	if printed := stderr.String(); !strings.Contains(printed, "flag provided but not defined: -nope") {
+		t.Errorf("stderr = %q, want it to name the problem", printed)
+	}
+}

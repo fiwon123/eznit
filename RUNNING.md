@@ -24,6 +24,10 @@ DB_HOST=localhost DB_PORT=5432 ./eznit-server
 
 `eznit-server` embeds the web UI, so <http://localhost:4000> serves it.
 
+`./eznit-server --version` prints the release this bundle carries, and needs no
+database, no `.env` and no log folder — it is the quickest way to tell whether
+the folder you extracted is the tag it claims.
+
 ## What does not work from here
 
 `docker compose up` (the whole file) builds the `api` and `web` services from

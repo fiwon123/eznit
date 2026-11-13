@@ -40,9 +40,20 @@ var Version = "dev"
 
 func main() {
 	if err := run(); err != nil {
+		if errors.Is(err, errUsage) {
+			// The flag set has already named the problem and printed the usage,
+			// so this path adds nothing to the output. 2 is the code the flag
+			// package publishes for a command line it cannot read.
+			os.Exit(2)
+		}
 		log.Fatal(err)
 	}
 }
+
+// errUsage marks a command line the server could not read. It exists so run can
+// say which kind of failure it hit without exiting: main owns the exit code, and
+// the defers a start-up takes still run.
+var errUsage = errors.New("the command line could not be read")
 
 // options are the flags `eznit-server` accepts.
 type options struct {
@@ -75,23 +86,28 @@ func parseArgs(args []string, out io.Writer) (options, error) {
 // run holds main's body so the defers it takes — the log flush, the database
 // connection — run on every exit path, a failed start included.
 func run() error {
+	return runWith(os.Args[1:], os.Stdout, os.Stderr)
+}
+
+// runWith is run for a given command line and output.
+//
+// The arguments and the writers are handed in so a test can ask what --version
+// does — where it prints, and before what — without a process, a terminal or a
+// database.
+func runWith(args []string, stdout, stderr io.Writer) error {
 	// Flags come first. `--version` has to answer on a machine with no .env, no
 	// database and no log folder, and a mistyped flag should fail before
 	// anything starts rather than halfway through a start-up.
-	opts, err := parseArgs(os.Args[1:], os.Stderr)
+	opts, err := parseArgs(args, stderr)
 	if errors.Is(err, flag.ErrHelp) {
 		return nil // -h printed its own usage, and asking for help is not a failure
 	}
 	if err != nil {
-		// The flag set already named the problem and printed the usage; a
-		// second copy from log.Fatal would not help. Exit 2 is what the flag
-		// package exits with for a usage error, and nothing is open yet, so no
-		// deferred work is skipped.
-		os.Exit(2)
+		return errUsage
 	}
 
 	if opts.version {
-		fmt.Println(Version)
+		fmt.Fprintln(stdout, Version)
 		return nil
 	}
 
