@@ -86,6 +86,17 @@ archive that does not match its published hash is not installed. Check that the
 release has both the archive and `checksums.txt`, and that the tag is
 `vMAJOR.MINOR.PATCH`. Only HTTPS is accepted.
 
+## `Install failed: checksums.txt has no entry`
+
+Versions up to **v0.28.0** asked for an archive name the release stopped
+publishing in **v0.24.0** (`eznit-cli_…` instead of `eznit_…`), so neither
+`eznit update` nor the window's **Install** could work. The fix ships in
+**v0.28.1**. A binary from v0.28.0 or earlier cannot fetch it — the name it
+asks for is the bug — so upgrade once by hand: download
+`eznit_v0.28.1_<os>_<arch>` from the release page, verify it against
+`checksums.txt`, extract it, and run the binary from the extracted folder (or
+replace the old one). From v0.28.1 on, the built-in update works again.
+
 ## The update installed, but `-v` still shows the old version
 
 The running process keeps the binary it started from. Restart `eznit` (or the

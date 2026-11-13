@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -20,27 +21,29 @@ import (
 	"github.com/minio/selfupdate"
 )
 
+// AssetName is the name the release actually publishes: since v0.24.0 (#242)
+// one archive per platform carries every member, so the prefix is the packer's
+// FAMILY and never a per-family name.
 func TestAssetName(t *testing.T) {
 	tests := []struct {
-		family  string
+		name    string
 		goos    string
 		goarch  string
 		version string
 		want    string
 		wantErr bool
 	}{
-		{CLIFamily, "linux", "amd64", "v1.2.3", "eznit-cli_v1.2.3_linux_amd64.tar.gz", false},
-		{CLIFamily, "windows", "arm64", "v1.2.3", "eznit-cli_v1.2.3_windows_arm64.zip", false},
-		{ServerFamily, "darwin", "amd64", "v1.2.3", "eznit-server_v1.2.3_darwin_amd64.tar.gz", false},
-		{CLIFamily, "linux", "amd64", "1.2.3", "", true},
-		{CLIFamily, "plan9", "amd64", "v1.2.3", "", true},
-		{CLIFamily, "linux", "386", "v1.2.3", "", true},
-		{"other", "linux", "amd64", "v1.2.3", "", true},
+		{"linux amd64", "linux", "amd64", "v1.2.3", "eznit_v1.2.3_linux_amd64.tar.gz", false},
+		{"darwin arm64", "darwin", "arm64", "v1.2.3", "eznit_v1.2.3_darwin_arm64.tar.gz", false},
+		{"windows arm64", "windows", "arm64", "v1.2.3", "eznit_v1.2.3_windows_arm64.zip", false},
+		{"untagged version", "linux", "amd64", "1.2.3", "", true},
+		{"unsupported os", "plan9", "amd64", "v1.2.3", "", true},
+		{"unsupported arch", "linux", "386", "v1.2.3", "", true},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.want, func(t *testing.T) {
-			got, err := AssetName(tt.family, tt.goos, tt.goarch, tt.version)
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := AssetName(tt.goos, tt.goarch, tt.version)
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("AssetName() error = %v, wantErr %v", err, tt.wantErr)
@@ -50,6 +53,42 @@ func TestAssetName(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The archive prefix is the packer's FAMILY. Reading it from the Makefile is
+// what makes a rename fail here instead of in a user's update: the last time
+// the two drifted, every install asked for a file the release no longer had.
+func TestAssetNameMatchesThePacker(t *testing.T) {
+	makefile, err := os.ReadFile(filepath.Join("..", "..", "Makefile"))
+	if err != nil {
+		t.Fatalf("read the Makefile: %v", err)
+	}
+
+	family := makeVariable(t, makefile, "FAMILY")
+
+	// FAMILY is written as $(APP_NAME); resolve that one reference, and refuse
+	// anything more complicated rather than guessing at make syntax.
+	if strings.HasPrefix(family, "$(") {
+		name := strings.TrimSuffix(strings.TrimPrefix(family, "$("), ")")
+		family = makeVariable(t, makefile, name)
+	}
+
+	if family != ArchiveFamily {
+		t.Errorf("the packer's FAMILY is %q but the updater asks for %q", family, ArchiveFamily)
+	}
+}
+
+// makeVariable reads one `NAME := value` from a Makefile.
+func makeVariable(t *testing.T, makefile []byte, name string) string {
+	t.Helper()
+
+	pattern := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(name) + ` := (\S+)\s*$`)
+	match := pattern.FindSubmatch(makefile)
+	if match == nil {
+		t.Fatalf("the Makefile names no %s", name)
+	}
+
+	return string(match[1])
 }
 
 func TestParseChecksum(t *testing.T) {
@@ -154,11 +193,10 @@ func newReleaseServer(t *testing.T, version, asset string, archive []byte) *rele
 	return release
 }
 
-func (r *releaseServer) updater(t *testing.T, family, member string, goos, goarch string) *Updater {
+func (r *releaseServer) updater(t *testing.T, member string, goos, goarch string) *Updater {
 	t.Helper()
 
 	return &Updater{
-		Family:     family,
 		Member:     member,
 		BaseURL:    r.server.URL + "/download",
 		LatestURL:  r.server.URL + "/latest",
@@ -171,10 +209,10 @@ func (r *releaseServer) updater(t *testing.T, family, member string, goos, goarc
 
 func TestInstallAndRestore(t *testing.T) {
 	version := "v1.2.3"
-	asset, _ := AssetName(CLIFamily, "linux", "amd64", version)
+	asset, _ := AssetName("linux", "amd64", version)
 
 	release := newReleaseServer(t, version, asset, tarGz(t, MemberGUI, []byte("new-binary")))
-	updater := release.updater(t, CLIFamily, MemberGUI, "linux", "amd64")
+	updater := release.updater(t, MemberGUI, "linux", "amd64")
 
 	if err := updater.Install("v1.0.0", version); err != nil {
 		t.Fatalf("Install() error = %v", err)
@@ -211,11 +249,11 @@ func TestInstallAndRestore(t *testing.T) {
 
 func TestInstallRefusesAChecksumMismatch(t *testing.T) {
 	version := "v1.2.3"
-	asset, _ := AssetName(CLIFamily, "linux", "amd64", version)
+	asset, _ := AssetName("linux", "amd64", version)
 
 	release := newReleaseServer(t, version, asset, tarGz(t, MemberCLI, []byte("new-binary")))
 	release.checksum = strings.Repeat("0", 64)
-	updater := release.updater(t, CLIFamily, MemberCLI, "linux", "amd64")
+	updater := release.updater(t, MemberCLI, "linux", "amd64")
 
 	if err := updater.Install("v1.0.0", version); err == nil {
 		t.Fatal("Install() error = nil, want the checksum refusal")
@@ -224,10 +262,10 @@ func TestInstallRefusesAChecksumMismatch(t *testing.T) {
 
 func TestInstallRefusesAMissingMember(t *testing.T) {
 	version := "v1.2.3"
-	asset, _ := AssetName(CLIFamily, "linux", "amd64", version)
+	asset, _ := AssetName("linux", "amd64", version)
 
 	release := newReleaseServer(t, version, asset, tarGz(t, MemberCLI, []byte("cli")))
-	updater := release.updater(t, CLIFamily, MemberGUI, "linux", "amd64")
+	updater := release.updater(t, MemberGUI, "linux", "amd64")
 
 	if err := updater.Install("v1.0.0", version); err == nil {
 		t.Fatal("Install() error = nil, want the missing member refused")
@@ -236,10 +274,10 @@ func TestInstallRefusesAMissingMember(t *testing.T) {
 
 func TestInstallWindowsZip(t *testing.T) {
 	version := "v1.2.3"
-	asset, _ := AssetName(CLIFamily, "windows", "amd64", version)
+	asset, _ := AssetName("windows", "amd64", version)
 
 	release := newReleaseServer(t, version, asset, zipFile(t, MemberGUI+".exe", []byte("exe")))
-	updater := release.updater(t, CLIFamily, MemberGUI, "windows", "amd64")
+	updater := release.updater(t, MemberGUI, "windows", "amd64")
 
 	if err := updater.Install("v1.0.0", version); err != nil {
 		t.Fatalf("Install() error = %v", err)
@@ -251,7 +289,7 @@ func TestInstallWindowsZip(t *testing.T) {
 
 func TestLatest(t *testing.T) {
 	release := newReleaseServer(t, "v9.9.9", "unused", nil)
-	updater := release.updater(t, CLIFamily, MemberCLI, "linux", "amd64")
+	updater := release.updater(t, MemberCLI, "linux", "amd64")
 
 	tag, err := updater.Latest()
 	if err != nil {
