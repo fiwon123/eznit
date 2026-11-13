@@ -61,6 +61,11 @@ jobs:
       # A tag on a side branch would publish a commit that never passed the
       # release pull request. Refusing here makes the mistake loud instead of
       # shipping it.
+      #
+      # Being on main is not enough: an older commit on main is a released tree,
+      # and tagging it publishes that tree under a new version. v0.30.1 was
+      # published from v0.30.0's merge commit exactly that way. The tag must be
+      # main's tip — the release merge commit just merged.
       - name: Refuse a tag that is not on main
         if: github.event_name == 'push'
         run: |
@@ -69,7 +74,15 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME points at $GITHUB_SHA, which is not on main"
             exit 1
           fi
-          echo "$GITHUB_REF_NAME ($GITHUB_SHA) is on main"
+
+          main="$(git rev-parse origin/main)"
+          if [ "$GITHUB_SHA" != "$main" ]; then
+            echo "::error::tag $GITHUB_REF_NAME points at $GITHUB_SHA, but main is at $main"
+            echo "::error::tag the release merge commit — main's tip — not an older commit on main"
+            exit 1
+          fi
+
+          echo "$GITHUB_REF_NAME ($GITHUB_SHA) is main's tip"
 
       - name: Resolve the version and the commit
         id: version
