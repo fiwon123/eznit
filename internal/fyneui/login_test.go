@@ -49,18 +49,23 @@ func TestLoginHasOnePrimaryAction(t *testing.T) {
 	}
 }
 
-// "This machine" belongs beside the address field it fills in, not on a row of
-// its own under the form.
+// The local choice belongs beside the address field it fills in, not on a row
+// of its own under the form.
 func TestLoginPutsThisMachineBesideTheServerField(t *testing.T) {
 	view := newTestLogin(t, false)
 
-	button := findButton(view.ui.tabs.Items[0].Content, "This machine")
-	if button == nil {
-		t.Fatal("the form has no 'This machine' button")
+	if !sharesParent(view.ui.tabs.Items[0].Content, view.api, view.local) {
+		t.Error("'Use this machine' is not in the same row as the Server field")
 	}
 
-	if !sharesParent(view.ui.tabs.Items[0].Content, view.api, button) {
-		t.Error("'This machine' is not in the same row as the Server field")
+	view.local.SetChecked(true)
+
+	if !view.api.Disabled() {
+		t.Error("the address field is open while the form is set to this machine")
+	}
+
+	if got := view.api.Text; got != view.ui.localAddress() {
+		t.Errorf("address = %q, want this machine's %q", got, view.ui.localAddress())
 	}
 }
 

@@ -114,7 +114,8 @@ the Server tab looks for `eznit-server` beside the window. The first run is:
 1. start a database in that folder: `docker compose up -d db migrate`;
 2. **Server → Configuration → Create .env**, set the database password, **Save**;
 3. **Server → Start**: the Output tab shows the log and the status dot turns green;
-4. **Files**: **This machine**, then **Test**, then **Connect**, and create the
+4. **Files**: **Use this machine** is checked by default, so **Test**, then
+   **Connect**, and create the
    first account — it is the instance's admin.
 
 The window is also a client of a server somewhere else, and that needs no bundle:

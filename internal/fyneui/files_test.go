@@ -41,16 +41,16 @@ func newTestFilesView(t *testing.T, address apiChoice) *filesView {
 func TestFilesHeaderNamesTheServerAndItsSource(t *testing.T) {
 	view := newTestFilesView(t, apiChoice{url: "http://127.0.0.1:4321", source: "the local server"})
 
-	if got := view.address.Text; got != "http://127.0.0.1:4321" {
+	if got := view.bar.entry.Text; got != "http://127.0.0.1:4321" {
 		t.Errorf("address = %q, want the resolved URL", got)
 	}
-	if view.address.Disabled() {
+	if view.bar.entry.Disabled() {
 		t.Error("the address field is disabled, so it cannot be typed")
 	}
-	if !view.source.Selectable {
+	if !view.bar.source.Selectable {
 		t.Error("the source is not selectable")
 	}
-	if got := view.source.Text; !strings.Contains(got, "the local server") {
+	if got := view.bar.source.Text; !strings.Contains(got, "the local server") {
 		t.Errorf("source = %q, want where the address came from", got)
 	}
 }
@@ -159,8 +159,8 @@ func TestFilesAddressIsTypedAndConnected(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	u.files.address.SetText("http://127.0.0.1:5000")
-	u.files.connectTyped()
+	u.files.bar.entry.SetText("http://127.0.0.1:5000")
+	u.files.bar.connectTyped()
 
 	stored, err := config.Value("api_url")
 	if err != nil || stored != "http://127.0.0.1:5000" {
@@ -181,8 +181,8 @@ func TestFilesAddressIsTypedAndConnected(t *testing.T) {
 func TestFilesRefusesABadTypedAddress(t *testing.T) {
 	u := newTestUI(t)
 
-	u.files.address.SetText("not a url")
-	u.files.connectTyped()
+	u.files.bar.entry.SetText("not a url")
+	u.files.bar.connectTyped()
 
 	if _, err := config.Value("api_url"); err == nil {
 		t.Error("a bad address was saved")
@@ -193,18 +193,35 @@ func TestFilesRefusesABadTypedAddress(t *testing.T) {
 	}
 }
 
-// "This machine" fills the field from the Server tab rather than saving
-// anything: it is a shortcut for typing, not a connection.
-func TestFilesThisMachineFillsTheField(t *testing.T) {
+// The checkbox is the choice: checked, the bar shows this machine's address and
+// keeps the field shut; unchecking opens it. Neither saves an address — Connect
+// is what switches.
+func TestFilesLocalCheckboxFillsTheField(t *testing.T) {
 	u := newTestUI(t)
 
-	u.files.useLocalAddress()
+	u.local = true
+	u.files.bar.sync()
 
-	if got := u.files.address.Text; got != u.localAddress() {
+	if got := u.files.bar.entry.Text; got != u.localAddress() {
 		t.Errorf("address = %q, want the Server tab's address %q", got, u.localAddress())
 	}
 
+	if !u.files.bar.entry.Disabled() {
+		t.Error("the field is open while the bar is set to this machine")
+	}
+
 	if _, err := config.Value("api_url"); err == nil {
-		t.Error("filling the field saved the address")
+		t.Error("setting the choice saved an address")
+	}
+
+	u.files.bar.local.SetChecked(false)
+
+	if u.files.bar.entry.Disabled() {
+		t.Error("unchecking did not open the field")
+	}
+
+	stored, err := config.Value(localModeKey)
+	if err != nil || stored != "false" {
+		t.Errorf("%s = %q (%v), want the manual mode remembered", localModeKey, stored, err)
 	}
 }

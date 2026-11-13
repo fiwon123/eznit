@@ -84,13 +84,16 @@ it is pointed at is another bundle.
   answers "nothing to save" when nothing changed.
 
 The window is also a client: the **Files** tab signs in to one eznit API and
-always shows which. Its header holds the address in an editable field, with the
-source underneath it and a dot that reports whether that server answered:
+always shows which. Its header is an address bar, and the **Templates** tab has
+the same one:
 
-- **Connect** validates the typed address and switches to it, remembering it.
-- **Test** asks the typed address `/v1/healthcheck` without saving it.
-- **This machine** fills in the server the Server tab would run, on the port
-  that folder's configuration names, so the two tabs cannot disagree.
+- **Use this machine** is the default and is remembered: checked, the field
+  shows the server the Server tab would run, on the port that folder's
+  configuration names, and is shut; unchecked, the field takes any address.
+- **Connect** validates the address and switches to it, remembering it.
+- **Test** asks the address `/v1/healthcheck` without saving it.
+- The source line under the checkbox names where the address came from: this
+  machine, `-api`, `GUI_API_URL`, or an address you typed.
 
 The Server tab's folder is an editable field too: type a bundle folder and press
 **Use** (or Enter), or pick one with **Browse…**. **Reset** returns to the folder

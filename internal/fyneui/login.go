@@ -9,7 +9,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/fiwon123/eznit/internal/apiclient"
@@ -29,6 +28,7 @@ const (
 // not lost.
 type loginView struct {
 	ui      *ui
+	local   *widget.Check
 	api     *widget.Entry
 	email   *widget.Entry
 	pass    *widget.Entry
@@ -45,6 +45,7 @@ type loginView struct {
 func newLoginView(u *ui, message string) *loginView {
 	view := &loginView{
 		ui:      u,
+		local:   widget.NewCheck("Use this machine", nil),
 		api:     widget.NewEntry(),
 		email:   widget.NewEntry(),
 		pass:    widget.NewPasswordEntry(),
@@ -52,7 +53,10 @@ func newLoginView(u *ui, message string) *loginView {
 		status:  widget.NewLabel(message),
 	}
 
-	view.api.SetText(u.client.BaseURL)
+	view.local.SetChecked(u.local)
+	view.local.OnChanged = func(bool) { view.syncServerField() }
+	view.syncServerField()
+
 	view.email.SetPlaceHolder("you@example.com")
 	view.pass.SetPlaceHolder("your password")
 	view.confirm.SetPlaceHolder("the same password again")
@@ -66,6 +70,20 @@ func newLoginView(u *ui, message string) *loginView {
 	return view
 }
 
+// syncServerField shows this machine's address, or the one typed, according to
+// the checkbox — the same choice the tabs' bars offer.
+func (l *loginView) syncServerField() {
+	if l.local.Checked {
+		l.api.SetText(l.ui.localAddress())
+		l.api.Disable()
+
+		return
+	}
+
+	l.api.SetText(l.ui.address.url)
+	l.api.Enable()
+}
+
 func (l *loginView) content() fyne.CanvasObject {
 	logo := canvas.NewImageFromResource(logoResource())
 	logo.FillMode = canvas.ImageFillContain
@@ -75,12 +93,7 @@ func (l *loginView) content() fyne.CanvasObject {
 	subtitle := widget.NewLabelWithStyle("Your project's setup, in one place you host.",
 		fyne.TextAlignCenter, fyne.TextStyle{})
 
-	useLocal := widget.NewButtonWithIcon("This machine", theme.ComputerIcon(), func() {
-		l.api.SetText(l.ui.localAddress())
-	})
-	useLocal.Importance = widget.LowImportance
-
-	serverRow := container.NewBorder(nil, nil, nil, useLocal, l.api)
+	serverRow := container.NewBorder(nil, nil, l.local, nil, l.api)
 
 	rows := []formRow{
 		{caption: "Server", input: serverRow},
@@ -171,9 +184,21 @@ func (l *loginView) submit() {
 		return
 	}
 
-	base, err := apiclient.ValidateBaseURL(l.api.Text)
+	typed := l.api.Text
+	source := "the address you entered"
+	if l.local.Checked {
+		typed = l.ui.localAddress()
+		source = localSource
+	}
+
+	base, err := apiclient.ValidateBaseURL(typed)
 	if err != nil {
 		l.setStatus(err.Error())
+		return
+	}
+
+	if err := l.ui.setLocal(l.local.Checked); err != nil {
+		l.setStatus("The choice of server could not be saved: " + err.Error())
 		return
 	}
 
@@ -187,6 +212,7 @@ func (l *loginView) submit() {
 
 	signup := l.signup
 	confirm := l.confirm.Text
+	local := l.local.Checked
 
 	go func() {
 		client := apiclient.New(base)
@@ -221,6 +247,8 @@ func (l *loginView) submit() {
 				return
 			}
 
+			l.ui.local = local
+			l.ui.address = apiChoice{url: base, source: source}
 			l.ui.client = apiclient.New(base)
 			l.ui.client.Token = token
 			l.ui.showMain()
