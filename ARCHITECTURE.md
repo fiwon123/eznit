@@ -299,15 +299,16 @@ The GUI reads `GUI_API_URL` (the default server address), `-api` and
 `-server-dir` (flags, which win), and stores its choices in
 `~/.eznit/config.json` beside the CLI's: `api_url`, `token` and `server_dir`.
 The address is resolved as `-api`, then `GUI_API_URL`, then the saved address,
-then `http://localhost:4000`; the Files tab's header names both the address and
-which of those produced it, because the previous order let a saved address
-silently disable the documented `GUI_API_URL`. `apiclient.ValidateBaseURL` and
-`SameHost` decide whether a typed address is usable and whether a session token
-still belongs to it: a different host means a different instance, so the token
-is forgotten and the login form follows, while a port change on one host keeps
-the session. The tab's actions stay disabled until `/v1/healthcheck` has
-answered through a listing, so a wrong address cannot look like an empty
-library.
+then `http://localhost:4000`; the Files tab's header holds the address in an
+editable field, shows which of those produced it, and offers **Test** (a
+`/v1/healthcheck` call that saves nothing), **Connect** (validate, then switch)
+and **This machine** (fill in the Server tab's address). `apiclient.ValidateBaseURL`
+and `SameHost` decide whether a typed address is usable and whether a session
+token still belongs to it: a different host means a different instance, so the
+token is forgotten — after a confirmation — and the login form follows, while a
+port change on one host keeps the session. The tab's actions stay disabled until
+`/v1/healthcheck` has answered through a listing, so a wrong address cannot look
+like an empty library.
 
 The session belongs to the Files tab: it is the tab that shows the login form
 when there is no token, and its header carries **Sign out**. Signing out removes
@@ -316,7 +317,8 @@ drops the catalogue, which is per account. The About tab is the window's
 identity and its update controls; it holds nothing about a session.
 
 The Server tab reads the env file of `server_dir` — the folder the window was
-installed into unless another is chosen — and starts `eznit-server` from it as a
+installed into unless another is chosen with **Browse…** or typed into the
+folder field and committed with **Use** — and starts `eznit-server` from it as a
 child process, with that file as its environment. A stop is an interrupt, so the
 API drains (10s) before the window gives up and kills it; Windows cannot deliver
 an interrupt to another process, so there a stop is a kill.

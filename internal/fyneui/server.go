@@ -57,13 +57,14 @@ type serverView struct {
 
 	built fyne.CanvasObject
 
-	folder *widget.Label
+	folder *widget.Entry
 	status *widget.Label
 	health *widget.Label
 	dot    *canvas.Circle
 	start  *widget.Button
 	stop   *widget.Button
 	open   *widget.Button
+	use    *widget.Button
 	choose *widget.Button
 	reset  *widget.Button
 
@@ -163,7 +164,10 @@ func (v *serverView) useChosenDir(dir string) bool {
 
 	if err := config.Set("server_dir", dir); err != nil {
 		v.setNote("The folder changed for this session, but it could not be saved for the next start: " + err.Error())
+		return true
 	}
+
+	v.setNote("Using the folder " + dir + ".")
 
 	return true
 }
@@ -268,12 +272,17 @@ func (v *serverView) content() fyne.CanvasObject {
 	v.stop.Importance = widget.DangerImportance
 	v.open = widget.NewButtonWithIcon("Open in browser", theme.ComputerIcon(), v.openBrowser)
 
-	// The folder is an identifier, not prose: one line, ellipsized when the
-	// window is narrow, so it cannot paint over the buttons beside it.
-	v.folder = oneLine(v.folderPath())
+	// The folder is an editable field, not only a picker: the path is often
+	// known, and a file dialog starts wherever it last was. Use (or Enter)
+	// validates and commits it; Browse… is the picker.
+	v.folder = widget.NewEntry()
+	v.folder.SetText(v.folderPath())
+	v.folder.SetPlaceHolder("the extracted bundle folder")
+	v.folder.OnSubmitted = func(string) { v.useTypedFolder() }
 
-	v.choose = widget.NewButtonWithIcon("Choose folder…", theme.FolderOpenIcon(), v.chooseFolder)
-	v.reset = widget.NewButtonWithIcon("Reset to default", theme.ViewRefreshIcon(), v.resetDir)
+	v.use = widget.NewButtonWithIcon("Use", theme.ConfirmIcon(), v.useTypedFolder)
+	v.choose = widget.NewButtonWithIcon("Browse…", theme.FolderOpenIcon(), v.chooseFolder)
+	v.reset = widget.NewButtonWithIcon("Reset", theme.ViewRefreshIcon(), v.resetDir)
 
 	// One compact header rather than a card: the card left the panes 121 px
 	// tall at 980x640 (#235), which is why the log could not be read and the
@@ -285,11 +294,11 @@ func (v *serverView) content() fyne.CanvasObject {
 	// text rather than on the taller buttons.
 	stateRow := container.NewBorder(nil, nil,
 		dotWithLabel(v.dot, v.status),
-		container.NewHBox(v.start, v.stop, v.open),
+		container.NewHBox(v.start, v.stop, widget.NewSeparator(), v.open),
 		v.health,
 	)
-	folderRow := container.NewBorder(nil, nil, widget.NewLabel("Folder"),
-		container.NewHBox(v.choose, v.reset), v.folder)
+	folderRow := container.NewBorder(nil, nil, muted("Folder"),
+		container.NewHBox(v.use, v.choose, widget.NewSeparator(), v.reset), v.folder)
 
 	v.note = newProse("")
 	v.note.Hide()
@@ -728,9 +737,37 @@ func (v *serverView) openBrowser() {
 	}
 }
 
-// setFolderEditable turns the two folder controls on or off together.
+// useTypedFolder commits the path typed into the folder field. The picker and
+// the field end in the same place, so the checks live here rather than there:
+// the path has to exist and be a directory, and a running server refuses the
+// change with the same explanation a picked folder gets.
+func (v *serverView) useTypedFolder() {
+	dir := strings.TrimSpace(v.folder.Text)
+
+	if dir == "" {
+		v.setNote("Enter the folder of a server bundle, or use Browse… to pick one.")
+		return
+	}
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		v.setNote("That folder could not be opened: " + err.Error())
+		return
+	}
+
+	if !info.IsDir() {
+		v.setNote("That is a file, not a folder: " + dir)
+		return
+	}
+
+	if !v.useChosenDir(dir) {
+		return
+	}
+}
+
+// setFolderEditable turns the folder controls on or off together.
 func (v *serverView) setFolderEditable(editable bool) {
-	for _, button := range []*widget.Button{v.choose, v.reset} {
+	for _, button := range []*widget.Button{v.use, v.choose, v.reset} {
 		if button == nil {
 			continue
 		}
@@ -739,6 +776,14 @@ func (v *serverView) setFolderEditable(editable bool) {
 			button.Enable()
 		} else {
 			button.Disable()
+		}
+	}
+
+	if v.folder != nil {
+		if editable {
+			v.folder.Enable()
+		} else {
+			v.folder.Disable()
 		}
 	}
 }
@@ -839,7 +884,7 @@ func (v *serverView) notBundleNote() string {
 	return fmt.Sprintf(
 		"This folder is not a server bundle: it has no %s. A bundle is the extracted release archive — "+
 			"run eznit-gui from inside it, or choose that folder with Choose folder…. "+
-			"To use a server that already runs, use Change… on the Files tab instead.",
+			"To use a server that already runs, type its address on the Files tab instead.",
 		strings.Join(v.bundle.Missing(), " and "))
 }
 

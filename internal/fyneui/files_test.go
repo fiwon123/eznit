@@ -44,8 +44,8 @@ func TestFilesHeaderNamesTheServerAndItsSource(t *testing.T) {
 	if got := view.address.Text; got != "http://127.0.0.1:4321" {
 		t.Errorf("address = %q, want the resolved URL", got)
 	}
-	if !view.address.Selectable {
-		t.Error("the address is not selectable, so it cannot be copied")
+	if view.address.Disabled() {
+		t.Error("the address field is disabled, so it cannot be typed")
 	}
 	if !view.source.Selectable {
 		t.Error("the source is not selectable")
@@ -89,8 +89,8 @@ func TestTakeOfflineNamesTheAddress(t *testing.T) {
 	if !strings.Contains(view.status.Text, "https://eznit.example.com") {
 		t.Errorf("status = %q, want the address that failed", view.status.Text)
 	}
-	if !strings.Contains(view.status.Text, "Change") {
-		t.Errorf("status = %q, want it to point at Change", view.status.Text)
+	if !strings.Contains(view.status.Text, "Connect") {
+		t.Errorf("status = %q, want it to point at Connect", view.status.Text)
 	}
 	if view.ready {
 		t.Error("the view is still ready after a failed load")
@@ -145,5 +145,66 @@ func TestCopyIsOffWithoutASelection(t *testing.T) {
 	}
 	if !strings.Contains(view.detail.Text, "Select a file") {
 		t.Errorf("detail = %q, want it to ask for a selection", view.detail.Text)
+	}
+}
+
+// The address in the header is the thing a person changes, so it is a field
+// with a Connect action: typing a valid address switches the tab and is
+// remembered, and the session stays on the same host.
+func TestFilesAddressIsTypedAndConnected(t *testing.T) {
+	u := newTestUI(t)
+
+	u.client.Token = "the-token"
+	if err := config.Set("token", "the-token"); err != nil {
+		t.Fatal(err)
+	}
+
+	u.files.address.SetText("http://127.0.0.1:5000")
+	u.files.connectTyped()
+
+	stored, err := config.Value("api_url")
+	if err != nil || stored != "http://127.0.0.1:5000" {
+		t.Errorf("api_url = %q (%v), want the typed address", stored, err)
+	}
+
+	if u.client.Token != "the-token" {
+		t.Errorf("token = %q, want it kept on the same host", u.client.Token)
+	}
+
+	if u.address.url != "http://127.0.0.1:5000" {
+		t.Errorf("address = %q, want the typed one", u.address.url)
+	}
+}
+
+// An address the client cannot use is refused where it was typed: nothing is
+// saved and the status says what is wrong.
+func TestFilesRefusesABadTypedAddress(t *testing.T) {
+	u := newTestUI(t)
+
+	u.files.address.SetText("not a url")
+	u.files.connectTyped()
+
+	if _, err := config.Value("api_url"); err == nil {
+		t.Error("a bad address was saved")
+	}
+
+	if !strings.Contains(u.files.status.Text, "http://") {
+		t.Errorf("status = %q, want the validation message", u.files.status.Text)
+	}
+}
+
+// "This machine" fills the field from the Server tab rather than saving
+// anything: it is a shortcut for typing, not a connection.
+func TestFilesThisMachineFillsTheField(t *testing.T) {
+	u := newTestUI(t)
+
+	u.files.useLocalAddress()
+
+	if got := u.files.address.Text; got != u.localAddress() {
+		t.Errorf("address = %q, want the Server tab's address %q", got, u.localAddress())
+	}
+
+	if _, err := config.Value("api_url"); err == nil {
+		t.Error("filling the field saved the address")
 	}
 }

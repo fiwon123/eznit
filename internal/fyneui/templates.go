@@ -260,7 +260,7 @@ func (v *templatesView) reload() {
 				v.updateActions()
 
 				v.setStatus(fmt.Sprintf(
-					"The catalogue could not be loaded from %s (%s). Use Refresh to try again, or Change… on the Files tab to point the window somewhere else.",
+					"The catalogue could not be loaded from %s (%s). Use Refresh to try again, or change the address on the Files tab.",
 					address, messageOf(err)), statusError)
 
 				return

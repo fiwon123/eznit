@@ -42,10 +42,9 @@ tested on Linux only.
 
 `eznit-gui` is the native desktop app (Fyne) and ships in **every** archive:
 Linux and Windows on amd64 and arm64, and macOS on both architectures. It has
-three jobs: the **Files** tab is a client of one API — its header names the
-address in use, and **Change…** switches between this machine's server and any
-other, so `GUI_API_URL` is a startup default rather than the only way to point
-it; the **Templates** tab reads that server's catalogue, writes the `.eznit`
+three jobs: the **Files** tab is a client of one API — its header holds the
+address in an editable field (Test, then Connect), so `GUI_API_URL` is a startup
+default rather than the only way to point it; the **Templates** tab reads that server's catalogue, writes the `.eznit`
 bundle `template export` writes, and applies a template into a folder with the
 same rules `template apply` uses; and the **Server** tab starts and stops the
 `eznit-server` beside it, shows its log, and edits the `.env` and password file

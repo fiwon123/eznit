@@ -38,10 +38,10 @@ machine next to it is solving the wrong problem.
   a token never reaches the API.
 - A git-host token stays on the CLI machine, one config key per host.
 - **The desktop window names its server** — the Files tab shows the address it
-  talks to and where that address came from, and **Change…** switches between
-  the server this machine runs and any other address, testing it first
-  ([#248](https://github.com/fiwon123/eznit/issues/248), v0.25.0). A different
-  host signs you out, because a session belongs to the server that issued it.
+  talks to and where that address came from; the address is an editable field,
+  **Test** asks it and **Connect** switches to it ([#248](https://github.com/fiwon123/eznit/issues/248),
+  v0.25.0; editable since v0.29.0). A different host signs you out, because a
+  session belongs to the server that issued it.
 - **Templates, from the window** — a Templates tab lists the catalogue (filtered
   by kind or to your own), shows one template's files, variables and commands,
   writes the offline `.eznit` bundle the CLI reads ([#260](https://github.com/fiwon123/eznit/issues/260)),
