@@ -42,6 +42,19 @@ func (t brandTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) c
 		return color.NRGBA{R: 0x93, G: 0xC5, B: 0xFD, A: 0xFF}
 	case theme.ColorNameSelection:
 		return color.NRGBA{R: 0x93, G: 0xC5, B: 0xFD, A: 0x66}
+	case theme.ColorNameDisabled:
+		// The stock colour is a near-background shade (#E3E3E3 light,
+		// #39393A dark), which is fine for a shape but not for text: a
+		// disabled entry draws what it holds in this colour, so the address a
+		// person needs to read became a blank field. These are slate greys —
+		// still visibly secondary, at least 4.5:1 against the background in
+		// both variants. The same colour is the disabled entry's border and a
+		// disabled button's text, which is why both read again too.
+		if variant == theme.VariantDark {
+			return color.NRGBA{R: 0x94, G: 0xA3, B: 0xB8, A: 0xFF}
+		}
+
+		return color.NRGBA{R: 0x64, G: 0x74, B: 0x8B, A: 0xFF}
 	}
 
 	return t.Theme.Color(name, variant)
