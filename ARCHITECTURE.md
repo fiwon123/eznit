@@ -324,9 +324,14 @@ identity and its update controls; it holds nothing about a session.
 The Server tab reads the env file of `server_dir` — the folder the window was
 installed into unless another is chosen with **Browse…** or typed into the
 folder field and committed with **Use** — and starts `eznit-server` from it as a
-child process, with that file as its environment. A stop is an interrupt, so the
-API drains (10s) before the window gives up and kills it; Windows cannot deliver
-an interrupt to another process, so there a stop is a kill.
+child process, with that file as its environment. Before that it makes the
+database usable (`internal/serverctl/database.go`): it probes the address the
+API will dial, runs the folder's `migrate` service when one answers, and starts
+the database through the folder's own Compose services when one does not — an
+API with no database is a process that answers a health check and prints pq
+errors, which is the state that step exists to prevent. A stop is an interrupt,
+so the API drains (10s) before the window gives up and kills it; Windows cannot
+deliver an interrupt to another process, so there a stop is a kill.
 
 The folder it resolved *by default* is never written to the config file: only a
 folder a person picked is stored, which is what keeps the default distinct from

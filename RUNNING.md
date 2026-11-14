@@ -52,9 +52,23 @@ window, so a window copied somewhere else (or started from another folder) has
 no server to run and will say so. **Choose folder…** helps only when the folder
 it is pointed at is another bundle.
 
-- **Start** checks the API port and reads the `.env` before it runs anything. A
-  folder with no `.env` gets one created from `.env.example`, pointed at
-  `127.0.0.1` and at this bundle's secret file.
+- **Start** begins with the database, because an API without one answers a
+  health check and prints pq errors and nothing else. It reads the `.env`
+  (creating it from `.env.example` when it is missing — pointed at `127.0.0.1`
+  and at this bundle's secret file), probes `DB_HOST:DB_PORT`, and then:
+  - nothing answers and the folder has `docker-compose.yml` → runs
+    `<runtime> up -d db`, waits for the port, then `<runtime> run --rm migrate`,
+    the same `migrate` service the manual path uses;
+  - the database answers → runs the migrations (`migrate up` is idempotent, so an
+    upgraded bundle cannot run against an old schema);
+  - neither → starts nothing, and the note names the missing piece: no compose
+    file, no `docker`/`podman` on `PATH`, or no `secrets/db_password.txt`.
+
+  The step streams its output into a modal, and a failure keeps that output on
+  screen with **Copy output**. The runtime is `docker compose`,
+  `podman-compose`, `docker-compose`, or `podman compose`, in that order. The
+  API starts only after the step succeeds, and a busy API port is still reported
+  before anything runs.
 - **Choose folder…** points the tab at another bundle and remembers the choice
   in `~/.eznit/config.json`. **Reset to default** asks first, then forgets the
   choice and returns to the folder this window was installed in — so a moved

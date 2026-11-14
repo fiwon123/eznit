@@ -72,6 +72,40 @@ Something else already listens on `API_PORT` (4000 by default) — often a serve
 this window started in another session, or `make run_api`. Stop it, or change
 the port in the configuration panel and save.
 
+## `password authentication failed for user "root"` in the Server tab
+
+The API reached PostgreSQL and the password did not match. Two causes:
+
+- **Nothing was sent.** The API takes its password from `DB_PASSWORD_FILE` (a
+  path to a file), then `DB_PWD`. A bundle's `.env` points at
+  `secrets/db_password.txt`; a folder without that file — or with an `.env` that
+  predates it — sends an empty password. Since **v0.32.0** Start checks this and
+  refuses with a note instead of starting; before it, the log was the only clue.
+- **The database kept an older password.** Compose applies `POSTGRES_PASSWORD`
+  when it *creates* its volume and never again, so changing the secret afterwards
+  does not change the database's password. Put the original password into
+  **Configuration**, or recreate the volume (`docker compose down -v`) — which
+  deletes the data.
+
+The status dot does not help here: `/v1/healthcheck` answers without touching the
+database, by design, so a green dot says "the process is up", not "the database
+is fine".
+
+## The Server tab says the database could not be prepared
+
+The step that runs before **Start** names the piece that is missing:
+
+- *no `docker-compose.yml`* — the folder is not a bundle, or the file was left
+  behind; start a PostgreSQL yourself and set `DB_HOST`/`DB_PORT`.
+- *no container runtime on PATH* — install Docker or Podman (Fedora:
+  `podman-compose`), or start a PostgreSQL yourself.
+- *no `secrets/db_password.txt`* — set the database password on **Configuration**
+  and save; Postgres bakes its password in when it creates the volume.
+- *did not answer after it was started* — press **Start** again; a first pull of
+  the images and a slow disk can outlast the 30-second wait. The database's own
+  log (`docker compose logs db`) says the rest. The full output is in the dialog,
+  with **Copy output**.
+
 ## The server starts and stops at once
 
 Read the **Output** tab: the API prints why it exited. The usual cause is an

@@ -142,11 +142,12 @@ cd eznit_<tag>_linux_amd64
 
 Run the window **from inside the extracted folder**: the Server tab looks for
 `eznit-server` beside it. The window is a client first — type any eznit API into the **Files**
-header and **Connect** — and a host second: the Server tab runs the server
-in that folder, with a database from `docker compose up -d db migrate`, then
-**Server → Configuration → Create .env → set the database password → Save →
-Start**. Without the window, `./eznit` is the CLI and `./eznit-server` is the
-API; `RUNNING.md` in the folder has the rest.
+header and **Connect** — and a host second: the Server tab runs the server in
+that folder. Its first run is **Server → Configuration → Create .env → set the
+database password → Save → Start**: **Start** brings up the database and applies
+the migrations through the folder's own Compose services when nothing answers, so
+the database does not need a terminal step. Without the window, `./eznit` is the
+CLI and `./eznit-server` is the API; `RUNNING.md` in the folder has the rest.
 
 ## 🔒 Security status
 
