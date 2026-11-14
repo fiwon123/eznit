@@ -54,7 +54,7 @@ func TestLoginHasOnePrimaryAction(t *testing.T) {
 func TestLoginPutsThisMachineBesideTheServerField(t *testing.T) {
 	view := newTestLogin(t, false)
 
-	if !sharesParent(view.ui.tabs.Items[0].Content, view.api, view.local) {
+	if !sharesParent(view.ui.tabs.Items[0].Content, view.api, view.local.row) {
 		t.Error("'Use this machine' is not in the same row as the Server field")
 	}
 

@@ -33,7 +33,7 @@ const localSource = "the local server"
 type addressBar struct {
 	ui *ui
 
-	local   *widget.Check
+	local   *checkRow
 	entry   *widget.Entry
 	source  *widget.Label
 	test    *widget.Button
@@ -56,7 +56,7 @@ type addressBar struct {
 func newAddressBar(u *ui, report func(text string, kind statusKind), withSignOut bool) *addressBar {
 	bar := &addressBar{ui: u, report: report}
 
-	bar.local = widget.NewCheck("Use this machine", bar.toggleLocal)
+	bar.local = newCheckRow("Use this machine", bar.toggleLocal)
 	bar.entry = widget.NewEntry()
 	bar.entry.SetPlaceHolder("http://127.0.0.1:4000")
 	bar.entry.OnSubmitted = func(string) { bar.connectTyped() }
@@ -85,7 +85,7 @@ func (b *addressBar) content() fyne.CanvasObject {
 	}
 
 	line := container.NewBorder(nil, nil, muted("Server"), container.NewHBox(actions...), b.entry)
-	head := container.NewBorder(nil, nil, b.local, b.source, nil)
+	head := container.NewBorder(nil, nil, b.local.row, b.source, nil)
 
 	return container.NewPadded(container.NewVBox(head, line))
 }
