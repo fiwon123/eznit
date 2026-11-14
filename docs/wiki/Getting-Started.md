@@ -111,12 +111,18 @@ archive does not contain.
 The bundle also carries `eznit-gui`. Run it **from inside the extracted folder** —
 the Server tab looks for `eznit-server` beside the window. The first run is:
 
-1. start a database in that folder: `docker compose up -d db migrate`;
-2. **Server → Configuration → Create .env**, set the database password, **Save**;
-3. **Server → Start**: the Output tab shows the log and the status dot turns green;
-4. **Files**: **Use this machine** is checked by default, so **Test**, then
-   **Connect**, and create the
-   first account — it is the instance's admin.
+1. **Server → Configuration → Create .env** (it copies the example), then set the
+   database password and **Save** — that writes `.env` and
+   `secrets/db_password.txt`. This is the one step Start cannot invent: Postgres
+   applies its password when it creates the volume;
+2. **Server → Start**: the tab brings up the database and applies the migrations
+   through the folder's own Compose services when nothing answers, then starts
+   the API. The Output tab shows the log; the status dot turns green;
+3. **Files**: **Use this machine** is checked by default, so **Test**, then
+   **Connect**, and create the first account — it is the instance's admin.
+
+If you prefer the terminal, `docker compose up -d db migrate` in that folder does
+the same thing, and **Start** only runs the migrations.
 
 The window is also a client of a server somewhere else, and that needs no bundle:
 type the address into the **Files** header, **Test** it, **Connect**. The Server
