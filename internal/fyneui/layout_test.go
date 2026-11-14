@@ -50,6 +50,12 @@ func walkTree(object fyne.CanvasObject, offset fyne.Position, visit func(fyne.Ca
 		for _, child := range typed.Objects {
 			walkTree(child, pos, visit)
 		}
+	case *widget.Card:
+		// A card's content is this window's own object; its renderer only adds
+		// the background and the padding around it.
+		if typed.Content != nil {
+			walkTree(typed.Content, pos, visit)
+		}
 	case *container.Split:
 		// A split is a widget, not a container, but its two halves are this
 		// window's own objects and are laid out inside it.

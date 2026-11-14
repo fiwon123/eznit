@@ -28,7 +28,7 @@ const (
 // not lost.
 type loginView struct {
 	ui      *ui
-	local   *widget.Check
+	local   *checkRow
 	api     *widget.Entry
 	email   *widget.Entry
 	pass    *widget.Entry
@@ -45,7 +45,7 @@ type loginView struct {
 func newLoginView(u *ui, message string) *loginView {
 	view := &loginView{
 		ui:      u,
-		local:   widget.NewCheck("Use this machine", nil),
+		local:   newCheckRow("Use this machine", nil),
 		api:     widget.NewEntry(),
 		email:   widget.NewEntry(),
 		pass:    widget.NewPasswordEntry(),
@@ -90,10 +90,13 @@ func (l *loginView) content() fyne.CanvasObject {
 	logo.SetMinSize(fyne.NewSize(84, 84))
 
 	title := widget.NewLabelWithStyle("eznit", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	title.Selectable = true
+
 	subtitle := widget.NewLabelWithStyle("Your project's setup, in one place you host.",
 		fyne.TextAlignCenter, fyne.TextStyle{})
+	subtitle.Selectable = true
 
-	serverRow := container.NewBorder(nil, nil, l.local, nil, l.api)
+	serverRow := container.NewBorder(nil, nil, l.local.row, nil, l.api)
 
 	rows := []formRow{
 		{caption: "Server", input: serverRow},
@@ -112,6 +115,7 @@ func (l *loginView) content() fyne.CanvasObject {
 
 	l.status.Alignment = fyne.TextAlignCenter
 	l.status.Wrapping = fyne.TextWrapWord
+	l.status.Selectable = true
 
 	l.card = container.NewPadded(container.NewVBox(
 		container.NewCenter(logo),

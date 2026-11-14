@@ -21,6 +21,7 @@ func (u *ui) aboutContent() fyne.CanvasObject {
 
 	name := widget.NewLabelWithStyle("eznit", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	name.SizeName = theme.SizeNameHeadingText
+	name.Selectable = true
 
 	version := widget.NewLabelWithStyle("Version "+u.updater.Current(), fyne.TextAlignCenter, fyne.TextStyle{})
 	version.Selectable = true
@@ -88,9 +89,28 @@ func (u *ui) aboutContent() fyne.CanvasObject {
 		actions = append(actions, restore)
 	}
 
-	updates := widget.NewCard("Updates",
-		"Checks GitHub for the newest release. Nothing is replaced without confirmation.",
-		container.NewVBox(append([]fyne.CanvasObject{status}, actions...)...))
+	// The card's own title and subtitle are painted as canvas.Text: not
+	// selectable, and leading-aligned. The heading and its explanation are
+	// ordinary labels in the content instead, so both can be copied.
+	updatesTitle := widget.NewLabelWithStyle("Updates", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	updatesTitle.SizeName = theme.SizeNameSubHeadingText
+	updatesTitle.Selectable = true
+
+	updatesSubtitle := widget.NewLabel("Checks GitHub for the newest release. Nothing is replaced without confirmation.")
+	updatesSubtitle.Alignment = fyne.TextAlignCenter
+	updatesSubtitle.Wrapping = fyne.TextWrapWord
+	updatesSubtitle.Selectable = true
+
+	// A card's content is as wide as the card, and a VBox stretches a button
+	// to that width. Centre a row of natural-size buttons inside it instead.
+	controls := container.NewCenter(container.NewHBox(actions...))
+
+	updates := widget.NewCard("", "", container.NewVBox(
+		updatesTitle,
+		updatesSubtitle,
+		status,
+		controls,
+	))
 
 	body := container.NewVBox(
 		container.NewCenter(logo),

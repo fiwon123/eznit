@@ -401,7 +401,7 @@ func TestVariableLine(t *testing.T) {
 func TestTemplatesFiltersExplainThemselves(t *testing.T) {
 	view := newTestTemplatesView(t, apiChoice{url: "http://127.0.0.1:4321", source: "the default"})
 
-	if got := view.mine.Text; got != "Only my templates" {
+	if got := view.mine.label.Text; got != "Only my templates" {
 		t.Errorf("checkbox = %q, want it to say whose templates are shown", got)
 	}
 
