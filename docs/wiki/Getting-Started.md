@@ -111,9 +111,10 @@ archive does not contain.
 The bundle also carries `eznit-gui`. Run it **from inside the extracted folder** —
 the Server tab looks for `eznit-server` beside the window. The first run is:
 
-1. **Server → Configuration**: set the database password and **Save** (it writes
-   `.env` and `secrets/db_password.txt`). This is the one step Start cannot
-   invent: Postgres applies its password when it creates the volume;
+1. **Server → Configuration → Create .env** (it copies the example), then set the
+   database password and **Save** — that writes `.env` and
+   `secrets/db_password.txt`. This is the one step Start cannot invent: Postgres
+   applies its password when it creates the volume;
 2. **Server → Start**: the tab brings up the database and applies the migrations
    through the folder's own Compose services when nothing answers, then starts
    the API. The Output tab shows the log; the status dot turns green;

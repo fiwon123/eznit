@@ -3,6 +3,7 @@
 package fyneui
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -1439,13 +1440,13 @@ func TestServerViewAfterPrepareReportsAFailedStep(t *testing.T) {
 	}
 }
 
-// Start's own default is the real step: a folder whose database address is dead
+// The field is wired to the real step: a folder whose database address is dead
 // and that carries no compose file is refused, without a process.
 func TestServerViewPrepareIsTheRealStep(t *testing.T) {
 	dir := bundleDir(t, "API_PORT=\"4000\"\nDB_HOST=\"127.0.0.1\"\nDB_PORT=\"1\"\n")
 	view := newTestServerView(t, dir)
 
-	_, err := view.prepare(dir, io.Discard)
+	_, err := view.prepare(context.Background(), dir, io.Discard)
 
 	if !errors.Is(err, serverctl.ErrNoCompose) {
 		t.Errorf("prepare() error = %v, want %v", err, serverctl.ErrNoCompose)
@@ -1491,7 +1492,7 @@ func TestServerViewRefusesAFolderChangeWhilePreparing(t *testing.T) {
 func TestDatabaseProgressKeepsTheTail(t *testing.T) {
 	view := newTestServerView(t, bundleDir(t, "API_PORT=\"4000\"\n"))
 
-	progress := view.showDatabaseProgress()
+	progress := view.showDatabaseProgress(func() {})
 	defer progress.Close()
 
 	for line := 1; line <= 300; line++ {
@@ -1507,5 +1508,111 @@ func TestDatabaseProgressKeepsTheTail(t *testing.T) {
 	}
 	if strings.Contains(output, "line 1\n") {
 		t.Error("the output kept every line; the tail is bounded")
+	}
+}
+
+// Start runs the database step through its seam, in the folder the tab is
+// driving, with Start and Stop dead while it works.
+func TestServerViewStartRunsTheDatabaseStep(t *testing.T) {
+	dir := bundleDir(t, "API_PORT=\"4000\"\n")
+	view := newTestServerView(t, dir)
+	fakeServerBundle(t, view)
+
+	called := make(chan string, 1)
+	release := make(chan struct{})
+
+	view.prepare = func(_ context.Context, folder string, _ io.Writer) (serverctl.Result, error) {
+		called <- folder
+		<-release
+
+		return serverctl.Result{}, serverctl.ErrNoCompose
+	}
+
+	view.startServer()
+
+	select {
+	case folder := <-called:
+		if folder != view.folderPath() {
+			t.Errorf("the step ran for %q, want the panel's folder %q", folder, view.folderPath())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start never ran the database step")
+	}
+
+	// The step is still inside its call: the buttons must already be dead, so a
+	// second press cannot start a second server.
+	if !view.start.Disabled() || !view.stop.Disabled() {
+		t.Error("Start or Stop is enabled while the database step runs")
+	}
+
+	close(release)
+
+	// The driver runs fyne.Do inline on this goroutine, so the step hands back
+	// before it ends; the test must not quit the app while that is running.
+	deadline := time.Now().Add(5 * time.Second)
+	for view.preparing && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if view.preparing {
+		t.Fatal("the panel is still preparing after the step returned")
+	}
+	if !strings.Contains(view.note.Text, "docker-compose.yml") {
+		t.Errorf("note = %q, want the refusal reported", view.note.Text)
+	}
+	if view.running() {
+		t.Error("the API was started although the step refused")
+	}
+}
+
+// A port the API cannot bind is refused before the database is touched: the
+// containers are not worth starting for a server that cannot listen.
+func TestServerViewStartRefusesABusyPort(t *testing.T) {
+	view := newTestServerView(t, bundleDir(t, "API_PORT=\"4000\"\n"))
+	fakeServerBundle(t, view)
+
+	// Take the port the bundle names, the way another server would.
+	port := view.fields["API_PORT"].Text
+	listener, err := net.Listen("tcp", "127.0.0.1:"+port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	prepared := false
+	view.prepare = func(context.Context, string, io.Writer) (serverctl.Result, error) {
+		prepared = true
+
+		return serverctl.Result{}, nil
+	}
+
+	view.startServer()
+
+	if prepared {
+		t.Error("the database step ran for a server that cannot bind its port")
+	}
+	if !strings.Contains(view.note.Text, "already in use") {
+		t.Errorf("note = %q, want the busy port named", view.note.Text)
+	}
+	if view.preparing {
+		t.Error("the panel is stuck in the preparing state after refusing the port")
+	}
+}
+
+// Cancelling the step is reported as a cancellation, not as a runtime failure,
+// and Start comes back.
+func TestServerViewReportsACancelledStep(t *testing.T) {
+	view := newTestServerView(t, bundleDir(t, "API_PORT=\"4000\"\n"))
+	fakeServerBundle(t, view)
+
+	view.afterPrepare(serverctl.Result{}, context.Canceled, &databaseProgress{})
+
+	if view.running() {
+		t.Fatal("the API was started after the step was cancelled")
+	}
+	if !strings.Contains(view.note.Text, "cancelled") {
+		t.Errorf("note = %q, want the cancellation named", view.note.Text)
+	}
+	if view.start.Disabled() {
+		t.Error("Start is disabled after a cancellation")
 	}
 }

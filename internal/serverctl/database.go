@@ -1,6 +1,7 @@
 package serverctl
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -15,9 +16,9 @@ import (
 // The database step's failures. Each one is a different sentence for a person,
 // so the panel maps them rather than showing a command's exit status.
 var (
-	// ErrNoCompose is a folder with no docker-compose.yml: the file the
-	// migrations and the database are started from.
-	ErrNoCompose = errors.New("this folder has no docker-compose.yml")
+	// ErrNoCompose is a folder with no compose file: the file the database and
+	// the migrations are started from.
+	ErrNoCompose = errors.New("this folder has no compose file")
 
 	// ErrNoRuntime is a machine with no container runtime on PATH.
 	ErrNoRuntime = errors.New("no docker or podman on PATH")
@@ -37,8 +38,8 @@ const (
 	defaultDBPort = "5432"
 )
 
-// ComposeFileName is the file the database and the migrations are started from.
-// A folder without it cannot start either.
+// ComposeFileName is the name a release bundle uses. Compose also accepts the
+// three below, and a folder holding one of those is startable all the same.
 const ComposeFileName = "docker-compose.yml"
 
 // Result is what the database step did.
@@ -56,13 +57,16 @@ type Result struct {
 // because starting an API with no database produces a log of pq errors and a
 // green health dot — the state this step exists to prevent.
 //
-// out receives the container runtime's output, line by line, as it arrives.
-func Prepare(dir string, out io.Writer) (Result, error) {
+// ctx bounds the container runtime. A daemon that never answers must not leave
+// the window with a modal it cannot dismiss, so a cancel or the deadline ends
+// the child process. out receives the runtime's output as it arrives.
+func Prepare(ctx context.Context, dir string, out io.Writer) (Result, error) {
 	return preparer{
+		ctx:   ctx,
 		dir:   dir,
 		out:   out,
 		probe: 750 * time.Millisecond,
-		wait:  30 * time.Second,
+		wait:  time.Minute,
 		poll:  250 * time.Millisecond,
 		reach: reachable,
 		look:  exec.LookPath,
@@ -72,6 +76,7 @@ func Prepare(dir string, out io.Writer) (Result, error) {
 // preparer is Prepare with its clock and its seams visible, so a test can drive
 // every branch without a database or a container runtime.
 type preparer struct {
+	ctx   context.Context
 	dir   string
 	out   io.Writer
 	probe time.Duration
@@ -82,6 +87,10 @@ type preparer struct {
 }
 
 func (p preparer) run() (Result, error) {
+	if p.ctx == nil {
+		p.ctx = context.Background()
+	}
+
 	// The .env is where the address comes from, and a first start creates it
 	// from the example — the same call the supervisor makes, so both agree.
 	env, err := LoadOrCreate(p.dir)
@@ -91,37 +100,35 @@ func (p preparer) run() (Result, error) {
 
 	address := databaseAddress(env)
 
+	// The runtime inherits this process's environment (a container runtime
+	// needs PATH and HOME), and then the folder's values, so the file wins over
+	// whatever the shell exported. Compose reads the environment for its
+	// `${...}` substitutions, and the probe must look at the same database the
+	// containers will use.
+	environ := append(os.Environ(), env.ChildEnv()...)
+
+	composeFile := p.composeFile()
+	compose, hasRuntime := detectCompose(p.look)
+
 	if p.reach(address.host, address.port, p.probe) {
-		// Answering is not the same as current: an upgraded bundle adds
-		// migrations, and `migrate up` is idempotent.
-		compose, hasRuntime := detectCompose(p.look)
-		if !hasRuntime || !p.hasComposeFile() {
-			return Result{}, nil
-		}
-
-		if err := compose.run(p.dir, p.out, "run", "--rm", "migrate"); err != nil {
-			return Result{}, err
-		}
-
-		return Result{Migrated: true}, nil
+		return p.migrateAnsweredDatabase(composeFile, compose, hasRuntime, address, environ)
 	}
 
 	// Nothing answers. Everything below is about whether this folder can start
-	// one at all, and each failure names the missing piece.
-	if !p.hasComposeFile() {
+	// one at all, and each failure names the missing piece. The runtime is
+	// checked before the password: telling somebody to set a password they
+	// cannot use yet is a dead end.
+	if composeFile == "" {
 		return Result{}, ErrNoCompose
 	}
-
-	if _, err := os.Stat(filepath.Join(p.dir, filepath.FromSlash(SecretPath))); err != nil {
+	if !hasRuntime {
+		return Result{}, ErrNoRuntime
+	}
+	if !p.hasSecret() {
 		return Result{}, ErrNoPassword
 	}
 
-	compose, ok := detectCompose(p.look)
-	if !ok {
-		return Result{}, ErrNoRuntime
-	}
-
-	if err := compose.run(p.dir, p.out, "up", "-d", "db"); err != nil {
+	if err := compose.run(p.ctx, p.dir, environ, p.out, "up", "-d", "db"); err != nil {
 		return Result{}, err
 	}
 
@@ -129,19 +136,55 @@ func (p preparer) run() (Result, error) {
 		return Result{}, fmt.Errorf("%w (%s)", ErrNoAnswer, address)
 	}
 
-	if err := compose.run(p.dir, p.out, "run", "--rm", "migrate"); err != nil {
+	if err := compose.run(p.ctx, p.dir, environ, p.out, "run", "--rm", "migrate"); err != nil {
 		return Result{Started: true}, err
 	}
 
 	return Result{Started: true, Migrated: true}, nil
 }
 
-// hasComposeFile reports whether this folder carries the services the database
-// and the migrations are started from.
-func (p preparer) hasComposeFile() bool {
-	info, err := os.Stat(filepath.Join(p.dir, ComposeFileName))
+// migrateAnsweredDatabase applies the migrations to a database that is already
+// up, and leaves one that this folder's services do not own completely alone.
+//
+// The `migrate` service targets the Compose `db` over the Compose network, so it
+// is only the right tool when the API is about to read that same database: a
+// local address and the folder's own services. A database on another machine
+// gets no migrations from here — its schema is its owner's business, and the
+// window has no way to reach it with this folder's migration job.
+func (p preparer) migrateAnsweredDatabase(composeFile string, compose composeRuntime, hasRuntime bool, address database, environ []string) (Result, error) {
+	if composeFile == "" || !hasRuntime || !address.isLocal() {
+		return Result{}, nil
+	}
 
-	return err == nil && !info.IsDir()
+	if !p.hasSecret() {
+		return Result{}, ErrNoPassword
+	}
+
+	if err := compose.run(p.ctx, p.dir, environ, p.out, "run", "--rm", "migrate"); err != nil {
+		return Result{}, err
+	}
+
+	return Result{Migrated: true}, nil
+}
+
+// composeFile is the file this folder's services are declared in, or "" when
+// there is none. Compose itself discovers all four names.
+func (p preparer) composeFile() string {
+	for _, name := range []string{ComposeFileName, "docker-compose.yaml", "compose.yaml", "compose.yml"} {
+		info, err := os.Stat(filepath.Join(p.dir, name))
+		if err == nil && !info.IsDir() {
+			return name
+		}
+	}
+
+	return ""
+}
+
+// hasSecret reports whether the folder carries the database password.
+func (p preparer) hasSecret() bool {
+	_, err := os.Stat(filepath.Join(p.dir, filepath.FromSlash(SecretPath)))
+
+	return err == nil
 }
 
 // waitFor polls the address until something answers or the wait runs out: a
@@ -163,7 +206,11 @@ func (p preparer) waitFor(address database) bool {
 			return false
 		}
 
-		time.Sleep(poll)
+		select {
+		case <-p.ctx.Done():
+			return false
+		case <-time.After(poll):
+		}
 	}
 }
 
@@ -175,6 +222,17 @@ type database struct {
 
 func (d database) String() string {
 	return net.JoinHostPort(d.host, d.port)
+}
+
+// isLocal reports whether this address is the machine itself, which is when the
+// folder's `migrate` service — pointed at the Compose `db` — is the right tool.
+func (d database) isLocal() bool {
+	switch strings.ToLower(d.host) {
+	case "127.0.0.1", "localhost", "::1", "[::1]":
+		return true
+	default:
+		return false
+	}
 }
 
 // databaseAddress reads the address the API will dial, with the defaults the
@@ -241,16 +299,21 @@ func detectCompose(look func(string) (string, error)) (composeRuntime, bool) {
 }
 
 // run runs one compose command in the folder, with its output going to the
-// panel as it arrives.
-func (r composeRuntime) run(dir string, out io.Writer, args ...string) error {
+// panel as it arrives. ctx bounds it: the process is killed when it is over.
+func (r composeRuntime) run(ctx context.Context, dir string, environ []string, out io.Writer, args ...string) error {
 	words := append(append([]string{}, r.prefix...), args...)
 
-	command := exec.Command(r.command, words...)
+	command := exec.CommandContext(ctx, r.command, words...)
 	command.Dir = dir
+	command.Env = environ
 	command.Stdout = out
 	command.Stderr = out
 
 	if err := command.Run(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return fmt.Errorf("%s %s: %w", r, strings.Join(args, " "), ctxErr)
+		}
+
 		return fmt.Errorf("%s %s: %w", r, strings.Join(args, " "), err)
 	}
 

@@ -315,6 +315,24 @@ func Health(baseURL string, timeout time.Duration) error {
 	return nil
 }
 
+// PortFree reports whether the API could bind the port the folder's
+// configuration names.
+//
+// Start asks before it prepares the database: a server that cannot bind is not
+// worth starting containers and applying migrations for, and the reason belongs
+// in front of the person before the slow part.
+func PortFree(dir string) error {
+	port := defaultPort
+
+	if env, err := LoadEnv(filepath.Join(dir, EnvFileName)); err == nil {
+		if value := env.Value("API_PORT", ""); value != "" {
+			port = value
+		}
+	}
+
+	return portFree(port)
+}
+
 // portFree reports whether the API could bind the port it is configured for.
 // The listener is closed at once: this is a check, not a reservation.
 func portFree(port string) error {

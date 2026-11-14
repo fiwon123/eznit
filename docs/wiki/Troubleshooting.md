@@ -79,8 +79,9 @@ The API reached PostgreSQL and the password did not match. Two causes:
 - **Nothing was sent.** The API takes its password from `DB_PASSWORD_FILE` (a
   path to a file), then `DB_PWD`. A bundle's `.env` points at
   `secrets/db_password.txt`; a folder without that file — or with an `.env` that
-  predates it — sends an empty password. Since **v0.32.0** Start checks this and
-  refuses with a note instead of starting; before it, the log was the only clue.
+  predates it — sends an empty password. Since **v0.32.0** Start refuses with a
+  note when it would have to create or migrate the database and the secret is
+  missing; before it, the log was the only clue.
 - **The database kept an older password.** Compose applies `POSTGRES_PASSWORD`
   when it *creates* its volume and never again, so changing the secret afterwards
   does not change the database's password. Put the original password into

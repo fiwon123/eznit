@@ -3,12 +3,14 @@
 package fyneui
 
 import (
+	"context"
 	"strings"
 	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -26,15 +28,18 @@ const progressKept = 200
 // A first start pulls two images, and a window that says nothing for a minute
 // looks hung. The step runs off the UI goroutine, so the text is replaced
 // through fyne.Do, and the mutex covers the two pipes the runtime writes on.
+// Cancel kills the child process: a daemon that never answers must not leave
+// the window with a modal it cannot dismiss.
 type databaseProgress struct {
 	dialog *dialog.CustomDialog
 	text   *widget.Label
+	cancel context.CancelFunc
 
 	mu    sync.Mutex
 	lines []string
 }
 
-func (v *serverView) showDatabaseProgress() *databaseProgress {
+func (v *serverView) showDatabaseProgress(cancel context.CancelFunc) *databaseProgress {
 	message := widget.NewLabel("Starting or checking the database. " +
 		"The first start downloads the images, so it can take a few minutes.")
 	message.Wrapping = fyne.TextWrapWord
@@ -46,20 +51,52 @@ func (v *serverView) showDatabaseProgress() *databaseProgress {
 	scroll := container.NewVScroll(text)
 	scroll.SetMinSize(fyne.NewSize(560, 160))
 
-	content := container.NewBorder(container.NewVBox(message, widget.NewSeparator()), nil, nil, nil, scroll)
+	progress := &databaseProgress{text: text, cancel: cancel}
 
-	modal := dialog.NewCustomWithoutButtons("Preparing the database", content, v.ui.window)
+	var cancelButton *widget.Button
+
+	cancelButton = widget.NewButton("Cancel", func() {
+		cancelButton.Disable()
+		text.SetText("Cancelling…")
+		progress.cancelStep()
+	})
+	cancelButton.Importance = widget.LowImportance
+
+	actions := container.NewHBox(layout.NewSpacer(), cancelButton)
+	body := container.NewBorder(container.NewVBox(message, widget.NewSeparator()), actions, nil, nil, scroll)
+
+	modal := dialog.NewCustomWithoutButtons("Preparing the database", body, v.ui.window)
 	modal.Show()
 
-	return &databaseProgress{dialog: modal, text: text}
+	progress.dialog = modal
+
+	return progress
+}
+
+// cancelStep stops the waiting: the child is killed through the context, and
+// the step returns an error the panel reports as a cancellation.
+func (p *databaseProgress) cancelStep() {
+	if p.cancel != nil {
+		p.cancel()
+	}
 }
 
 // Write keeps the runtime's output: the dialog shows the tail of it, and the
 // whole thing is available to the dialog a failure opens.
 func (p *databaseProgress) Write(data []byte) (int, error) {
+	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+
 	p.mu.Lock()
 
-	p.lines = append(p.lines, strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")...)
+	for _, line := range lines {
+		line = strings.TrimSuffix(line, "\r")
+		if line == "" {
+			continue
+		}
+
+		p.lines = append(p.lines, line)
+	}
+
 	if len(p.lines) > progressKept {
 		p.lines = append([]string(nil), p.lines[len(p.lines)-progressKept:]...)
 	}
@@ -70,6 +107,10 @@ func (p *databaseProgress) Write(data []byte) (int, error) {
 	}
 	text := strings.Join(shown, "\n")
 	p.mu.Unlock()
+
+	if text == "" {
+		return len(data), nil
+	}
 
 	fyne.Do(func() { p.text.SetText(text) })
 
@@ -88,5 +129,6 @@ func (p *databaseProgress) Output() string {
 func (p *databaseProgress) Close() {
 	if p.dialog != nil {
 		p.dialog.Hide()
+		p.dialog = nil
 	}
 }

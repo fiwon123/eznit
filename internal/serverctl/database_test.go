@@ -2,12 +2,14 @@ package serverctl
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,6 +21,10 @@ import (
 // container: the runtime is a shell script.
 func fakeRuntime(t *testing.T, name string, exit int) (logFile string) {
 	t.Helper()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake runtime is a shell script; Windows cannot run it")
+	}
 
 	dir := t.TempDir()
 	logFile = filepath.Join(dir, "commands.log")
@@ -93,6 +99,7 @@ func newPreparer(t *testing.T, dir string, answers func(call int) bool) (*prepar
 	calls := new(int)
 
 	p := &preparer{
+		ctx:   context.Background(),
 		dir:   dir,
 		out:   output,
 		probe: 50 * time.Millisecond,
@@ -397,9 +404,206 @@ func TestReachable(t *testing.T) {
 
 // A folder that is not a bundle cannot even be read, and the error says so.
 func TestPrepareNeedsAConfiguration(t *testing.T) {
-	_, err := Prepare(t.TempDir(), io.Discard)
+	_, err := Prepare(context.Background(), t.TempDir(), io.Discard)
 
 	if err == nil || !strings.Contains(err.Error(), "not a server bundle") {
 		t.Errorf("Prepare() error = %v, want it to say the folder is not a bundle", err)
+	}
+}
+
+// The runtime runs in the folder: that is what makes `docker compose` find the
+// compose file and the `.env` beside it.
+func TestPrepareRunsTheRuntimeInTheFolder(t *testing.T) {
+	dir := bundleFor(t, true, true)
+
+	bin := t.TempDir()
+	report := filepath.Join(bin, "cwd.txt")
+	script := "#!/bin/sh\npwd > " + report + "\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	p, _, _ := newPreparer(t, dir, func(call int) bool { return call > 1 })
+
+	if _, err := p.run(); err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+
+	got, err := os.ReadFile(report)
+	if err != nil {
+		t.Fatalf("the runtime never ran: %v", err)
+	}
+	if wanted := strings.TrimSpace(string(got)); wanted != dir {
+		t.Errorf("the runtime ran in %q, want the bundle folder %q", wanted, dir)
+	}
+}
+
+// The folder's `.env` wins over the environment the window was launched from:
+// Compose substitutes from the environment, and the probe must look at the
+// database the containers will actually use.
+func TestPrepareLetsTheFolderWinOverTheEnvironment(t *testing.T) {
+	dir := bundleFor(t, true, true)
+
+	// The window's own environment names a different port than the file.
+	t.Setenv("DB_PORT", "9999")
+
+	bin := t.TempDir()
+	report := filepath.Join(bin, "port.txt")
+	script := "#!/bin/sh\nif [ -z \"$REPORTED\" ]; then echo \"$DB_PORT\" > " + report + "; REPORTED=1; fi\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	p, _, _ := newPreparer(t, dir, func(call int) bool { return call > 1 })
+
+	if _, err := p.run(); err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+
+	got, err := os.ReadFile(report)
+	if err != nil {
+		t.Fatalf("the runtime never ran: %v", err)
+	}
+	if value := strings.TrimSpace(string(got)); value != "55432" {
+		t.Errorf("the runtime saw DB_PORT=%q, want the folder's 55432", value)
+	}
+}
+
+// A database on another machine is not the one this folder's migrate service
+// targets, so the service must not run against it.
+func TestPrepareLeavesARemoteDatabaseUnmigrated(t *testing.T) {
+	dir := bundleFor(t, true, true)
+	if err := os.WriteFile(filepath.Join(dir, EnvFileName), []byte("DB_HOST=\"10.1.2.3\"\nDB_PORT=\"5432\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	logFile := fakeRuntime(t, "docker", 0)
+
+	p, _, _ := newPreparer(t, dir, func(int) bool { return true })
+
+	result, err := p.run()
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+
+	if result.Migrated || result.Started {
+		t.Errorf("Prepare() = %+v, want a remote database left alone", result)
+	}
+	if got := commands(t, logFile); len(got) != 0 {
+		t.Errorf("the runtime was asked for %q, want nothing", got)
+	}
+}
+
+// A database that answers still needs the secret if the folder's migrate
+// service is going to run: Compose cannot mount a file that is not there.
+func TestPrepareNeedsTheSecretToMigrate(t *testing.T) {
+	dir := bundleFor(t, true, false)
+	fakeRuntime(t, "docker", 0)
+
+	p, _, _ := newPreparer(t, dir, func(int) bool { return true })
+
+	_, err := p.run()
+
+	if !errors.Is(err, ErrNoPassword) {
+		t.Errorf("Prepare() error = %v, want %v", err, ErrNoPassword)
+	}
+}
+
+// The runtime is named before the password: telling somebody to set a password
+// they have no way to use yet is a dead end.
+func TestPrepareNamesTheRuntimeBeforeThePassword(t *testing.T) {
+	dir := bundleFor(t, true, false)
+
+	p, _, _ := newPreparer(t, dir, func(int) bool { return false })
+	p.look = noRuntime
+
+	_, err := p.run()
+
+	if !errors.Is(err, ErrNoRuntime) {
+		t.Errorf("Prepare() error = %v, want %v", err, ErrNoRuntime)
+	}
+}
+
+// Compose discovers four file names, and a folder using another one is
+// startable all the same.
+func TestPrepareAcceptsEveryComposeFileName(t *testing.T) {
+	for _, name := range []string{"docker-compose.yml", "docker-compose.yaml", "compose.yaml", "compose.yml"} {
+		t.Run(name, func(t *testing.T) {
+			dir := bundleFor(t, false, true)
+			if err := os.WriteFile(filepath.Join(dir, name), []byte("services: {}\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			fakeRuntime(t, "docker", 0)
+
+			p, _, _ := newPreparer(t, dir, func(call int) bool { return call > 1 })
+
+			result, err := p.run()
+			if err != nil {
+				t.Fatalf("Prepare() error = %v", err)
+			}
+			if !result.Started {
+				t.Errorf("Prepare() = %+v, want the database started from %s", result, name)
+			}
+		})
+	}
+}
+
+// Cancelling the step ends it, kills the child, and returns the cancellation
+// the panel reports: a hung daemon must not hold the window.
+func TestPrepareStopsWhenCancelled(t *testing.T) {
+	dir := bundleFor(t, true, true)
+
+	// A runtime that ignores everything and never exits.
+	bin := t.TempDir()
+	script := "#!/bin/sh\nexec sleep 30\n"
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	p, _, _ := newPreparer(t, dir, func(int) bool { return false })
+	p.ctx = ctx
+	p.wait = time.Minute
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+
+	_, err := p.run()
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Prepare() error = %v, want the cancellation", err)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("the cancel took %s, want it to end the child at once", elapsed)
+	}
+}
+
+// PortFree reports the port the folder's configuration names, and refuses one
+// something else holds.
+func TestPortFree(t *testing.T) {
+	dir := t.TempDir()
+	writeEnv(t, dir, freePort(t))
+
+	if err := PortFree(dir); err != nil {
+		t.Fatalf("PortFree() = %v, want a free port reported free", err)
+	}
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
+	writeEnv(t, dir, port)
+
+	if err := PortFree(dir); err == nil {
+		t.Error("PortFree() = nil, want the busy port reported")
 	}
 }

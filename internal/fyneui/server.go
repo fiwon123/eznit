@@ -3,6 +3,7 @@
 package fyneui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -86,7 +87,7 @@ type serverView struct {
 
 	// prepare is the database step. It is a field so a test can answer for it:
 	// the real one starts containers, and most tests are about the buttons.
-	prepare func(dir string, out io.Writer) (serverctl.Result, error)
+	prepare func(ctx context.Context, dir string, out io.Writer) (serverctl.Result, error)
 
 	outputControls *fyne.Container
 
@@ -1008,6 +1009,11 @@ func (v *serverView) pollHealth() {
 	}
 }
 
+// databaseTimeout bounds the database step. The first run pulls two images, so
+// it is generous; a hung daemon still cannot hold the window for ever, and the
+// modal carries Cancel for the rest.
+const databaseTimeout = 15 * time.Minute
+
 // startServer is Start, and Start begins with the database: an API with no
 // database is a process that reports errors and answers a health check, which
 // is the state this step exists to prevent.
@@ -1022,6 +1028,13 @@ func (v *serverView) startServer() {
 		return
 	}
 
+	// A port the server cannot bind is refused before anything is started: the
+	// database is worth bringing up, but not for a start that cannot listen.
+	if err := serverctl.PortFree(v.folderPath()); err != nil {
+		v.setNote("Cannot start: " + err.Error())
+		return
+	}
+
 	v.mu.Lock()
 	v.answered, v.answerErr = false, nil
 	v.mu.Unlock()
@@ -1031,14 +1044,17 @@ func (v *serverView) startServer() {
 	v.stop.Disable()
 	v.setFolderEditable(false)
 
-	progress := v.showDatabaseProgress()
+	ctx, cancel := context.WithTimeout(context.Background(), databaseTimeout)
+	progress := v.showDatabaseProgress(cancel)
 	folder := v.folderPath()
 	v.refresh()
 
 	// Off the UI goroutine: the first run pulls two images and applies the
 	// migrations, and the window has to keep painting while it does.
 	go func() {
-		result, err := v.prepare(folder, progress)
+		result, err := v.prepare(ctx, folder, progress)
+		cancel()
+
 		fyne.Do(func() { v.afterPrepare(result, err, progress) })
 	}()
 }
@@ -1050,11 +1066,12 @@ func (v *serverView) afterPrepare(result serverctl.Result, err error, progress *
 	v.preparing = false
 
 	if err != nil {
-		v.noteDatabaseFailure(err, progress.Output())
-
-		if v.bundle.Binary {
-			v.start.Enable()
+		if errors.Is(err, context.Canceled) {
+			v.setNote("The database step was cancelled — nothing was started.")
+		} else {
+			v.noteDatabaseFailure(err, progress.Output())
 		}
+
 		v.refresh()
 
 		return
@@ -1116,7 +1133,7 @@ func databaseNoteForFailure(err error) string {
 			" — set the database password in Configuration first, then press Start again."
 	case errors.Is(err, serverctl.ErrNoAnswer):
 		return "The database did not answer after it was started — press Start again in a moment. " +
-			"If it keeps happening, the database's own log says why."
+			"If DB_HOST names a service (such as db), a server run on this machine has to use 127.0.0.1 instead."
 	default:
 		return "The database could not be prepared: " + err.Error()
 	}

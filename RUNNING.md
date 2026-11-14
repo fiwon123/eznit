@@ -59,16 +59,19 @@ it is pointed at is another bundle.
   - nothing answers and the folder has `docker-compose.yml` → runs
     `<runtime> up -d db`, waits for the port, then `<runtime> run --rm migrate`,
     the same `migrate` service the manual path uses;
-  - the database answers → runs the migrations (`migrate up` is idempotent, so an
-    upgraded bundle cannot run against an old schema);
+  - the database answers → runs the folder's `migrate` service, which targets the
+    Compose database: that is what keeps an upgraded bundle off an old schema,
+    and it is why a database reached on another machine is left alone — its
+    schema is that machine's business;
   - neither → starts nothing, and the note names the missing piece: no compose
     file, no `docker`/`podman` on `PATH`, or no `secrets/db_password.txt`.
 
   The step streams its output into a modal, and a failure keeps that output on
   screen with **Copy output**. The runtime is `docker compose`,
   `podman-compose`, `docker-compose`, or `podman compose`, in that order. The
-  API starts only after the step succeeds, and a busy API port is still reported
-  before anything runs.
+  API starts only after the step succeeds, and a busy API port is refused before
+  anything runs. The Compose project is named `eznit`, so two extracted bundles
+  on one machine share the same database container and volume.
 - **Choose folder…** points the tab at another bundle and remembers the choice
   in `~/.eznit/config.json`. **Reset to default** asks first, then forgets the
   choice and returns to the folder this window was installed in — so a moved
