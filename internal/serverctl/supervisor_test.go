@@ -337,3 +337,31 @@ func TestStartNotifiesWithoutHoldingTheLock(t *testing.T) {
 
 	_ = supervisor.Stop(2 * time.Second)
 }
+
+// The supervisor runs the one binary with `serve`: without the argument the
+// process would print the CLI help and exit, which is a start that looks like a
+// crash.
+func TestSupervisorRunsTheServeCommand(t *testing.T) {
+	dir := t.TempDir()
+	writeEnv(t, dir, freePort(t))
+
+	report := filepath.Join(dir, "args.txt")
+	writeFakeServer(t, dir, "echo \"$@\" > "+report+"\necho ready\nwhile true; do sleep 0.05; done\n")
+
+	supervisor := NewSupervisor(dir)
+
+	if err := supervisor.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = supervisor.Stop(5 * time.Second) })
+
+	waitFor(t, supervisor, "ready")
+
+	data, err := os.ReadFile(report)
+	if err != nil {
+		t.Fatalf("the server never ran: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != ServerCommand {
+		t.Errorf("the server was started with %q, want %q", got, ServerCommand)
+	}
+}

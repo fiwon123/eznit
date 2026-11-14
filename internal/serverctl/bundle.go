@@ -41,17 +41,26 @@ func (b Bundle) Missing() []string {
 // never writes to it: the window runs this before a person presses anything, so
 // a wrong folder must not be changed by being looked at.
 func Inspect(dir string) Bundle {
-	_, binaryErr := ServerBinary(dir)
+	_, _, binaryErr := ServerBinary(dir)
 	_, exampleErr := os.Stat(filepath.Join(dir, EnvExampleName))
 
 	return Bundle{Binary: binaryErr == nil, Example: exampleErr == nil}
 }
 
-// BinaryName is the server executable's name on this platform.
+// BinaryName is the bundle binary's name on this platform.
 func BinaryName() string {
+	return platformName(ServerBinaryName)
+}
+
+// legacyBinaryName is the standalone server's name on this platform.
+func legacyBinaryName() string {
+	return platformName(legacyServerBinaryName)
+}
+
+func platformName(name string) string {
 	if runtime.GOOS == "windows" {
-		return ServerBinaryName + ".exe"
+		return name + ".exe"
 	}
 
-	return ServerBinaryName
+	return name
 }

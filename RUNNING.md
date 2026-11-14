@@ -1,9 +1,10 @@
 # Running a release bundle
 
-This folder is a **release archive**: the client (`eznit`, `ez`), the API
-(`eznit-server`), the window (`eznit-gui`), the migrations and the Compose
-services that give the API a database. It is not a source checkout — there is no
-`go.mod`, no `web/` and no image to build.
+This folder is a **release archive**: the one binary (`eznit`, and `ez` as its
+alias) that is both the client and the API — `eznit serve` is the server — the
+window (`eznit-gui`), the migrations and the Compose services that give the API a
+database. It is not a source checkout — there is no `go.mod`, no `web/` and no
+image to build.
 
 ## What works from here
 
@@ -19,14 +20,15 @@ docker compose up db migrate
 Then run the API on the host, pointed at the published port:
 
 ```sh
-DB_HOST=localhost DB_PORT=5432 ./eznit-server
+DB_HOST=localhost DB_PORT=5432 ./eznit serve
 ```
 
-`eznit-server` embeds the web UI, so <http://localhost:4000> serves it.
+`eznit serve` embeds the web UI, so <http://localhost:4000> serves it.
 
-`./eznit-server --version` prints the release this bundle carries, and needs no
-database, no `.env` and no log folder — it is the quickest way to tell whether
-the folder you extracted is the tag it claims.
+`./eznit -v` prints the release this bundle carries, and needs no database, no
+configuration and no log folder — it is the quickest way to tell whether the
+folder you extracted is the tag it claims. It is the server's own version, too:
+there is one binary, so the two cannot disagree.
 
 ## What does not work from here
 
@@ -39,7 +41,7 @@ The `dev` and `web-dev` services (the developer loop) are not part of a bundle.
 
 ## The desktop app
 
-`eznit-gui` is in this bundle. Its **Server** tab runs `eznit-server` from this
+`eznit-gui` is in this bundle. Its **Server** tab runs `eznit serve` from this
 folder as a child process, shows its log, and edits the `.env` and the database
 password the server reads:
 
@@ -47,9 +49,11 @@ password the server reads:
 ./eznit-gui        # then: Server tab → Start
 ```
 
-Run it from **this** folder: the Server tab looks for `eznit-server` beside the
-window, so a window copied somewhere else (or started from another folder) has
-no server to run and will say so. **Choose folder…** helps only when the folder
+Run it from **this** folder: the Server tab looks for `eznit` beside the window,
+so a window copied somewhere else (or started from another folder) has no server
+to run and will say so. A folder from an older release still holds
+`eznit-server`; it is used when `eznit` is absent, so an archive you already
+extracted keeps starting. **Choose folder…** helps only when the folder
 it is pointed at is another bundle.
 
 - **Start** begins with the database, because an API without one answers a

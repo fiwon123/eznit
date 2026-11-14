@@ -35,3 +35,31 @@ func TestTemplatePublishAcceptsTheCommandsFlag(t *testing.T) {
 		t.Fatalf("Folder = %q, want the default %q", cli.Template.Publish.Folder, ".")
 	}
 }
+
+// `eznit serve` is how the window starts the API and how a server runs on a
+// machine other clients reach, so the command has to be in the tree — and the
+// one binary must not grow a second --debug for it (kong rejects duplicates).
+func TestServeIsACommand(t *testing.T) {
+	var cli CLI
+
+	parser, err := kong.New(&cli)
+	if err != nil {
+		t.Fatalf("failed to build the parser: %v", err)
+	}
+
+	ctx, err := parser.Parse([]string{"serve"})
+	if err != nil {
+		t.Fatalf("`eznit serve` should parse: %v", err)
+	}
+	if got := ctx.Command(); got != "serve" {
+		t.Errorf("parsed command = %q, want %q", got, "serve")
+	}
+
+	ctx, err = parser.Parse([]string{"--debug", "serve"})
+	if err != nil {
+		t.Fatalf("`eznit --debug serve` should parse: %v", err)
+	}
+	if !cli.Debug {
+		t.Error("--debug before serve did not reach the command")
+	}
+}

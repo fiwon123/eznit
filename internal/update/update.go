@@ -38,11 +38,11 @@ import (
 // The members a release archive carries, and the family prefix of the archive
 // itself.
 const (
-	// MemberCLI, MemberGUI and MemberServer are the executables inside the one
-	// archive a release publishes per platform.
-	MemberCLI    = "eznit"
-	MemberGUI    = "eznit-gui"
-	MemberServer = "eznit-server"
+	// MemberCLI and MemberGUI are the executables inside the one archive a
+	// release publishes per platform. The client and the server are the same
+	// program, so there is no separate server member to update.
+	MemberCLI = "eznit"
+	MemberGUI = "eznit-gui"
 
 	// ArchiveFamily prefixes every release archive:
 	// <ArchiveFamily>_<version>_<os>_<arch>. Since v0.24.0 (#242) one archive

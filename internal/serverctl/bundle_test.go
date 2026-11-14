@@ -100,3 +100,54 @@ func TestInspectBundleWritesNothing(t *testing.T) {
 		t.Errorf("Inspect created %d entries in an empty folder", len(entries))
 	}
 }
+
+// The bundle carries one binary now, and a folder from an older release still
+// holds the standalone server: it is used when `eznit` is absent, with no
+// argument, so an archive somebody already extracted keeps starting.
+func TestServerBinaryWithoutTheMergedName(t *testing.T) {
+	dir := t.TempDir()
+
+	writeBinary := func(name string) {
+		t.Helper()
+
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, _, err := ServerBinary(dir)
+	if err == nil {
+		t.Fatal("ServerBinary() = nil in an empty folder, want an error")
+	}
+	if !strings.Contains(err.Error(), ServerBinaryName) {
+		t.Errorf("error = %q, want it to name %s", err, ServerBinaryName)
+	}
+
+	// An old bundle: only the standalone server.
+	writeBinary(legacyBinaryName())
+
+	path, args, err := ServerBinary(dir)
+	if err != nil {
+		t.Fatalf("ServerBinary() error = %v, want the legacy server", err)
+	}
+	if path != filepath.Join(dir, legacyBinaryName()) {
+		t.Errorf("ServerBinary() = %q, want the legacy server", path)
+	}
+	if len(args) != 0 {
+		t.Errorf("ServerBinary() args = %q, want none for the legacy server", args)
+	}
+
+	// A new bundle beside it: the merged binary wins, with its command.
+	writeBinary(BinaryName())
+
+	path, args, err = ServerBinary(dir)
+	if err != nil {
+		t.Fatalf("ServerBinary() error = %v", err)
+	}
+	if path != filepath.Join(dir, BinaryName()) {
+		t.Errorf("ServerBinary() = %q, want %s to win", path, BinaryName())
+	}
+	if len(args) != 1 || args[0] != ServerCommand {
+		t.Errorf("ServerBinary() args = %q, want [%s]", args, ServerCommand)
+	}
+}

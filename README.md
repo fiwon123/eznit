@@ -124,10 +124,11 @@ a file in your home directory unless you point `--target` there.
 | 🍎 macOS amd64 | `eznit_<tag>_darwin_amd64.tar.gz` |
 | 🍎 macOS arm64 | `eznit_<tag>_darwin_arm64.tar.gz` |
 
-One download holds the whole product: `eznit` and `ez` (the CLI), `eznit-server`
-(the API), `eznit-gui` (the desktop window: **Files** and **Templates** are
-clients of an API, **Server** runs one beside it), the migrations,
-`docker-compose.yml` and the example configuration.
+One download holds the whole product: `eznit` and `ez` (the CLI — and the API:
+`eznit serve` is the server, so the client and the server are one program),
+`eznit-gui` (the desktop window: **Files** and **Templates** are clients of an
+API, **Server** runs one beside it), the migrations, `docker-compose.yml` and the
+example configuration.
 `RUNNING.md` says what runs from it and what does not. Verify a download against
 `checksums.txt` from the release page.
 
@@ -141,13 +142,13 @@ cd eznit_<tag>_linux_amd64
 ```
 
 Run the window **from inside the extracted folder**: the Server tab looks for
-`eznit-server` beside it. The window is a client first — type any eznit API into the **Files**
+`eznit` beside it. The window is a client first — type any eznit API into the **Files**
 header and **Connect** — and a host second: the Server tab runs the server in
 that folder. Its first run is **Server → Configuration → Create .env → set the
 database password → Save → Start**: **Start** brings up the database and applies
 the migrations through the folder's own Compose services when nothing answers, so
 the database does not need a terminal step. Without the window, `./eznit` is the
-CLI and `./eznit-server` is the API; `RUNNING.md` in the folder has the rest.
+CLI and `./eznit serve` is the API; `RUNNING.md` in the folder has the rest.
 
 ## 🔒 Security status
 

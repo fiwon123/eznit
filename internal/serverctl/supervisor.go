@@ -13,8 +13,18 @@ import (
 	"time"
 )
 
-// ServerBinaryName is the executable a server bundle carries.
-const ServerBinaryName = "eznit-server"
+// ServerBinaryName is the one binary a bundle carries: the client and the
+// server are the same program. A bundle from an older release has the
+// standalone server instead — see ServerBinary.
+const ServerBinaryName = "eznit"
+
+// ServerCommand is the argument that makes the one binary run the API.
+const ServerCommand = "serve"
+
+// legacyServerBinaryName is the standalone server a bundle used before the two
+// were merged. It is still run when a folder has no eznit, so an archive
+// somebody already extracted keeps starting.
+const legacyServerBinaryName = "eznit-server"
 
 // defaultPort is what the API listens on when API_PORT is unset.
 const defaultPort = "4000"
@@ -30,7 +40,7 @@ type State struct {
 	Exit    error
 }
 
-// Supervisor runs one eznit-server process from a bundle folder.
+// Supervisor runs one server process from a bundle folder.
 type Supervisor struct {
 	mu    sync.Mutex
 	dir   string
@@ -141,7 +151,7 @@ func (s *Supervisor) start() error {
 		return errors.New("the server is already running")
 	}
 
-	binary, err := ServerBinary(s.dir)
+	binary, args, err := ServerBinary(s.dir)
 	if err != nil {
 		return err
 	}
@@ -155,7 +165,7 @@ func (s *Supervisor) start() error {
 		return err
 	}
 
-	cmd := exec.Command(binary)
+	cmd := exec.Command(binary, args...)
 	cmd.Dir = s.dir
 	// The .env wins over the inherited environment: it is the file the person
 	// just edited, and godotenv in the child would not override what is
@@ -279,21 +289,38 @@ func LocalAddress(dir string) string {
 	return "http://127.0.0.1:" + port
 }
 
-// ServerBinary is the server executable in dir.
-func ServerBinary(dir string) (string, error) {
-	name := BinaryName()
-	path := filepath.Join(dir, name)
-
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", fmt.Errorf("no %s in %s — this folder is not a server bundle", name, dir)
+// ServerBinary is the executable in dir that can run the API, with the
+// arguments it needs.
+//
+// `eznit serve` is the shipped form. A folder from before the two binaries were
+// merged holds only `eznit-server`, which needs no argument, so it is tried
+// second and used when `eznit` is absent: a new client beside an old server
+// would otherwise look like a folder with no server at all.
+func ServerBinary(dir string) (path string, args []string, err error) {
+	candidates := []struct {
+		name string
+		args []string
+	}{
+		{name: BinaryName(), args: []string{ServerCommand}},
+		{name: legacyBinaryName(), args: nil},
 	}
 
-	if info.IsDir() {
-		return "", fmt.Errorf("%s is a folder, not the server binary", path)
+	for _, candidate := range candidates {
+		at := filepath.Join(dir, candidate.name)
+
+		info, err := os.Stat(at)
+		if err != nil {
+			continue
+		}
+
+		if info.IsDir() {
+			return "", nil, fmt.Errorf("%s is a folder, not the server binary", at)
+		}
+
+		return at, candidate.args, nil
 	}
 
-	return path, nil
+	return "", nil, fmt.Errorf("no %s in %s — this folder is not a server bundle", BinaryName(), dir)
 }
 
 // Health asks the running API's health check. It answers without a session and

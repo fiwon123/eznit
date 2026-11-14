@@ -54,8 +54,8 @@ only glibc **2.34**; use the CLI (`eznit`, `ez`) in the meantime, which is
 
 ## The Server tab says "not a server bundle"
 
-The panel runs the `eznit-server` **beside the window**, and the folder it is
-pointed at does not have one. Since v0.24.0 the release publishes **one archive
+The panel runs `eznit serve` from the **binary beside the window**, and the
+folder it is pointed at does not have one. Since v0.24.0 the release publishes **one archive
 per platform** that carries the window, the server, the migrations and the
 Compose file together, so there is no separate server download: extract the
 archive you already have and run `eznit-gui` from inside it (or point the tab at

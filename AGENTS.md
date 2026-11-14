@@ -32,7 +32,7 @@ no server at all.
 ### Core Architecture
 
 ```
-cmd/api/         API entrypoint: flags, logger, router, graceful shutdown
+internal/server/ `eznit serve`: logger, database, router, graceful shutdown
 cmd/cli/         CLI entrypoint (version + main); commands in internal/cli
 web/             React + TypeScript + Vite web UI; built to web/dist and served by the API
 internal/domain/ one package per resource (users, sessions, files):
@@ -307,7 +307,7 @@ Agent definitions live in `opencode.json` and `.opencode/agents/`:
 - **build** (primary): Full development work with all tools enabled.
 - **plan** (primary): Analysis and planning without making changes.
 - **backend** (subagent): Backend work — Go, SQL, migrations. Its edit scope is
-  `cmd/api/**`, `internal/**`, `db/**` and `pkg/**`; it does not touch
+  `internal/**`, `db/**` and `pkg/**`; it does not touch
   `internal/cli/**` or `cmd/cli/**`.
 - **reviewer** (subagent): Reviews code for bugs, security, and regressions.
 - **visual** (subagent): Reviews the web UI for layout, accessibility,

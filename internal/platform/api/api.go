@@ -1,10 +1,9 @@
 // Package api builds the HTTP API: the route table, the handlers and the
 // session guard, wired to a database.
 //
-// It is a package rather than part of cmd/api because two processes serve the
-// same API: the API binary, and the GUI, which runs the API in its own process
-// when it is given a database and no separate API to talk to (#60). One
-// router means the two cannot drift apart.
+// It is a package rather than part of the entrypoint because the API is served
+// by more than one thing: `eznit serve`, and the tests that drive the router
+// without a process (#60). One router means they cannot drift apart.
 package api
 
 import (

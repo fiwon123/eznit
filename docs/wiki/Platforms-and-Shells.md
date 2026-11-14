@@ -35,8 +35,8 @@ and macOS that means Docker Desktop running Linux containers. The stack is not
 started by any CI job, on any OS, so "it runs there" rests on the Docker images,
 not on a gate.
 
-The server binary also runs directly on the host (`./eznit-server`), with
-PostgreSQL reachable through `DB_*`. That is the release-bundle path in
+The server also runs directly on the host (`./eznit serve`) — one binary is the
+client and the server — with PostgreSQL reachable through `DB_*`. That is the release-bundle path in
 [Getting Started](https://github.com/fiwon123/eznit/wiki/Getting-Started); it is
 tested on Linux only.
 
@@ -47,7 +47,7 @@ address in an editable field (Test, then Connect), so `GUI_API_URL` is a startup
 default rather than the only way to point it; the **Templates** tab reads that server's catalogue, writes the `.eznit`
 bundle `template export` writes, and applies a template into a folder with the
 same rules `template apply` uses; and the **Server** tab starts and stops the
-`eznit-server` beside it, shows its log, and edits the `.env` and password file
+`eznit serve` beside it, shows its log, and edits the `.env` and password file
 it reads. Building it needs cgo and the platform's GL/X11 headers
 (`make build_gui`); at run time the Linux window needs `libGL.so.1` and
 `libwayland-client.so.0` (`libgl1 libwayland-client0`) and glibc **2.34** or
