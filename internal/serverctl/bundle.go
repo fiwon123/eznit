@@ -41,10 +41,9 @@ func (b Bundle) Missing() []string {
 // never writes to it: the window runs this before a person presses anything, so
 // a wrong folder must not be changed by being looked at.
 func Inspect(dir string) Bundle {
-	_, _, binaryErr := ServerBinary(dir)
 	_, exampleErr := os.Stat(filepath.Join(dir, EnvExampleName))
 
-	return Bundle{Binary: binaryErr == nil, Example: exampleErr == nil}
+	return Bundle{Binary: HasServerBinary(dir), Example: exampleErr == nil}
 }
 
 // BinaryName is the bundle binary's name on this platform.

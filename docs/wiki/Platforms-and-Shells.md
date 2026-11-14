@@ -104,7 +104,8 @@ point `--target` there, and it refuses to overwrite an existing file without
 
 - The macOS archives are built, never executed on a Mac.
 - The ARM64 binaries are built, never executed on ARM hardware.
-- The Windows server binary is built and verified, never started.
+- The Windows binary is built and verified as a client; its `serve` command is
+  asked for its help, and the API itself is never started there.
 - The browser UI has no automated test on any platform.
 
 See the README's

@@ -1,8 +1,10 @@
 package serverctl
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -293,34 +295,62 @@ func LocalAddress(dir string) string {
 // arguments it needs.
 //
 // `eznit serve` is the shipped form. A folder from before the two binaries were
-// merged holds only `eznit-server`, which needs no argument, so it is tried
-// second and used when `eznit` is absent: a new client beside an old server
-// would otherwise look like a folder with no server at all.
+// merged carries `eznit` too — as the client — so the name alone cannot say
+// whether the API is in there: the binary is asked, with the `--help` that exits
+// before the configuration, the database and a listener. A binary that cannot
+// serve is skipped, and the standalone `eznit-server` beside it is used instead,
+// which is what keeps a window updated in place working.
 func ServerBinary(dir string) (path string, args []string, err error) {
-	candidates := []struct {
-		name string
-		args []string
-	}{
-		{name: BinaryName(), args: []string{ServerCommand}},
-		{name: legacyBinaryName(), args: nil},
+	merged := filepath.Join(dir, BinaryName())
+	legacy := filepath.Join(dir, legacyBinaryName())
+
+	mergedThere := isBinaryFile(merged)
+	legacyThere := isBinaryFile(legacy)
+
+	if mergedThere && canServe(merged) {
+		return merged, []string{ServerCommand}, nil
 	}
 
-	for _, candidate := range candidates {
-		at := filepath.Join(dir, candidate.name)
+	if legacyThere {
+		return legacy, nil, nil
+	}
 
-		info, err := os.Stat(at)
-		if err != nil {
-			continue
-		}
-
-		if info.IsDir() {
-			return "", nil, fmt.Errorf("%s is a folder, not the server binary", at)
-		}
-
-		return at, candidate.args, nil
+	if mergedThere {
+		return "", nil, fmt.Errorf("%s in %s cannot serve — it is older than the merged binary; download the release again", BinaryName(), dir)
 	}
 
 	return "", nil, fmt.Errorf("no %s in %s — this folder is not a server bundle", BinaryName(), dir)
+}
+
+// HasServerBinary reports whether the folder carries anything that could run
+// the API, by name. It reads the folder and runs nothing: the panel asks this
+// before a person presses anything, so a wrong folder is not executed.
+func HasServerBinary(dir string) bool {
+	return isBinaryFile(filepath.Join(dir, BinaryName())) ||
+		isBinaryFile(filepath.Join(dir, legacyBinaryName()))
+}
+
+// isBinaryFile reports whether at is a file the folder could run.
+func isBinaryFile(at string) bool {
+	info, err := os.Stat(at)
+
+	return err == nil && !info.IsDir()
+}
+
+// canServe asks the binary whether it has the `serve` command.
+//
+// `--help` exits before the configuration, the database and a listener, so this
+// is a question any build can answer on any machine — and it is the only way to
+// tell the merged binary from the client that came before it.
+func canServe(binary string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	command := exec.CommandContext(ctx, binary, ServerCommand, "--help")
+	command.Stdout = io.Discard
+	command.Stderr = io.Discard
+
+	return command.Run() == nil
 }
 
 // Health asks the running API's health check. It answers without a session and

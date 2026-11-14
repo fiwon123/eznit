@@ -23,7 +23,11 @@ Then run the API on the host, pointed at the published port:
 DB_HOST=localhost DB_PORT=5432 ./eznit serve
 ```
 
-`eznit serve` embeds the web UI, so <http://localhost:4000> serves it.
+`eznit serve` embeds the web UI, so <http://localhost:4000> serves it. There is
+no separate server binary to keep in step: `eznit` is the client and the API, so
+one update keeps both at the release the tag names. A service unit from an
+earlier release still says `ExecStart=…/eznit-server`; it becomes
+`ExecStart=…/eznit serve`.
 
 `./eznit -v` prints the release this bundle carries, and needs no database, no
 configuration and no log folder — it is the quickest way to tell whether the

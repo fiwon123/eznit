@@ -137,7 +137,9 @@ VERIFY_FILES ?= README.md,LICENSE,RUNNING.md,docker-compose.yml
 # ./build. `release` below is the packaging path — staging and compressing a
 # folder is a different job from producing a binary, and mixing the two is what
 # produced flat archives with no architecture in the name.
-build: web_build build_cli ## Build the local binaries into ./build (the GUI is `make build_gui`)
+build: ## Build the local binaries into ./build (the GUI is `make build_gui`)
+	@$(MAKE) --no-print-directory web_build
+	@$(MAKE) --no-print-directory build_cli
 
 # Create the build folders if missing
 verify:
@@ -193,7 +195,7 @@ gui_check: ## vet and test the Fyne code (needs cgo + GL/X11 headers)
 # directory the user ran the command in; `add_to_path` then adds that directory
 # to PATH instead of the extracted tool.
 #
-# `make release` builds the web UI once (both binaries embed it), then one
+# `make release` builds the web UI once (the one binary embeds it), then one
 # platform at a time so the output reads in order, then the checksums.
 release: ## Build one-folder archives for every platform into build/dist
 	@rm -rf $(DIST_DIR) $(STAGE_DIR)

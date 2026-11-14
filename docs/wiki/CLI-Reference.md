@@ -1,7 +1,8 @@
 # 💻 CLI Reference
 
 The CLI talks to the eznit API and keeps its own state in a local config file. It
-is one binary, `eznit`, with an alias `ez`.
+is one binary, `eznit`, with an alias `ez` — and it is the API as well: `eznit
+serve` runs the server, so a bundle or a VPS needs one program, not two.
 
 ```sh
 eznit --help
@@ -13,9 +14,29 @@ eznit --debug <cmd> # debug-level logs
 than take flags. Subcommands take flags, and several of them (`template
 publish`/`show`/`apply`/`init`, `repo auth`) also prompt for values.
 
-Jump to: [Templates](#-templates) · [Commands library](#-commands-library) ·
-[Git hosts](#-git-hosts) · [Files and account](#-files-and-account) ·
-[The config file](#-the-config-file)
+Jump to: [Server](#-server) · [Templates](#-templates) ·
+[Commands library](#-commands-library) · [Git hosts](#-git-hosts) ·
+[Files and account](#-files-and-account) · [The config file](#-the-config-file)
+
+## 🖥️ Server
+
+The same binary is the server, so there is nothing else to install or keep in
+step with the client.
+
+| Command | Flags | What it does |
+| --- | --- | --- |
+| `eznit serve` | `--debug` (before or after `serve`) | Run the API: reads `API_*`/`DB_*`, serves the embedded web UI on `:4000`, drains in-flight requests on Ctrl-C |
+| `eznit -v` | — | The version — the server's too, because it is the same program |
+
+`eznit serve` needs PostgreSQL (`DB_HOST`/`DB_PORT`/`DB_USER`/`DB_NAME`, and
+`DB_PASSWORD_FILE` pointing at a file). It exits non-zero when it cannot reach
+the database, and prints why as one JSON line — the format the desktop window
+shows as the server's log. The desktop's **Server** tab starts this command for
+you and brings the database up first; from a shell, it is:
+
+```sh
+DB_HOST=localhost DB_PORT=5432 ./eznit serve
+```
 
 ## 🗂️ Files and account
 

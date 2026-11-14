@@ -165,7 +165,6 @@
       "mode": "subagent",
       "permission": {
         "edit": {
-          "cmd/api/**": "allow",
           "internal/**": "allow",
           "db/**": "allow",
           "pkg/**": "allow",

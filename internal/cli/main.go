@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/alecthomas/kong"
-	"github.com/fiwon123/eznit/internal/server"
 	"github.com/fiwon123/eznit/pkg/logger"
 	"github.com/joho/godotenv"
 )
@@ -80,9 +79,12 @@ func Run(version string) {
 
 	// The server owns its logging — JSON on stdout, the format the window reads
 	// as its log — so it runs before the client's console logger exists. One
-	// binary is the client and the server; `serve` is the whole difference.
+	// binary is the client and the server; `serve` is the whole difference, and
+	// Serve.Run is the only place that starts it.
 	if ctx.Command() == "serve" {
-		if err := server.Run(server.Options{Debug: cli.Debug}); err != nil {
+		globals = Globals{debug: cli.Debug}
+
+		if err := cli.Serve.Run(&globals); err != nil {
 			log.Fatal(err)
 		}
 

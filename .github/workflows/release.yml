@@ -27,7 +27,8 @@ name: Release
 #           server command in the same binary is asked for its help
 #   smoke-linux  the linux/amd64 window unpacked from its archive is started on
 #           Xvfb, so the copy Debian 12 has to run is the copy that is tested,
-#           and the server command beside it is asked for its version
+#           and the one binary beside it is asked for its version and for
+#           `serve --help`
 #
 # `publish` needs all of them and runs only on a tag push. `workflow_dispatch`
 # runs guard/build/gui/pack/smoke/smoke-linux, keeps the archives on the run,
@@ -568,12 +569,10 @@ jobs:
             echo "::error::eznit-gui is missing from the linux archive"
             exit 1
           fi
-          for binary in eznit; do
-            if [ ! -x "unpacked/$binary" ]; then
-              echo "::error::$binary is missing from the linux archive"
-              exit 1
-            fi
-          done
+          if [ ! -x unpacked/eznit ]; then
+            echo "::error::eznit is missing from the linux archive"
+            exit 1
+          fi
 
           # The packed binary must be the release the tag names.
           reported="$("$window" --version)"

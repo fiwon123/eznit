@@ -57,11 +57,11 @@ internal/domain/    one package per resource — users, sessions, files, templat
 internal/gitprovider/  git-host clients (GitHub, GitLab, Bitbucket) behind one interface;
                     holds no credential — the token is an argument
 internal/platform/  cross-domain infrastructure
-                    api/         the /v1 router, built once for both binaries
+                    api/         the /v1 router, built once and mounted by serve
                     openapi/     the OpenAPI document, its JSON twin, and Swagger UI at /docs
                     middleware/  session guard (Authorization: Bearer <token>)
                     sql/         database connection and the DSN from the environment
-                    webui/       the SPA handler both binaries serve the UI with
+                    webui/       the SPA handler the API serves the UI with
 pkg/                shared code with no project rules in it
                     errors/   AppError: a message and an HTTP status
                     helper/   JSON envelopes, path safety, token generation
