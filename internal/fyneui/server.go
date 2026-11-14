@@ -73,7 +73,7 @@ type serverView struct {
 	log    *widget.TextGrid
 	grid   *logGrid
 	scroll *container.Scroll
-	follow *widget.Check
+	follow *checkRow
 
 	// sel is the range a drag covers in the grid, or nil. It is painted on the
 	// grid's own cells rather than in a layer above them (see loggrid.go).
@@ -398,7 +398,7 @@ func (v *serverView) buildOutput() {
 	v.scroll.SetMinSize(fyne.NewSize(440, 80))
 	v.scroll.OnScrolled = v.followOutput
 
-	v.follow = widget.NewCheck("Follow output", func(checked bool) {
+	v.follow = newCheckRow("Follow output", func(checked bool) {
 		if checked {
 			v.scrollToEnd()
 		}
@@ -415,7 +415,7 @@ func (v *serverView) buildOutput() {
 	v.copySelection = widget.NewButton("Copy selection", v.copySelected)
 	v.copySelection.Disable()
 
-	actions := container.NewBorder(nil, nil, v.follow,
+	actions := container.NewBorder(nil, nil, v.follow.row,
 		container.NewHBox(jump, copyLog, v.copySelection, selectOutput, clear))
 	v.outputControls = container.NewPadded(actions)
 }

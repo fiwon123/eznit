@@ -45,7 +45,7 @@ type templatesView struct {
 
 	table   *widget.Table
 	kind    *widget.Select
-	mine    *widget.Check
+	mine    *checkRow
 	refresh *widget.Button
 	export  *widget.Button
 	apply   *widget.Button
@@ -152,7 +152,7 @@ func newTemplatesView(u *ui) *templatesView {
 	view.kind.SetSelected(allKinds)
 	view.kind.OnChanged = func(string) { view.reload() }
 
-	view.mine = widget.NewCheck("Only my templates", func(bool) { view.reload() })
+	view.mine = newCheckRow("Only my templates", func(bool) { view.reload() })
 
 	view.updateActions()
 
@@ -172,7 +172,7 @@ func (v *templatesView) content() fyne.CanvasObject {
 	// before the bar that holds it.
 	v.dot = canvas.NewCircle(statusColour(v.ui.app.Settings().ThemeVariant(), statusIdle))
 
-	filters := container.NewHBox(muted("Kind"), v.kind, v.mine)
+	filters := container.NewHBox(muted("Kind"), v.kind, v.mine.row)
 
 	v.buildDetail()
 	split := container.NewVSplit(v.table, v.detailPane())

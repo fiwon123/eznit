@@ -43,9 +43,10 @@ type filesView struct {
 	remove   *widget.Button
 	share    *widget.Button
 
-	// The table's cells cannot be selectable — a selectable cell would take the
-	// tap that selects the row — so the selected file is described under the
-	// table, in a line that can be selected and copied.
+	// The table's cells are selectable, so the text of a row can be copied.
+	// A selectable cell would otherwise take the tap that selects the row, so
+	// each cell carries a transparent tap layer above its label; the detail
+	// line under the table still describes the selection in one sentence.
 	detail      *prose
 	copyName    *widget.Button
 	copyDetails *widget.Button
@@ -60,12 +61,30 @@ func newFilesView(u *ui) *filesView {
 
 	view.table = widget.NewTable(
 		func() (int, int) { return len(view.files) + 1, 3 },
-		func() fyne.CanvasObject { return widget.NewLabel("") },
+		func() fyne.CanvasObject {
+			// A selectable label for the value, and a transparent layer that
+			// receives the tap: the label's selection would otherwise swallow
+			// the tap that selects the row. A drag still reaches the label.
+			label := widget.NewLabel("")
+			label.Selectable = true
+
+			return container.NewStack(label, newTapTarget(nil))
+		},
 		func(id widget.TableCellID, cell fyne.CanvasObject) {
-			label, ok := cell.(*widget.Label)
-			if !ok {
+			stack, ok := cell.(*fyne.Container)
+			if !ok || len(stack.Objects) != 2 {
 				return
 			}
+
+			label, ok := stack.Objects[0].(*widget.Label)
+			tap, tappable := stack.Objects[1].(*tapTarget)
+			if !ok || !tappable {
+				return
+			}
+
+			// The layer is what a click lands on, so it is what selects the
+			// cell — including the header row, which OnSelected unselects.
+			tap.onTap = func() { view.table.Select(id) }
 
 			if id.Row == 0 {
 				label.TextStyle = fyne.TextStyle{Bold: true}

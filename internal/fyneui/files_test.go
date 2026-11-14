@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 
 	"github.com/fiwon123/eznit/internal/apiclient"
 	"github.com/fiwon123/eznit/internal/config"
@@ -97,9 +99,10 @@ func TestTakeOfflineNamesTheAddress(t *testing.T) {
 	}
 }
 
-// The table's cells cannot be selected — a selectable cell would take the tap
-// that selects the row — so the selected row is described under it, and both
-// copies work from that line.
+// The table's cells are selectable — a selectable cell would take the tap that
+// selects the row, so each cell carries a tap layer above its label. A tap
+// still selects the row, and the selected row is described under the table so
+// both copies work from one line.
 func TestSelectedFileIsDescribedAndCopied(t *testing.T) {
 	view := newTestFilesView(t, apiChoice{url: "http://127.0.0.1:4321", source: "the default"})
 	view.ui.clip = test.NewClipboard()
@@ -129,6 +132,65 @@ func TestSelectedFileIsDescribedAndCopied(t *testing.T) {
 	}
 	if !strings.Contains(view.status.Text, "Copied") {
 		t.Errorf("status = %q, want confirmation of the copy", view.status.Text)
+	}
+}
+
+// Every cell is selectable — the header included — and a tap on a cell still
+// selects its row. The tap goes to the transparent layer above the label,
+// because a selectable label would otherwise swallow it.
+func TestFilesTableCellsAreSelectableAndSelectTheRow(t *testing.T) {
+	view := newTestFilesView(t, apiChoice{url: "http://127.0.0.1:4321", source: "the default"})
+
+	view.files = []apiclient.File{{ID: "1", Name: "notes.txt", Version: 2}}
+	view.ready = true
+	view.updateActions()
+
+	cell := view.table.CreateCell()
+	view.table.UpdateCell(widget.TableCellID{Row: 1, Col: 0}, cell)
+
+	stack, ok := cell.(*fyne.Container)
+	if !ok || len(stack.Objects) != 2 {
+		t.Fatalf("a table cell is %T, want a label and a tap layer", cell)
+	}
+
+	label, ok := stack.Objects[0].(*widget.Label)
+	if !ok {
+		t.Fatalf("the cell's first object is %T, want a label", stack.Objects[0])
+	}
+
+	if !label.Selectable {
+		t.Error("the cell text is not selectable")
+	}
+
+	if label.Text != "notes.txt" {
+		t.Errorf("cell = %q, want the file name", label.Text)
+	}
+
+	tap, ok := stack.Objects[1].(*tapTarget)
+	if !ok {
+		t.Fatalf("the cell's second object is %T, want a tap layer", stack.Objects[1])
+	}
+
+	test.Tap(tap)
+
+	if view.selected != 0 {
+		t.Errorf("selected = %d, want 0 after tapping the first row", view.selected)
+	}
+
+	header := view.table.CreateCell()
+	view.table.UpdateCell(widget.TableCellID{Row: 0, Col: 0}, header)
+
+	headerStack := header.(*fyne.Container)
+	headerLabel := headerStack.Objects[0].(*widget.Label)
+
+	if !headerLabel.Selectable || headerLabel.Text != "Name" {
+		t.Errorf("header cell = %q (selectable %t), want a selectable caption", headerLabel.Text, headerLabel.Selectable)
+	}
+
+	test.Tap(headerStack.Objects[1].(*tapTarget))
+
+	if view.selected != -1 {
+		t.Errorf("selected = %d, want the header tap to unselect", view.selected)
 	}
 }
 
