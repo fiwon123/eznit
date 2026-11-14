@@ -57,7 +57,6 @@ HOST_PORT := $(patsubst "%",%,$(patsubst '%',%,$(HOST_PORT)))
 API_PORT := $(patsubst "%",%,$(patsubst '%',%,$(API_PORT)))
 WEB_PORT := $(patsubst "%",%,$(patsubst '%',%,$(WEB_PORT)))
 
-API_FOLDER := ./cmd/api
 CLI_FOLDER := ./cmd/cli
 GUI_FOLDER := ./cmd/gui
 WEB_FOLDER := ./web
@@ -94,7 +93,6 @@ LINUX_SCRIPT :=  $(SCRIPTS_DIR)/$(SCRIPT_NAME).sh
 # Builds
 BUILD_DIR := ./build
 BUILD_CLI := $(BUILD_DIR)/cli
-BUILD_API := $(BUILD_DIR)/api
 BUILD_GUI := $(BUILD_DIR)/gui
 
 # Release packaging: one folder per archive, named
@@ -131,7 +129,7 @@ VERIFY_FILES ?= README.md,LICENSE,RUNNING.md,docker-compose.yml
 
 ## Builds
 .PHONY: clean
-.PHONY: build build_cli build_api build_gui verify
+.PHONY: build build_cli build_gui verify
 .PHONY: release release-platform verify-release checksums
 .PHONY: check test_integration
 
@@ -139,11 +137,13 @@ VERIFY_FILES ?= README.md,LICENSE,RUNNING.md,docker-compose.yml
 # ./build. `release` below is the packaging path — staging and compressing a
 # folder is a different job from producing a binary, and mixing the two is what
 # produced flat archives with no architecture in the name.
-build: build_cli build_api ## Build the local binaries into ./build (the GUI is `make build_gui`)
+build: ## Build the local binaries into ./build (the GUI is `make build_gui`)
+	@$(MAKE) --no-print-directory web_build
+	@$(MAKE) --no-print-directory build_cli
 
 # Create the build folders if missing
 verify:
-	@mkdir -p $(BUILD_CLI)/windows $(BUILD_CLI)/linux $(BUILD_API) $(BUILD_GUI)
+	@mkdir -p $(BUILD_CLI)/windows $(BUILD_CLI)/linux $(BUILD_GUI)
 
 build_cli: verify
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_CLI)/windows/$(APP_NAME).exe $(CLI_FOLDER)
@@ -156,16 +156,12 @@ build_cli: verify
 	chmod a+x $(BUILD_CLI)/linux/$(APP_NAME)
 	chmod a+x $(BUILD_CLI)/linux/$(APP_NAME_SHORT)
 
-# The API and GUI binaries carry the built web UI (web/embed.go), so building
-# either one builds the UI first. `make check` deliberately does not: the
-# committed web/dist/.gitkeep keeps the embed directive valid without a build,
-# which is what lets the Go gate run on a machine with no Node.
-build_api: web_build verify
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_API)/server $(API_FOLDER)
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X $(INJECT_VERSION)=$(VERSION)" -o $(BUILD_API)/server.exe $(API_FOLDER)
-
-	chmod -R a+r $(BUILD_API)
-	chmod a+x $(BUILD_API)/server
+# The one binary is the client and the server, and it carries the built web UI
+# (web/embed.go), so `build` builds the UI first. `make check` deliberately does
+# not: the committed web/dist/.gitkeep keeps the embed directive valid without a
+# build, which is what lets the Go gate run on a machine with no Node. A bare
+# `go build ./cmd/cli` therefore embeds no UI, and `eznit serve` says so in its
+# log instead of pretending.
 
 # The desktop app needs cgo and the host's GL/X11 headers, so it is not part of
 # `make build` or `make check` — a machine with neither must still pass the
@@ -199,7 +195,7 @@ gui_check: ## vet and test the Fyne code (needs cgo + GL/X11 headers)
 # directory the user ran the command in; `add_to_path` then adds that directory
 # to PATH instead of the extracted tool.
 #
-# `make release` builds the web UI once (both binaries embed it), then one
+# `make release` builds the web UI once (the one binary embeds it), then one
 # platform at a time so the output reads in order, then the checksums.
 release: ## Build one-folder archives for every platform into build/dist
 	@rm -rf $(DIST_DIR) $(STAGE_DIR)
@@ -223,7 +219,7 @@ release-platform:
 	ext=""; [ "$(GOOS)" = "windows" ] && ext=".exe"; \
 	rm -rf "$$stage"; mkdir -p "$$stage/db" "$$stage/scripts" "$$stage/secrets" "$(DIST_DIR)"; \
 	echo "eznit  $(VERSION) $(GOOS)/$(GOARCH)"; \
-	cli_syso=""; api_syso=""; \
+	cli_syso=""; \
 	if [ "$(GOOS)" = "windows" ]; then \
 	  if [ ! -f "$(ICON)" ]; then \
 	    echo "ERROR: $(ICON) is missing -- it is the one icon source; restore it (see assets/README.md)" >&2; exit 1; \
@@ -232,29 +228,19 @@ release-platform:
 	    echo "ERROR: $(WINRES) is missing -- copy templates/go/internal/tools/winres there" >&2; exit 1; \
 	  fi; \
 	  cli_syso="$(CLI_FOLDER)/rsrc_windows_$(GOARCH).syso"; \
-	  api_syso="$(API_FOLDER)/rsrc_windows_$(GOARCH).syso"; \
-	  trap 'rm -f "$$cli_syso" "$$api_syso"' EXIT; \
+	  trap 'rm -f "$$cli_syso"' EXIT; \
 	  GOOS="$$(go env GOHOSTOS)" GOARCH="$$(go env GOHOSTARCH)" CGO_ENABLED=0 \
 	    go run "./$(WINRES)" -icon "$(ICON)" -out "$$cli_syso" -arch "$(GOARCH)" \
 	      -name "$(APP_NAME)" -description "$(DESCRIPTION)" -company "$(COMPANY)" \
-	      -app-id "$(APP_ID)" -version "$(VERSION)"; \
-	  GOOS="$$(go env GOHOSTOS)" GOARCH="$$(go env GOHOSTARCH)" CGO_ENABLED=0 \
-	    go run "./$(WINRES)" -icon "$(ICON)" -out "$$api_syso" -arch "$(GOARCH)" \
-	      -name "$(APP_NAME)-server" -description "$(DESCRIPTION)" -company "$(COMPANY)" \
 	      -app-id "$(APP_ID)" -version "$(VERSION)"; \
 	fi; \
 	CGO_ENABLED=0 GOOS="$(GOOS)" GOARCH="$(GOARCH)" go build -trimpath \
 	  -ldflags "-s -w -X $(INJECT_VERSION)=$(VERSION)" \
 	  -o "$$stage/$(APP_NAME)$$ext" $(CLI_FOLDER); \
 	cp "$$stage/$(APP_NAME)$$ext" "$$stage/$(APP_NAME_SHORT)$$ext"; \
-	CGO_ENABLED=0 GOOS="$(GOOS)" GOARCH="$(GOARCH)" go build -trimpath \
-	  -ldflags "-s -w -X $(INJECT_VERSION)=$(VERSION)" \
-	  -o "$$stage/$(APP_NAME)-server$$ext" $(API_FOLDER); \
 	if [ -n "$$cli_syso" ]; then \
 	  GOOS="$$(go env GOHOSTOS)" GOARCH="$$(go env GOHOSTARCH)" CGO_ENABLED=0 \
 	    go run "./$(WINRES)" -require-resources -verify-console "$$stage/$(APP_NAME).exe"; \
-	  GOOS="$$(go env GOHOSTOS)" GOARCH="$$(go env GOHOSTARCH)" CGO_ENABLED=0 \
-	    go run "./$(WINRES)" -require-resources -verify-console "$$stage/$(APP_NAME)-server.exe"; \
 	fi; \
 	cp -R $(MIGRATIONS) "$$stage/db/"; \
 	cp $(SCRIPT_MIGRATION) "$$stage/scripts/"; \
@@ -438,7 +424,7 @@ docker_down_v:
 .PHONY: run_api run_cli run_jq
 
 run_api:
-	go run $(API_FOLDER) $(filter-out $@,$(MAKECMDGOALS))
+	go run $(CLI_FOLDER) serve $(filter-out $@,$(MAKECMDGOALS))
 
 run_cli:
 	go run $(CLI_FOLDER) $(filter-out $@,$(MAKECMDGOALS))

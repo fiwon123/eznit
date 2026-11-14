@@ -9,9 +9,9 @@ that drive it, see [README.md](README.md).
 
 | Piece | Entry point | What it is | Listens |
 | --- | --- | --- | --- |
-| API | `cmd/api` | The HTTP API, and the web UI in front of it | `:4000` |
+| API | `cmd/cli serve` → `internal/server` | The HTTP API, and the web UI in front of it | `:4000` |
 | Web tier | `web/Dockerfile` + `web/nginx.conf` | The built UI behind nginx, proxying `/v1` to the API (compose only) | `:5173` |
-| CLI | `cmd/cli` → `internal/cli` | `kong` command line client, one file per command | — |
+| CLI | `cmd/cli` → `internal/cli` | `kong` command line client, one file per command; the same binary as the API (`eznit serve`) | — |
 | GUI | `cmd/gui` → `internal/fyneui` | The native Fyne window: a client of an API, and the control panel for a local one | — |
 | Web UI | `web/src` | React + TypeScript + Vite, built to `web/dist` | — |
 
@@ -34,7 +34,9 @@ same two ports, the same `/v1` proxy, the same `API_SERVE_WEB=false` — so a bu
 that is caused by the two tiers is reproducible in either mode. Neither
 container holds the other's toolchain, and neither needs one on the host.
 
-The API's router is built by `internal/platform/api` and mounted by `cmd/api`.
+The API's router is built by `internal/platform/api` and mounted by
+`internal/server`, which `eznit serve` runs: one binary is the client and the
+server, so their versions cannot drift apart.
 The GUI is an HTTP client of that router over the network, through
 `internal/apiclient` — the same client the CLI uses, so one token in
 `~/.eznit/config.json` serves both.
@@ -42,24 +44,24 @@ The GUI is an HTTP client of that router over the network, through
 ## Repository map
 
 ```
-cmd/api/            API entrypoint: flags, logging, database, router, UI, shutdown
-cmd/cli/            CLI entrypoint: the version variable, then internal/cli
+cmd/cli/            the one entrypoint: the version variable, then internal/cli
+internal/server/    `eznit serve`: logging, database, router, UI, shutdown
 internal/cli/       CLI commands, the API client, the local config/token store,
                     and the git-host commands
 cmd/gui/            GUI entrypoint: flags, then internal/fyneui
 internal/fyneui/    the Fyne window: Files (the API client), Server, About
 internal/serverctl/ the local server a window supervises — its env file, the
-                    secret file, and the eznit-server child process
+                    secret file, the database step, and the child process
 internal/domain/    one package per resource — users, sessions, files, templates
                     handler.go -> service.go -> repository.go, plus dto.go
 internal/gitprovider/  git-host clients (GitHub, GitLab, Bitbucket) behind one interface;
                     holds no credential — the token is an argument
 internal/platform/  cross-domain infrastructure
-                    api/         the /v1 router, built once for both binaries
+                    api/         the /v1 router, built once and mounted by serve
                     openapi/     the OpenAPI document, its JSON twin, and Swagger UI at /docs
                     middleware/  session guard (Authorization: Bearer <token>)
                     sql/         database connection and the DSN from the environment
-                    webui/       the SPA handler both binaries serve the UI with
+                    webui/       the SPA handler the API serves the UI with
 pkg/                shared code with no project rules in it
                     errors/   AppError: a message and an HTTP status
                     helper/   JSON envelopes, path safety, token generation
@@ -87,8 +89,8 @@ A CLI command, end to end:
 1. **`cmd/cli`** builds an HTTP request from `CLI_API_HOST` and `CLI_API_PORT`
    (default `http://localhost:4000`) and attaches the session token from
    `~/.eznit/config.json` as `Authorization: Bearer <token>`.
-2. **`cmd/api`** routes it: `chi` in `main` sends `/v1/...` to the router the
-   domain registered with `RegisterRoutes`.
+2. **`internal/server`** routes it: `chi` in its startup sends `/v1/...` to the
+   router the domain registered with `RegisterRoutes`.
 3. **`internal/platform/middleware`** runs first on a guarded route: it asks the
    sessions service whether the token is valid, and puts the caller's user id in
    the request context. No token, no handler.
@@ -323,10 +325,17 @@ identity and its update controls; it holds nothing about a session.
 
 The Server tab reads the env file of `server_dir` — the folder the window was
 installed into unless another is chosen with **Browse…** or typed into the
-folder field and committed with **Use** — and starts `eznit-server` from it as a
-child process, with that file as its environment. A stop is an interrupt, so the
-API drains (10s) before the window gives up and kills it; Windows cannot deliver
-an interrupt to another process, so there a stop is a kill.
+folder field and committed with **Use** — and starts `eznit serve` from it as a
+child process, with that file as its environment. A folder from an older release
+holds `eznit-server` instead; it is run without the command, so an extracted
+archive keeps starting. Before that it makes the
+database usable (`internal/serverctl/database.go`): it probes the address the
+API will dial, runs the folder's `migrate` service when one answers, and starts
+the database through the folder's own Compose services when one does not — an
+API with no database is a process that answers a health check and prints pq
+errors, which is the state that step exists to prevent. A stop is an interrupt,
+so the API drains (10s) before the window gives up and kills it; Windows cannot
+deliver an interrupt to another process, so there a stop is a kill.
 
 The folder it resolved *by default* is never written to the config file: only a
 folder a person picked is stored, which is what keeps the default distinct from

@@ -38,8 +38,9 @@ and on manual dispatch only.
 | `make web_install` / `web_build` / `web_dev` / `web_check` | the web UI |
 | `make screenshots` | capture the README screenshots (needs the app running) |
 
-`make build_api` and `make build_gui` build the web UI first, because both binaries
-carry a copy of it. `make check` stays Go-only; the web has its own gate.
+`make build` builds the web UI first, because the one binary carries a copy of
+it (the window is `make build_gui`). `make check` stays Go-only; the web has its
+own gate.
 
 ## 🧪 The dev sandbox
 

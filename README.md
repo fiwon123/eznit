@@ -124,10 +124,11 @@ a file in your home directory unless you point `--target` there.
 | 🍎 macOS amd64 | `eznit_<tag>_darwin_amd64.tar.gz` |
 | 🍎 macOS arm64 | `eznit_<tag>_darwin_arm64.tar.gz` |
 
-One download holds the whole product: `eznit` and `ez` (the CLI), `eznit-server`
-(the API), `eznit-gui` (the desktop window: **Files** and **Templates** are
-clients of an API, **Server** runs one beside it), the migrations,
-`docker-compose.yml` and the example configuration.
+One download holds the whole product: `eznit` and `ez` (the CLI — and the API:
+`eznit serve` is the server, so the client and the server are one program),
+`eznit-gui` (the desktop window: **Files** and **Templates** are clients of an
+API, **Server** runs one beside it), the migrations, `docker-compose.yml` and the
+example configuration.
 `RUNNING.md` says what runs from it and what does not. Verify a download against
 `checksums.txt` from the release page.
 
@@ -141,12 +142,13 @@ cd eznit_<tag>_linux_amd64
 ```
 
 Run the window **from inside the extracted folder**: the Server tab looks for
-`eznit-server` beside it. The window is a client first — type any eznit API into the **Files**
-header and **Connect** — and a host second: the Server tab runs the server
-in that folder, with a database from `docker compose up -d db migrate`, then
-**Server → Configuration → Create .env → set the database password → Save →
-Start**. Without the window, `./eznit` is the CLI and `./eznit-server` is the
-API; `RUNNING.md` in the folder has the rest.
+`eznit` beside it. The window is a client first — type any eznit API into the **Files**
+header and **Connect** — and a host second: the Server tab runs the server in
+that folder. Its first run is **Server → Configuration → Create .env → set the
+database password → Save → Start**: **Start** brings up the database and applies
+the migrations through the folder's own Compose services when nothing answers, so
+the database does not need a terminal step. Without the window, `./eznit` is the
+CLI and `./eznit serve` is the API; `RUNNING.md` in the folder has the rest.
 
 ## 🔒 Security status
 
@@ -191,8 +193,9 @@ This project says what it verified.
 - **No test sends a request through the whole stack.** The router is tested with
   no database, and the repositories are tested against a real PostgreSQL; no
   test starts the API and makes an HTTP call that reaches a query.
-- **The Windows server binary is built, never started.** CI smoke-tests the
-  Windows CLI; the server and the Compose stack are not run on Windows.
+- **The Windows binary is built, never started as a server.** CI smoke-tests the
+  Windows CLI, asks the same binary for `serve --help`, and never runs the API
+  or the Compose stack on Windows.
 - **The ARM64 binaries are built, never executed** on ARM hardware, and the
   macOS archives are cross-compiled on Linux and never started on a Mac.
 - **The browser UI has no automated test**; the screenshots are captured by

@@ -41,10 +41,11 @@ label, so they read as a changelog rather than a raw commit list.
   (names, PE, Mach-O, provenance) and the checksums are rebuilt. The window is
   required: `-app eznit -short ez -gui`, so a platform the packer skipped fails
   here.
-- **smoke** — on `windows-latest`, the Windows archive is unpacked and the four
-  binaries are checked: `eznit -v` prints the version, `ez -v` runs,
-  `eznit-server.exe --version` prints the version too, and `eznit-gui.exe --help`
-  exits. A binary that cannot start fails the release instead of shipping.
+- **smoke** — on `windows-latest`, the Windows archive is unpacked and the three
+  binaries are checked: `eznit -v` prints the version (it is the server's version
+  too — one binary), `ez -v` runs, `eznit.exe serve --help` exits (the command
+  has to be in the artifact), and `eznit-gui.exe --help` exits. A binary that
+  cannot start fails the release instead of shipping.
 - **publish** — runs only on a tag push; needs all three above. It re-verifies the
   checksums, composes the notes, and creates the GitHub Release.
 
@@ -63,7 +64,7 @@ platform is in the archive name, never in the binary name.
 
 | Asset | Contents |
 | --- | --- |
-| `eznit_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux, macOS) | `eznit`, `ez`, `eznit-server`, `eznit-gui`, `add_to_path.ps1` or `add_to_path.sh`, `db/migrations/`, `scripts/run_migrate.sh`, `docker-compose.yml`, the example configuration and secret files, `RUNNING.md`, README, LICENSE, LICENSE-FYNE, LICENSE-APACHE, NOTICE |
+| `eznit_<version>_<os>_<arch>.zip` (Windows) / `.tar.gz` (Linux, macOS) | `eznit` (the CLI and the API — `eznit serve`), `ez`, `eznit-gui`, `add_to_path.ps1` or `add_to_path.sh`, `db/migrations/`, `scripts/run_migrate.sh`, `docker-compose.yml`, the example configuration and secret files, `RUNNING.md`, README, LICENSE, LICENSE-FYNE, LICENSE-APACHE, NOTICE |
 | `checksums.txt` | SHA-256 of every archive |
 
 Each archive is checked after it is written: exactly one top-level folder, named

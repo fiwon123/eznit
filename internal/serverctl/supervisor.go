@@ -1,8 +1,10 @@
 package serverctl
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -13,8 +15,18 @@ import (
 	"time"
 )
 
-// ServerBinaryName is the executable a server bundle carries.
-const ServerBinaryName = "eznit-server"
+// ServerBinaryName is the one binary a bundle carries: the client and the
+// server are the same program. A bundle from an older release has the
+// standalone server instead — see ServerBinary.
+const ServerBinaryName = "eznit"
+
+// ServerCommand is the argument that makes the one binary run the API.
+const ServerCommand = "serve"
+
+// legacyServerBinaryName is the standalone server a bundle used before the two
+// were merged. It is still run when a folder has no eznit, so an archive
+// somebody already extracted keeps starting.
+const legacyServerBinaryName = "eznit-server"
 
 // defaultPort is what the API listens on when API_PORT is unset.
 const defaultPort = "4000"
@@ -30,7 +42,7 @@ type State struct {
 	Exit    error
 }
 
-// Supervisor runs one eznit-server process from a bundle folder.
+// Supervisor runs one server process from a bundle folder.
 type Supervisor struct {
 	mu    sync.Mutex
 	dir   string
@@ -141,7 +153,7 @@ func (s *Supervisor) start() error {
 		return errors.New("the server is already running")
 	}
 
-	binary, err := ServerBinary(s.dir)
+	binary, args, err := ServerBinary(s.dir)
 	if err != nil {
 		return err
 	}
@@ -155,7 +167,7 @@ func (s *Supervisor) start() error {
 		return err
 	}
 
-	cmd := exec.Command(binary)
+	cmd := exec.Command(binary, args...)
 	cmd.Dir = s.dir
 	// The .env wins over the inherited environment: it is the file the person
 	// just edited, and godotenv in the child would not override what is
@@ -279,21 +291,66 @@ func LocalAddress(dir string) string {
 	return "http://127.0.0.1:" + port
 }
 
-// ServerBinary is the server executable in dir.
-func ServerBinary(dir string) (string, error) {
-	name := BinaryName()
-	path := filepath.Join(dir, name)
+// ServerBinary is the executable in dir that can run the API, with the
+// arguments it needs.
+//
+// `eznit serve` is the shipped form. A folder from before the two binaries were
+// merged carries `eznit` too — as the client — so the name alone cannot say
+// whether the API is in there: the binary is asked, with the `--help` that exits
+// before the configuration, the database and a listener. A binary that cannot
+// serve is skipped, and the standalone `eznit-server` beside it is used instead,
+// which is what keeps a window updated in place working.
+func ServerBinary(dir string) (path string, args []string, err error) {
+	merged := filepath.Join(dir, BinaryName())
+	legacy := filepath.Join(dir, legacyBinaryName())
 
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", fmt.Errorf("no %s in %s — this folder is not a server bundle", name, dir)
+	mergedThere := isBinaryFile(merged)
+	legacyThere := isBinaryFile(legacy)
+
+	if mergedThere && canServe(merged) {
+		return merged, []string{ServerCommand}, nil
 	}
 
-	if info.IsDir() {
-		return "", fmt.Errorf("%s is a folder, not the server binary", path)
+	if legacyThere {
+		return legacy, nil, nil
 	}
 
-	return path, nil
+	if mergedThere {
+		return "", nil, fmt.Errorf("%s in %s cannot serve — it is older than the merged binary; download the release again", BinaryName(), dir)
+	}
+
+	return "", nil, fmt.Errorf("no %s in %s — this folder is not a server bundle", BinaryName(), dir)
+}
+
+// HasServerBinary reports whether the folder carries anything that could run
+// the API, by name. It reads the folder and runs nothing: the panel asks this
+// before a person presses anything, so a wrong folder is not executed.
+func HasServerBinary(dir string) bool {
+	return isBinaryFile(filepath.Join(dir, BinaryName())) ||
+		isBinaryFile(filepath.Join(dir, legacyBinaryName()))
+}
+
+// isBinaryFile reports whether at is a file the folder could run.
+func isBinaryFile(at string) bool {
+	info, err := os.Stat(at)
+
+	return err == nil && !info.IsDir()
+}
+
+// canServe asks the binary whether it has the `serve` command.
+//
+// `--help` exits before the configuration, the database and a listener, so this
+// is a question any build can answer on any machine — and it is the only way to
+// tell the merged binary from the client that came before it.
+func canServe(binary string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	command := exec.CommandContext(ctx, binary, ServerCommand, "--help")
+	command.Stdout = io.Discard
+	command.Stderr = io.Discard
+
+	return command.Run() == nil
 }
 
 // Health asks the running API's health check. It answers without a session and
@@ -313,6 +370,24 @@ func Health(baseURL string, timeout time.Duration) error {
 	}
 
 	return nil
+}
+
+// PortFree reports whether the API could bind the port the folder's
+// configuration names.
+//
+// Start asks before it prepares the database: a server that cannot bind is not
+// worth starting containers and applying migrations for, and the reason belongs
+// in front of the person before the slow part.
+func PortFree(dir string) error {
+	port := defaultPort
+
+	if env, err := LoadEnv(filepath.Join(dir, EnvFileName)); err == nil {
+		if value := env.Value("API_PORT", ""); value != "" {
+			port = value
+		}
+	}
+
+	return portFree(port)
 }
 
 // portFree reports whether the API could bind the port it is configured for.

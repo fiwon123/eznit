@@ -40,7 +40,7 @@ empty field here means a placeholder somewhere else.
 ## Architecture
 
 ```
-cmd/api/         API entrypoint: flags, logger, router, graceful shutdown
+internal/server/ `eznit serve`: logger, database, router, graceful shutdown
 cmd/cli/         CLI entrypoint; commands live in internal/cli
 web/             React + TypeScript + Vite web UI; built to web/dist and served by the API
 internal/domain/ One package per resource: users, sessions, files

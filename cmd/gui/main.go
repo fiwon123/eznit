@@ -24,14 +24,14 @@ func main() {
 		fmt.Fprintln(flag.CommandLine.Output(), "Usage: eznit-gui [flags]")
 		fmt.Fprintln(flag.CommandLine.Output())
 		fmt.Fprintln(flag.CommandLine.Output(), "A native window over an eznit API, and the control panel")
-		fmt.Fprintln(flag.CommandLine.Output(), "for a local eznit-server.")
+		fmt.Fprintln(flag.CommandLine.Output(), "for a local eznit server (`eznit serve`).")
 		fmt.Fprintln(flag.CommandLine.Output())
 		fmt.Fprintln(flag.CommandLine.Output(), "Flags:")
 		flag.PrintDefaults()
 	}
 
 	api := flag.String("api", "", "the eznit API base URL (default: the stored setting, then GUI_API_URL)")
-	serverDir := flag.String("server-dir", "", "the folder holding eznit-server and its .env (default: the stored setting, then this binary's folder)")
+	serverDir := flag.String("server-dir", "", "the folder holding eznit and its configuration (default: the stored setting, then this binary's folder)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 

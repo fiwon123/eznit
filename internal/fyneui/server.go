@@ -3,8 +3,10 @@
 package fyneui
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -34,7 +36,7 @@ const stopTimeout = 15 * time.Second
 // the offset a few pixels; a wheel notch moves it much further.
 const followTolerance = 24
 
-// serverView is the Local server tab: run the eznit-server from a bundle
+// serverView is the Local server tab: run the server from a bundle
 // folder, watch what it prints, and edit the .env beside it.
 //
 // It is a control panel, not a remote client: it drives a process on this
@@ -77,6 +79,15 @@ type serverView struct {
 	// grid's own cells rather than in a layer above them (see loggrid.go).
 	sel           *selection
 	copySelection *widget.Button
+
+	// preparing is true while the database step runs, before the API exists.
+	// The refresh cycle keeps the buttons honest about it, and a folder change
+	// is refused for the same reason it is refused while the server runs.
+	preparing bool
+
+	// prepare is the database step. It is a field so a test can answer for it:
+	// the real one starts containers, and most tests are about the buttons.
+	prepare func(ctx context.Context, dir string, out io.Writer) (serverctl.Result, error)
 
 	outputControls *fyne.Container
 
@@ -142,6 +153,7 @@ func newServerView(u *ui, dir string) *serverView {
 		fieldOverrides: map[string]*container.ThemeOverride{},
 		fieldCaptions:  map[string]*widget.Label{},
 		dirtyFields:    map[string]bool{},
+		prepare:        serverctl.Prepare,
 	}
 
 	view.useDir(dir)
@@ -175,8 +187,15 @@ func (v *serverView) useDir(dir string) {
 
 // canChangeFolder refuses a folder change while the server runs: the process
 // belongs to the folder it was started from, and swapping the supervisor would
-// leave it with nobody holding it.
+// leave it with nobody holding it. The database step is the same case a moment
+// earlier — it is working in that folder on the server's behalf.
 func (v *serverView) canChangeFolder() bool {
+	if v.preparing {
+		v.setNote("Wait for the database step to finish — it is working in the folder the server will run from.")
+
+		return false
+	}
+
 	if !v.running() {
 		return true
 	}
@@ -538,6 +557,22 @@ func (v *serverView) refresh() {
 	}
 
 	state := v.server().State()
+
+	if v.preparing {
+		// The database step is running: the buttons and the folder stay as they
+		// were left, and the status says what is happening.
+		v.status.SetText("Preparing the database…")
+		v.health.SetText("Starting or checking the database")
+		v.dot.FillColor = statusColour(v.ui.app.Settings().ThemeVariant(), statusPending)
+		v.dot.Refresh()
+		v.start.Disable()
+		v.stop.Disable()
+		v.setFolderEditable(false)
+		v.drawLog()
+
+		return
+	}
+
 	answered, answerErr := v.answerState()
 
 	status, health, kind := "Stopped", v.localURL, statusIdle
@@ -974,6 +1009,14 @@ func (v *serverView) pollHealth() {
 	}
 }
 
+// databaseTimeout bounds the database step. The first run pulls two images, so
+// it is generous; a hung daemon still cannot hold the window for ever, and the
+// modal carries Cancel for the rest.
+const databaseTimeout = 15 * time.Minute
+
+// startServer is Start, and Start begins with the database: an API with no
+// database is a process that reports errors and answers a health check, which
+// is the state this step exists to prevent.
 func (v *serverView) startServer() {
 	v.setNote("")
 
@@ -981,11 +1024,66 @@ func (v *serverView) startServer() {
 		v.setNote(v.notBundleNote())
 		return
 	}
+	if v.preparing {
+		return
+	}
+
+	// A port the server cannot bind is refused before anything is started: the
+	// database is worth bringing up, but not for a start that cannot listen.
+	if err := serverctl.PortFree(v.folderPath()); err != nil {
+		v.setNote("Cannot start: " + err.Error())
+		return
+	}
 
 	v.mu.Lock()
 	v.answered, v.answerErr = false, nil
 	v.mu.Unlock()
 
+	v.preparing = true
+	v.start.Disable()
+	v.stop.Disable()
+	v.setFolderEditable(false)
+
+	ctx, cancel := context.WithTimeout(context.Background(), databaseTimeout)
+	progress := v.showDatabaseProgress(cancel)
+	folder := v.folderPath()
+	v.refresh()
+
+	// Off the UI goroutine: the first run pulls two images and applies the
+	// migrations, and the window has to keep painting while it does.
+	go func() {
+		result, err := v.prepare(ctx, folder, progress)
+		cancel()
+
+		fyne.Do(func() { v.afterPrepare(result, err, progress) })
+	}()
+}
+
+// afterPrepare starts the API once the database step is done, or explains why
+// it will not be started at all.
+func (v *serverView) afterPrepare(result serverctl.Result, err error, progress *databaseProgress) {
+	progress.Close()
+	v.preparing = false
+
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			v.setNote("The database step was cancelled — nothing was started.")
+		} else {
+			v.noteDatabaseFailure(err, progress.Output())
+		}
+
+		v.refresh()
+
+		return
+	}
+
+	v.startAPI(databaseNote(result))
+}
+
+// startAPI runs the server process and puts its log in front of the person who
+// pressed Start. The note is set after the configuration reload, which clears
+// it when the folder is fine.
+func (v *serverView) startAPI(note string) {
 	if err := v.server().Start(); err != nil {
 		v.setNote("Cannot start: " + err.Error())
 		v.refresh()
@@ -1001,6 +1099,74 @@ func (v *serverView) startServer() {
 	// The answer to "did it start" is in the log, so put it in front of the
 	// person who just pressed the button.
 	v.panes.SelectIndex(0)
+
+	if note != "" {
+		v.setNote(note)
+	}
+}
+
+// databaseNote says what the database step did, for a start that worked.
+func databaseNote(result serverctl.Result) string {
+	switch {
+	case result.Started:
+		return "Started the database and applied the migrations."
+	case result.Migrated:
+		return "The database was already running; applied the migrations."
+	default:
+		return ""
+	}
+}
+
+// databaseNoteForFailure turns the database step's error into what a person can
+// do about it. Each case is a different fix, which is why the step has sentinel
+// errors instead of one message.
+func databaseNoteForFailure(err error) string {
+	switch {
+	case errors.Is(err, serverctl.ErrNoCompose):
+		return "No database answers, and this folder has no " + serverctl.ComposeFileName +
+			" to start one from — start a PostgreSQL, or point DB_HOST and DB_PORT at one in Configuration."
+	case errors.Is(err, serverctl.ErrNoRuntime):
+		return "No database answers, and there is no container runtime on PATH — install Docker or Podman, " +
+			"or start a PostgreSQL and point DB_HOST and DB_PORT at it."
+	case errors.Is(err, serverctl.ErrNoPassword):
+		return "No database answers, and this folder has no " + serverctl.SecretPath +
+			" — set the database password in Configuration first, then press Start again."
+	case errors.Is(err, serverctl.ErrNoAnswer):
+		return "The database did not answer after it was started — press Start again in a moment. " +
+			"If DB_HOST names a service (such as db), a server run on this machine has to use 127.0.0.1 instead."
+	default:
+		return "The database could not be prepared: " + err.Error()
+	}
+}
+
+// noteDatabaseFailure puts the short reason in the note and the runtime's own
+// output in a dialog: the container runtime says what went wrong in words that
+// are the fix, and they are worth keeping.
+func (v *serverView) noteDatabaseFailure(err error, output string) {
+	v.setNote(databaseNoteForFailure(err))
+
+	body := err.Error()
+	if strings.TrimSpace(output) != "" {
+		body += "\n\n" + strings.TrimSpace(output)
+	}
+
+	label := widget.NewLabel(body)
+	label.TextStyle = fyne.TextStyle{Monospace: true}
+	label.Wrapping = fyne.TextWrapWord
+	label.Selectable = true
+
+	scroll := container.NewVScroll(label)
+	scroll.SetMinSize(fyne.NewSize(640, 320))
+
+	copyButton := widget.NewButtonWithIcon("Copy output", theme.ContentCopyIcon(), func() {
+		if !v.ui.copyToClipboard(body) {
+			v.setNote("This window has no clipboard available — the output could not be copied.")
+		}
+	})
+
+	actions := container.NewHBox(layout.NewSpacer(), copyButton)
+	content := container.NewBorder(nil, actions, nil, nil, scroll)
+	dialog.ShowCustom("The database could not be started", "Close", content, v.ui.window)
 }
 
 func (v *serverView) stopServer() {
@@ -1134,7 +1300,7 @@ func (v *serverView) loadConfig() {
 			v.create.Show()
 
 			note := "There is no .env here yet — create it from the example, then set the database password. " +
-				"A database has to answer at DB_HOST:DB_PORT; `docker compose up db migrate` in this folder starts one."
+				"Start brings up the database from this folder's docker-compose.yml when nothing answers."
 			if !v.bundle.Binary {
 				note += " Start also needs " + serverctl.BinaryName() + ", which this folder does not have."
 			}

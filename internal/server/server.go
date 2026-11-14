@@ -1,13 +1,17 @@
-package main
+// Package server runs the API: the start-up behind `eznit serve`, which is the
+// same program as the client. One binary is what keeps the two from disagreeing
+// about their version, and what makes a bundle one thing to carry.
+//
+// It owns its logging — JSON lines on stdout, which is the format the desktop
+// window reads as the server's log — rather than using the client's console
+// logger.
+package server
 
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
-	"io"
 	"io/fs"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -25,92 +29,18 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Version is what `eznit-server --version` prints. It is set at build time:
-//
-//	go build -ldflags "-X main.Version=v1.2.3" ./cmd/api
-//
-// The Makefile passes it (INJECT_VERSION), so a released server names the tag it
-// was built from, the way `eznit -v` and `eznit-gui --version` do. Without it
-// the binary says "dev", which is honest: it was not built as a release.
-//
-// Declaring the variable is what makes the injection land. The linker accepts an
-// -X for a symbol that does not exist and says nothing about it, so a Makefile
-// that injects into a missing name looks like it works while doing nothing.
-var Version = "dev"
-
-func main() {
-	if err := run(); err != nil {
-		if errors.Is(err, errUsage) {
-			// The flag set has already named the problem and printed the usage,
-			// so this path adds nothing to the output. 2 is the code the flag
-			// package publishes for a command line it cannot read.
-			os.Exit(2)
-		}
-		log.Fatal(err)
-	}
+// Options are the server's own settings, parsed by the command that runs it.
+type Options struct {
+	// Debug turns on debug logging.
+	Debug bool
 }
 
-// errUsage marks a command line the server could not read. It exists so run can
-// say which kind of failure it hit without exiting: main owns the exit code, and
-// the defers a start-up takes still run.
-var errUsage = errors.New("the command line could not be read")
-
-// options are the flags `eznit-server` accepts.
-type options struct {
-	debug   bool
-	version bool
-}
-
-// parseArgs reads the server's flags out of args.
+// Run starts the API and returns when it drains, or when the start fails.
 //
-// The arguments are handed in rather than read from os.Args so the flags can be
-// tested without a database, a log folder or a listener — and so --version is
-// answered before any of those start. The flag set reports errors instead of
-// exiting, which is what keeps -h testable: flag.ExitOnError would end the
-// process, and a test binary with it.
-func parseArgs(args []string, out io.Writer) (options, error) {
-	var opts options
-
-	flags := flag.NewFlagSet("eznit-server", flag.ContinueOnError)
-	flags.SetOutput(out)
-	flags.BoolVar(&opts.debug, "debug", false, "show debug logs")
-	flags.BoolVar(&opts.version, "version", false, "print the version and exit")
-
-	if err := flags.Parse(args); err != nil {
-		return options{}, err
-	}
-
-	return opts, nil
-}
-
-// run holds main's body so the defers it takes — the log flush, the database
-// connection — run on every exit path, a failed start included.
-func run() error {
-	return runWith(os.Args[1:], os.Stdout, os.Stderr)
-}
-
-// runWith is run for a given command line and output.
-//
-// The arguments and the writers are handed in so a test can ask what --version
-// does — where it prints, and before what — without a process, a terminal or a
-// database.
-func runWith(args []string, stdout, stderr io.Writer) error {
-	// Flags come first. `--version` has to answer on a machine with no .env, no
-	// database and no log folder, and a mistyped flag should fail before
-	// anything starts rather than halfway through a start-up.
-	opts, err := parseArgs(args, stderr)
-	if errors.Is(err, flag.ErrHelp) {
-		return nil // -h printed its own usage, and asking for help is not a failure
-	}
-	if err != nil {
-		return errUsage
-	}
-
-	if opts.version {
-		fmt.Fprintln(stdout, Version)
-		return nil
-	}
-
+// Every path that returns also runs the defers it takes — the log flush, the
+// database connection — so a failed start is reported the same way a clean stop
+// is logged.
+func Run(opts Options) error {
 	// .env.local overwrite .env for development
 	_ = godotenv.Load(".env.local", ".env")
 
@@ -118,7 +48,7 @@ func runWith(args []string, stdout, stderr io.Writer) error {
 	if logsFolder == "" {
 		logsFolder = "./logs/"
 	}
-	logger, err := logger.NewJson(logsFolder, opts.debug)
+	logger, err := logger.NewJson(logsFolder, opts.Debug)
 	if err != nil {
 		return err
 	}

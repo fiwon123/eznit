@@ -1,9 +1,10 @@
 # Running a release bundle
 
-This folder is a **release archive**: the client (`eznit`, `ez`), the API
-(`eznit-server`), the window (`eznit-gui`), the migrations and the Compose
-services that give the API a database. It is not a source checkout — there is no
-`go.mod`, no `web/` and no image to build.
+This folder is a **release archive**: the one binary (`eznit`, and `ez` as its
+alias) that is both the client and the API — `eznit serve` is the server — the
+window (`eznit-gui`), the migrations and the Compose services that give the API a
+database. It is not a source checkout — there is no `go.mod`, no `web/` and no
+image to build.
 
 ## What works from here
 
@@ -19,14 +20,19 @@ docker compose up db migrate
 Then run the API on the host, pointed at the published port:
 
 ```sh
-DB_HOST=localhost DB_PORT=5432 ./eznit-server
+DB_HOST=localhost DB_PORT=5432 ./eznit serve
 ```
 
-`eznit-server` embeds the web UI, so <http://localhost:4000> serves it.
+`eznit serve` embeds the web UI, so <http://localhost:4000> serves it. There is
+no separate server binary to keep in step: `eznit` is the client and the API, so
+one update keeps both at the release the tag names. A service unit from an
+earlier release still says `ExecStart=…/eznit-server`; it becomes
+`ExecStart=…/eznit serve`.
 
-`./eznit-server --version` prints the release this bundle carries, and needs no
-database, no `.env` and no log folder — it is the quickest way to tell whether
-the folder you extracted is the tag it claims.
+`./eznit -v` prints the release this bundle carries, and needs no database, no
+configuration and no log folder — it is the quickest way to tell whether the
+folder you extracted is the tag it claims. It is the server's own version, too:
+there is one binary, so the two cannot disagree.
 
 ## What does not work from here
 
@@ -39,7 +45,7 @@ The `dev` and `web-dev` services (the developer loop) are not part of a bundle.
 
 ## The desktop app
 
-`eznit-gui` is in this bundle. Its **Server** tab runs `eznit-server` from this
+`eznit-gui` is in this bundle. Its **Server** tab runs `eznit serve` from this
 folder as a child process, shows its log, and edits the `.env` and the database
 password the server reads:
 
@@ -47,14 +53,33 @@ password the server reads:
 ./eznit-gui        # then: Server tab → Start
 ```
 
-Run it from **this** folder: the Server tab looks for `eznit-server` beside the
-window, so a window copied somewhere else (or started from another folder) has
-no server to run and will say so. **Choose folder…** helps only when the folder
+Run it from **this** folder: the Server tab looks for `eznit` beside the window,
+so a window copied somewhere else (or started from another folder) has no server
+to run and will say so. A folder from an older release still holds
+`eznit-server`; it is used when `eznit` is absent, so an archive you already
+extracted keeps starting. **Choose folder…** helps only when the folder
 it is pointed at is another bundle.
 
-- **Start** checks the API port and reads the `.env` before it runs anything. A
-  folder with no `.env` gets one created from `.env.example`, pointed at
-  `127.0.0.1` and at this bundle's secret file.
+- **Start** begins with the database, because an API without one answers a
+  health check and prints pq errors and nothing else. It reads the `.env`
+  (creating it from `.env.example` when it is missing — pointed at `127.0.0.1`
+  and at this bundle's secret file), probes `DB_HOST:DB_PORT`, and then:
+  - nothing answers and the folder has `docker-compose.yml` → runs
+    `<runtime> up -d db`, waits for the port, then `<runtime> run --rm migrate`,
+    the same `migrate` service the manual path uses;
+  - the database answers → runs the folder's `migrate` service, which targets the
+    Compose database: that is what keeps an upgraded bundle off an old schema,
+    and it is why a database reached on another machine is left alone — its
+    schema is that machine's business;
+  - neither → starts nothing, and the note names the missing piece: no compose
+    file, no `docker`/`podman` on `PATH`, or no `secrets/db_password.txt`.
+
+  The step streams its output into a modal, and a failure keeps that output on
+  screen with **Copy output**. The runtime is `docker compose`,
+  `podman-compose`, `docker-compose`, or `podman compose`, in that order. The
+  API starts only after the step succeeds, and a busy API port is refused before
+  anything runs. The Compose project is named `eznit`, so two extracted bundles
+  on one machine share the same database container and volume.
 - **Choose folder…** points the tab at another bundle and remembers the choice
   in `~/.eznit/config.json`. **Reset to default** asks first, then forgets the
   choice and returns to the folder this window was installed in — so a moved

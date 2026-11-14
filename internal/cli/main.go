@@ -27,6 +27,7 @@ type Globals struct {
 	api       *API
 	downloads string
 	logger    *logger.Config
+	debug     bool
 }
 
 func newGlobals(api *API, downloads string, logger *logger.Config) *Globals {
@@ -51,6 +52,8 @@ type CLI struct {
 	Unshare  UnshareCmd  `cmd:"" help:"unshare a file"`
 	Logout   LogoutCmd   `cmd:"" help:"logout user and remove credential"`
 
+	Serve ServeCmd `cmd:"" help:"run the API server"`
+
 	Template TemplateCmd `cmd:"" help:"work with templates"`
 	Command  CommandCmd  `cmd:"" help:"keep the commands your templates pull in"`
 	Repo     RepoCmd     `cmd:"" help:"work with git hosts"`
@@ -73,6 +76,20 @@ func Run(version string) {
 
 	cli := CLI{}
 	ctx := kong.Parse(&cli, kong.Vars{"version": version})
+
+	// The server owns its logging — JSON on stdout, the format the window reads
+	// as its log — so it runs before the client's console logger exists. One
+	// binary is the client and the server; `serve` is the whole difference, and
+	// Serve.Run is the only place that starts it.
+	if ctx.Command() == "serve" {
+		globals = Globals{debug: cli.Debug}
+
+		if err := cli.Serve.Run(&globals); err != nil {
+			log.Fatal(err)
+		}
+
+		return
+	}
 
 	logsFolder, _ := os.LookupEnv("CLI_LOGS")
 	if logsFolder == "" {
@@ -101,6 +118,7 @@ func Run(version string) {
 
 	api := newAPI(host, port)
 	globals = *newGlobals(api, downloads, l)
+	globals.debug = cli.Debug
 
 	ctx.Run(&globals)
 }

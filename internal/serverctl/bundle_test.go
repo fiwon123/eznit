@@ -100,3 +100,107 @@ func TestInspectBundleWritesNothing(t *testing.T) {
 		t.Errorf("Inspect created %d entries in an empty folder", len(entries))
 	}
 }
+
+// The bundle is one binary now, and a folder from an older release carries the
+// client *and* the standalone server. The name alone cannot say which one can
+// serve, so the binary is asked — and a client that predates `serve` is skipped
+// in favour of the server beside it, which is the shape an in-place update
+// leaves behind.
+func TestServerBinaryChoosesTheOneThatCanServe(t *testing.T) {
+	writeBinary := func(dir, name, body string) {
+		t.Helper()
+
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// A merged binary answers `serve --help`; a client from before the merge
+	// does not.
+	const serves = "#!/bin/sh\nexit 0\n"
+	const onlyClient = "#!/bin/sh\nexit 2\n"
+	const legacy = "#!/bin/sh\nexit 0\n"
+
+	t.Run("the merged binary wins", func(t *testing.T) {
+		dir := t.TempDir()
+		writeBinary(dir, BinaryName(), serves)
+		writeBinary(dir, legacyBinaryName(), legacy)
+
+		path, args, err := ServerBinary(dir)
+		if err != nil {
+			t.Fatalf("ServerBinary() error = %v", err)
+		}
+		if path != filepath.Join(dir, BinaryName()) {
+			t.Errorf("ServerBinary() = %q, want %s", path, BinaryName())
+		}
+		if len(args) != 1 || args[0] != ServerCommand {
+			t.Errorf("args = %q, want [%s]", args, ServerCommand)
+		}
+	})
+
+	t.Run("an old bundle keeps its server", func(t *testing.T) {
+		// The shape every release before the merge produced: a client that
+		// cannot serve, and the standalone server beside it.
+		dir := t.TempDir()
+		writeBinary(dir, BinaryName(), onlyClient)
+		writeBinary(dir, legacyBinaryName(), legacy)
+
+		path, args, err := ServerBinary(dir)
+		if err != nil {
+			t.Fatalf("ServerBinary() error = %v, want the standalone server", err)
+		}
+		if path != filepath.Join(dir, legacyBinaryName()) {
+			t.Errorf("ServerBinary() = %q, want %s", path, legacyBinaryName())
+		}
+		if len(args) != 0 {
+			t.Errorf("args = %q, want none for the standalone server", args)
+		}
+	})
+
+	t.Run("only the standalone server", func(t *testing.T) {
+		dir := t.TempDir()
+		writeBinary(dir, legacyBinaryName(), legacy)
+
+		path, _, err := ServerBinary(dir)
+		if err != nil {
+			t.Fatalf("ServerBinary() error = %v", err)
+		}
+		if path != filepath.Join(dir, legacyBinaryName()) {
+			t.Errorf("ServerBinary() = %q, want the standalone server", path)
+		}
+	})
+
+	t.Run("a client too old to serve, and nothing else", func(t *testing.T) {
+		dir := t.TempDir()
+		writeBinary(dir, BinaryName(), onlyClient)
+
+		_, _, err := ServerBinary(dir)
+		if err == nil || !strings.Contains(err.Error(), "download the release again") {
+			t.Errorf("ServerBinary() error = %v, want it to say the binary is too old", err)
+		}
+	})
+
+	t.Run("an empty folder", func(t *testing.T) {
+		_, _, err := ServerBinary(t.TempDir())
+		if err == nil || !strings.Contains(err.Error(), ServerBinaryName) {
+			t.Errorf("ServerBinary() error = %v, want it to name %s", err, ServerBinaryName)
+		}
+	})
+}
+
+// Inspect answers from the names on disk and runs nothing: the panel calls it
+// on whatever folder a person points at.
+func TestInspectRunsNothing(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(dir, BinaryName()), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, EnvExampleName), []byte("API_PORT=4000\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if bundle := Inspect(dir); !bundle.Binary {
+		t.Error("Inspect() did not see the binary that cannot serve")
+	}
+}
