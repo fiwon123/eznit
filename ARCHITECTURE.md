@@ -382,9 +382,12 @@ The tab's Output is a log viewer over the child's own console output, which the
 API writes as JSON (`pkg/logger.NewJson`). A drag over the grid marks the cells
 it covers: `loggrid.go` maps a pointer position to a cell because Fyne 2.8's
 `TextGrid` has no selection of its own, and the selection is painted as a cell
-style over the row's level style, so the colours survive. `Copy selection` takes
-what the drag covers, `Copy log` the whole buffer, and `Select…` still opens a
-frozen snapshot when output must not move under a selection. `serverctl.ParseLine` reads one line
+style over the row's level style, so the colours survive. The wrapper is also
+what answers for the pointer: the text cursor (`desktop.Cursorable`) and the
+right-click menu (`fyne.SecondaryTappable`), which offers the same actions as
+the buttons — `Copy selection` takes what the drag covers, `Copy log` the whole
+buffer, `Clear selection` drops the mark. `Select…` still opens a frozen
+snapshot when output must not move under a selection. `serverctl.ParseLine` reads one line
 into time, level, message and fields, `Format` lays it out in fixed columns, and
 the window colours it by level — so a line that is not a record (a panic) is
 kept as text rather than dropped. The supervisor keeps the newest 500 lines and
