@@ -99,7 +99,7 @@ cp secrets/db_password.txt.example secrets/db_password.txt   # then edit it
 cp .env.example .env                                         # then edit it
 docker compose up db migrate
 
-DB_HOST=localhost DB_PORT=5432 ./eznit-server               # serves the embedded UI on :4000
+DB_HOST=localhost DB_PORT=5432 ./eznit serve                # serves the embedded UI on :4000
 ```
 
 Set the database password for the host-run server too: `DB_PWD`, or
@@ -109,7 +109,9 @@ the source-checkout path — in a bundle it would try to build an image the
 archive does not contain.
 
 The bundle also carries `eznit-gui`. Run it **from inside the extracted folder** —
-the Server tab looks for `eznit-server` beside the window. The first run is:
+the Server tab looks for `eznit` beside the window (an archive from before the
+two binaries were merged still has `eznit-server`, and that works too). The first
+run is:
 
 1. **Server → Configuration → Create .env** (it copies the example), then set the
    database password and **Save** — that writes `.env` and

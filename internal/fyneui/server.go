@@ -36,7 +36,7 @@ const stopTimeout = 15 * time.Second
 // the offset a few pixels; a wheel notch moves it much further.
 const followTolerance = 24
 
-// serverView is the Local server tab: run the eznit-server from a bundle
+// serverView is the Local server tab: run the server from a bundle
 // folder, watch what it prints, and edit the .env beside it.
 //
 // It is a control panel, not a remote client: it drives a process on this

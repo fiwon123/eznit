@@ -569,7 +569,7 @@ func TestServerViewRefusesAFolderChangeWhileRunning(t *testing.T) {
 	}
 }
 
-// startFakeServer puts a sleeping eznit-server in the panel's folder and starts
+// startFakeServer puts a sleeping server in the panel's folder and starts
 // it, so a test can exercise the rules that only hold while it runs.
 func startFakeServer(t *testing.T, view *serverView) {
 	t.Helper()
@@ -596,8 +596,15 @@ func fakeServerBundle(t *testing.T, view *serverView) {
 
 	dir := view.folderPath()
 
+	// The fake answers `serve --help` the way the real binary does — that is how
+	// the supervisor tells a merged binary from a client that predates it — and
+	// sleeps for the start itself.
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = " + serverctl.ServerCommand + " ] && [ \"$2\" = --help ]; then exit 0; fi\n" +
+		"exec sleep 30\n"
+
 	binary := filepath.Join(dir, serverctl.ServerBinaryName)
-	if err := os.WriteFile(binary, []byte("#!/bin/sh\nexec sleep 30\n"), 0o755); err != nil {
+	if err := os.WriteFile(binary, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 

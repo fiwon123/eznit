@@ -23,10 +23,12 @@ name: Release
 #           cross toolchain, never as a plain `go build`
 #   pack    add the window and its licences to each CLI archive, verify every
 #           archive (PE, Mach-O, provenance), and regenerate checksums.txt
-#   smoke   the Windows CLI, server and window are started on windows-latest
+#   smoke   the Windows CLI and window are started on windows-latest, and the
+#           server command in the same binary is asked for its help
 #   smoke-linux  the linux/amd64 window unpacked from its archive is started on
 #           Xvfb, so the copy Debian 12 has to run is the copy that is tested,
-#           and the server beside it is asked for its version
+#           and the one binary beside it is asked for its version and for
+#           `serve --help`
 #
 # `publish` needs all of them and runs only on a tag push. `workflow_dispatch`
 # runs guard/build/gui/pack/smoke/smoke-linux, keeps the archives on the run,
@@ -436,9 +438,9 @@ jobs:
           done
 
           host="GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) CGO_ENABLED=0"
-          # One archive per platform holds the client, its alias, the server and
-          # the window: one group, with -gui so a platform the packer skipped
-          # fails here instead of shipping.
+          # One archive per platform holds the client (which is also the
+          # server), its alias and the window: one group, with -gui so a
+          # platform the packer skipped fails here instead of shipping.
           env $host go run ./internal/tools/winres -verify-archives verify/all \
             -app eznit -short ez -gui \
             -files README.md,LICENSE,LICENSE-FYNE,LICENSE-APACHE,NOTICE,RUNNING.md,docker-compose.yml \
@@ -492,10 +494,8 @@ jobs:
           Expand-Archive -LiteralPath $zip.FullName -DestinationPath smoke\extracted -Force
           $cli = Get-ChildItem smoke\extracted -Recurse -Filter 'eznit.exe' | Select-Object -First 1
           $alias = Get-ChildItem smoke\extracted -Recurse -Filter 'ez.exe' | Select-Object -First 1
-          $server = Get-ChildItem smoke\extracted -Recurse -Filter 'eznit-server.exe' | Select-Object -First 1
           if (-not $cli) { throw 'eznit.exe is missing from the archive' }
           if (-not $alias) { throw 'ez.exe is missing from the archive' }
-          if (-not $server) { throw 'eznit-server.exe is missing from the archive' }
 
           $reported = (& $cli.FullName -v | Out-String).Trim()
           if ($LASTEXITCODE -ne 0) { throw "eznit.exe -v exited $LASTEXITCODE" }
@@ -506,16 +506,12 @@ jobs:
           & $alias.FullName -v | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "ez.exe -v exited $LASTEXITCODE" }
 
-          # The server names the tag it was built from. The Makefile injects it
-          # with -X main.Version, and the linker ignores an -X for a symbol that
-          # does not exist without a word — so this run, on the published
-          # artifact, is what proves the injection landed. It answers before the
-          # env file, the log folder and the database, so it needs none of them.
-          $serverVersion = (& $server.FullName --version | Out-String).Trim()
-          if ($LASTEXITCODE -ne 0) { throw "eznit-server.exe --version exited $LASTEXITCODE" }
-          if ($serverVersion -ne $env:VERSION) {
-            throw "eznit-server.exe --version printed '$serverVersion', expected $env:VERSION"
-          }
+          # The same binary is the server, so `eznit -v` above is the server's
+          # version too. What is left to prove is that the command is in the
+          # artifact: `serve --help` exits before the database, the env file or
+          # a listener, so it runs anywhere.
+          & $cli.FullName serve --help | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "eznit.exe serve --help exited $LASTEXITCODE" }
 
           # --help exits before the toolkit starts, so this proves the loader
           # takes the window (subsystem, icon resources) without a GPU.
@@ -528,7 +524,7 @@ jobs:
           }
           if ($window.ExitCode -ne 0) { throw "eznit-gui.exe --help failed (exit $($window.ExitCode))" }
 
-          Write-Host "smoke ok: $reported, the server reports $serverVersion, the window opens; all four binaries are in the archive"
+          Write-Host "smoke ok: $reported, serve is in the binary, the window opens; all three binaries are in the archive"
 
   smoke-linux:
     name: Linux window smoke test
@@ -573,12 +569,10 @@ jobs:
             echo "::error::eznit-gui is missing from the linux archive"
             exit 1
           fi
-          for binary in eznit eznit-server; do
-            if [ ! -x "unpacked/$binary" ]; then
-              echo "::error::$binary is missing from the linux archive"
-              exit 1
-            fi
-          done
+          if [ ! -x unpacked/eznit ]; then
+            echo "::error::eznit is missing from the linux archive"
+            exit 1
+          fi
 
           # The packed binary must be the release the tag names.
           reported="$("$window" --version)"
@@ -587,12 +581,15 @@ jobs:
             exit 1
           fi
 
-          # The server names the tag as well, and answers before it opens
-          # anything — no database and no display needed. This is the Linux
-          # half of the check the Windows job makes on the same injection.
-          server_reported="$(unpacked/eznit-server --version)"
+          # The same binary is the server: its version is the window's sibling
+          # check, and `serve --help` proves the command shipped.
+          server_reported="$("unpacked/eznit" -v)"
           if [ "$server_reported" != "$VERSION" ]; then
-            echo "::error::eznit-server reports '$server_reported', expected '$VERSION'"
+            echo "::error::eznit reports '$server_reported', expected '$VERSION'"
+            exit 1
+          fi
+          if ! "unpacked/eznit" serve --help >/dev/null; then
+            echo "::error::eznit serve --help failed — the server command is not in the archive"
             exit 1
           fi
 
@@ -614,7 +611,7 @@ jobs:
           echo "the window stayed up for 10 s; stopping it"
           kill "$runner_pid" 2>/dev/null || true
           wait "$runner_pid" 2>/dev/null || true
-          echo "smoke ok: the packed window reports $reported, the server reports $server_reported, and the window starts"
+          echo "smoke ok: the packed window reports $reported, eznit reports $server_reported and serves, and the window starts"
 
   publish:
     name: Publish the release
@@ -680,10 +677,10 @@ jobs:
           | 🍎 amd64 | `eznit_@VERSION@_darwin_amd64.tar.gz` |
           | 🍎 arm64 | `eznit_@VERSION@_darwin_arm64.tar.gz` |
 
-          One download holds the whole product: `eznit` (the CLI), `ez` (its
-          alias), `eznit-server` (the API), `eznit-gui` (the desktop window),
-          the migrations, the Compose file and the example configuration.
-          `RUNNING.md` says what runs from it and what does not.
+          One download holds the whole product: `eznit` (the CLI and the API —
+          `eznit serve` is the server), `ez` (its alias), `eznit-gui` (the
+          desktop window), the migrations, the Compose file and the example
+          configuration. `RUNNING.md` says what runs from it and what does not.
 
           ## ✅ Verify
 
@@ -699,8 +696,8 @@ jobs:
           - The macOS archives are cross-compiled on Linux, and none of the
             ARM64 binaries is executed on ARM hardware. What this workflow
             starts is the Windows amd64 CLI and window and the Linux amd64
-            window (on a virtual display); it asks the amd64 server binaries
-            for the version they report, and it never starts the API itself —
+            window (on a virtual display); it asks the same binary for its
+            version and for `serve --help`, and it never starts the API itself —
             nothing here runs against a database.
 
           <details>

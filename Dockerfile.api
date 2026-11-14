@@ -40,7 +40,7 @@ COPY --from=web /src/web/dist ./web/dist
 RUN CGO_ENABLED=0 GOOS=linux go build \
       -trimpath \
       -ldflags "-s -w -X main.Version=${VERSION}" \
-      -o /out/server ./cmd/api
+      -o /out/eznit ./cmd/cli
 
 FROM alpine:${ALPINE_VERSION}
 RUN apk add --no-cache ca-certificates \
@@ -50,14 +50,15 @@ RUN apk add --no-cache ca-certificates \
  && chown -R app:app /data
 
 WORKDIR /app
-COPY --from=build /out/server /app/server
+COPY --from=build /out/eznit /app/eznit
 
-# Both folders are relative-or-absolute paths read by cmd/api. Pointing them at
-# /data keeps the named volume in one place; the defaults (`./uploads`,
+# Both folders are relative-or-absolute paths read by the server. Pointing them
+# at /data keeps the named volume in one place; the defaults (`./uploads`,
 # `./logs`) would write into the container layer and vanish on recreate.
 ENV API_UPLOADS=/data/uploads \
     API_LOGS=/data/logs
 
 USER app
 EXPOSE 4000
-ENTRYPOINT ["/app/server"]
+# The one binary is the client and the server: the command is the difference.
+ENTRYPOINT ["/app/eznit", "serve"]

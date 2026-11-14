@@ -1,5 +1,5 @@
 // Package serverctl is the local eznit server a desktop window runs: the .env
-// it reads, the secret file it needs, and the eznit-server process itself.
+// it reads, the secret file it needs, and the server process itself.
 //
 // It imports neither a GUI toolkit nor the API, so its rules — what a start
 // checks, what a stop means, what a save preserves — are tested without a

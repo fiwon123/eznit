@@ -14,6 +14,10 @@ import (
 
 // writeFakeServer puts a shell script where the supervisor looks for the
 // server, so a test drives the real process machinery without a database.
+//
+// It answers `serve --help` the way the merged binary does — the supervisor asks
+// that to tell a server from a client that predates it — and runs script for
+// the real start.
 func writeFakeServer(t *testing.T, dir, script string) {
 	t.Helper()
 
@@ -21,8 +25,12 @@ func writeFakeServer(t *testing.T, dir, script string) {
 		t.Skip("the fake server is a shell script; Windows builds cannot run it")
 	}
 
+	body := "#!/bin/sh\n" +
+		"if [ \"$1\" = " + ServerCommand + " ] && [ \"$2\" = --help ]; then exit 0; fi\n" +
+		script
+
 	path := filepath.Join(dir, ServerBinaryName)
-	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script), 0o755); err != nil {
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -336,4 +344,58 @@ func TestStartNotifiesWithoutHoldingTheLock(t *testing.T) {
 	}
 
 	_ = supervisor.Stop(2 * time.Second)
+}
+
+// The supervisor runs the one binary with `serve`: without the argument the
+// process would print the CLI help and exit, which is a start that looks like a
+// crash.
+func TestSupervisorRunsTheServeCommand(t *testing.T) {
+	dir := t.TempDir()
+	writeEnv(t, dir, freePort(t))
+
+	report := filepath.Join(dir, "args.txt")
+	writeFakeServer(t, dir, "echo \"$@\" > "+report+"\necho ready\nwhile true; do sleep 0.05; done\n")
+
+	supervisor := NewSupervisor(dir)
+
+	if err := supervisor.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = supervisor.Stop(5 * time.Second) })
+
+	waitFor(t, supervisor, "ready")
+
+	data, err := os.ReadFile(report)
+	if err != nil {
+		t.Fatalf("the server never ran: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != ServerCommand {
+		t.Errorf("the server was started with %q, want %q", got, ServerCommand)
+	}
+}
+
+// A folder from an older release runs its standalone server with no argument:
+// the merged name is there (as the old client) and cannot serve, so the
+// fallback is what keeps that folder starting.
+func TestSupervisorStartsTheStandaloneServer(t *testing.T) {
+	dir := t.TempDir()
+	writeEnv(t, dir, freePort(t))
+
+	legacy := filepath.Join(dir, legacyBinaryName())
+	if err := os.WriteFile(legacy, []byte("#!/bin/sh\necho ready\nwhile true; do sleep 0.05; done\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake server is a shell script; Windows builds cannot run it")
+	}
+
+	supervisor := NewSupervisor(dir)
+
+	if err := supervisor.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = supervisor.Stop(5 * time.Second) })
+
+	waitFor(t, supervisor, "ready")
 }

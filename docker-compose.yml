@@ -60,7 +60,7 @@ services:
     # path itself fails with "Permission denied". This also makes the LF policy
     # in .gitattributes a redundancy rather than a hard requirement here.
     command: ["/bin/bash", "/workspace/scripts/dev-entrypoint.sh"]
-    # The API listens on 4000 inside the container (hardcoded in cmd/api), and
+    # The API listens on 4000 inside the container (hardcoded in internal/server), and
     # the host-side CLI talks to `http://localhost:4000` by default — so
     # publishing 4000 makes the CLI work against the sandboxed API with no
     # configuration at all. Override the host port when the API runs on the
