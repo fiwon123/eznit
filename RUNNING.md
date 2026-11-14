@@ -91,9 +91,11 @@ it is pointed at is another bundle.
 - The log is one row per line of output: time, level, message, then any
   structured fields, with the level coloured (warnings and errors bold). A line
   that is not a log record — a panic, a plain message from a tool the server
-  started — keeps its own text. Drag over the output to mark lines and use
-  **Copy selection** for just those, or **Copy log** for the whole buffer;
-  **Select…** opens a frozen snapshot in a dialog when output keeps arriving.
+  started — keeps its own text. The pointer is the text cursor over the output,
+  because the pane can be selected: drag to mark lines, then right-click for
+  **Copy selection** (or press the button of the same name), **Copy log** for the
+  whole buffer, and **Clear selection** to drop the mark. **Select…** opens a
+  frozen snapshot in a dialog when output keeps arriving.
   **Follow output** stays on until you scroll away from the end or start a
   selection; **Jump to end** goes back. The line next to the status always names
   the address, including after an exit (`Stopped at http://… — last exit: …`).
