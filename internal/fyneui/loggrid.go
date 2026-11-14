@@ -195,6 +195,10 @@ type logGrid struct {
 	// onSelect is told the range the drag covers, or nil when a press clears
 	// the selection.
 	onSelect func(*selection)
+
+	// onMenu is asked for the context menu at a canvas position when the output
+	// is right-clicked: copying belongs where the pointer already is.
+	onMenu func(at fyne.Position)
 }
 
 func newLogGrid(grid *widget.TextGrid) *logGrid {
@@ -238,6 +242,20 @@ func (g *logGrid) MouseUp(*desktop.MouseEvent) {
 // DragEnd ends the drag when the pointer was released away from the grid.
 func (g *logGrid) DragEnd() {
 	g.pressed = false
+}
+
+// Cursor is the text cursor over the output. It is the one signal that says the
+// pane can be selected: without it a person drags nothing, because nothing
+// looked draggable.
+func (g *logGrid) Cursor() desktop.Cursor {
+	return desktop.TextCursor
+}
+
+// TappedSecondary is the right-click: the menu the view puts at the pointer.
+func (g *logGrid) TappedSecondary(ev *fyne.PointEvent) {
+	if g.onMenu != nil {
+		g.onMenu(ev.AbsolutePosition)
+	}
 }
 
 // cellAt maps a pointer position inside this widget to a cell. The grid is at

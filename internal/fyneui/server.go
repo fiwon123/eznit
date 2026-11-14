@@ -80,6 +80,10 @@ type serverView struct {
 	sel           *selection
 	copySelection *widget.Button
 
+	// logMenu is the right-click menu over the output while it is open, so a
+	// second right-click replaces it instead of stacking a third.
+	logMenu *widget.PopUpMenu
+
 	// preparing is true while the database step runs, before the API exists.
 	// The refresh cycle keeps the buttons honest about it, and a folder change
 	// is refused for the same reason it is refused while the server runs.
@@ -388,6 +392,7 @@ func (v *serverView) buildOutput() {
 	v.log = widget.NewTextGrid()
 	v.grid = newLogGrid(v.log)
 	v.grid.onSelect = v.selectCells
+	v.grid.onMenu = v.showLogMenu
 
 	v.scroll = container.NewScroll(v.grid)
 	v.scroll.SetMinSize(fyne.NewSize(440, 80))
@@ -751,6 +756,37 @@ func (v *serverView) followOutput(offset fyne.Position) {
 	if offset.Y < v.scrollEnd()-followTolerance {
 		v.follow.SetChecked(false)
 	}
+}
+
+// logMenuItems is the right-click menu over the output: the same actions as the
+// buttons beside it, where the pointer already is. The items are built per
+// click, so their disabled state is the selection's state now.
+func (v *serverView) logMenuItems() []*fyne.MenuItem {
+	selected := v.sel != nil
+
+	return []*fyne.MenuItem{
+		{Label: "Copy selection", Action: v.copySelected, Disabled: !selected},
+		{Label: "Copy log", Action: v.copyLog},
+		fyne.NewMenuItemSeparator(),
+		{Label: "Clear selection", Action: func() { v.selectCells(nil) }, Disabled: !selected},
+	}
+}
+
+// showLogMenu opens that menu at a canvas position, replacing one that is
+// already open: a menu is where the pointer is, and there is only one pointer.
+func (v *serverView) showLogMenu(at fyne.Position) {
+	if v.logMenu != nil {
+		v.logMenu.Hide()
+		v.logMenu = nil
+	}
+
+	canvas := v.ui.window.Canvas()
+	if canvas == nil {
+		return
+	}
+
+	v.logMenu = widget.NewPopUpMenu(fyne.NewMenu("", v.logMenuItems()...), canvas)
+	v.logMenu.ShowAtPosition(at)
 }
 
 // copyLog puts the whole buffer on the clipboard, whether or not a selection

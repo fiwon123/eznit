@@ -1623,3 +1623,95 @@ func TestServerViewReportsACancelledStep(t *testing.T) {
 		t.Error("Start is disabled after a cancellation")
 	}
 }
+
+// The output says it is selectable: the pointer is the text cursor over it, and
+// the wrapper is what the driver asks (no child of the grid answers).
+func TestLogGridShowsATextCursor(t *testing.T) {
+	var _ desktop.Cursorable = (*logGrid)(nil)
+	var _ fyne.SecondaryTappable = (*logGrid)(nil)
+
+	view := newLogView(t, "first", "second")
+
+	if got := view.grid.Cursor(); got != desktop.TextCursor {
+		t.Errorf("Cursor() = %v, want the text cursor", got)
+	}
+}
+
+// The right-click menu offers the same actions as the buttons, disabled while
+// there is nothing to act on, and it acts on the selection it was opened over.
+func TestServerViewLogMenu(t *testing.T) {
+	view := newLogView(t, "first", "second")
+	view.ui.clip = test.NewClipboard()
+
+	before := view.logMenuItems()
+
+	labels := make([]string, 0, len(before))
+	for _, item := range before {
+		labels = append(labels, item.Label)
+	}
+	want := []string{"Copy selection", "Copy log", "", "Clear selection"}
+	for i := range want {
+		if i >= len(labels) || labels[i] != want[i] {
+			t.Fatalf("menu = %q, want %q", labels, want)
+		}
+	}
+
+	if !before[0].Disabled || !before[3].Disabled {
+		t.Error("the selection actions are enabled with nothing selected")
+	}
+
+	// A selection with something in it: the formatted row starts with the
+	// level column's padding, and copying spaces is refused on purpose.
+	line := []rune(view.log.RowText(0))
+	from := 0
+	for from < len(line) && line[from] == ' ' {
+		from++
+	}
+
+	dragOver(view, cell{0, from}, cell{0, len(line) - 1})
+
+	after := view.logMenuItems()
+	if after[0].Disabled || after[3].Disabled {
+		t.Fatal("the selection actions are disabled with a selection")
+	}
+
+	after[0].Action()
+
+	if got, want := view.ui.clip.Content(), string(line[from:]); got != want {
+		t.Errorf("the menu copied %q, want %q", got, want)
+	}
+
+	after[3].Action()
+
+	if view.sel != nil {
+		t.Errorf("Clear selection left %+v", *view.sel)
+	}
+	if !view.copySelection.Disabled() {
+		t.Error("Copy selection is enabled after the menu cleared the selection")
+	}
+}
+
+// A right-click opens the menu at the pointer, and a second one replaces it
+// rather than stacking a popup per click.
+func TestServerViewRightClickOpensTheMenu(t *testing.T) {
+	view := newLogView(t, "first", "second")
+
+	at := cellPoint(view, cell{0, 0})
+	view.grid.TappedSecondary(&fyne.PointEvent{Position: at, AbsolutePosition: at})
+
+	if view.logMenu == nil {
+		t.Fatal("the right-click opened no menu")
+	}
+	first := view.logMenu
+
+	view.grid.TappedSecondary(&fyne.PointEvent{Position: at, AbsolutePosition: at})
+
+	if view.logMenu == nil || view.logMenu == first {
+		t.Fatal("the second right-click did not replace the menu")
+	}
+	if first.Visible() {
+		t.Error("the first menu is still visible: the second stacked over it")
+	}
+
+	view.logMenu.Hide()
+}
